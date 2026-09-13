@@ -9,6 +9,12 @@
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/net_event.h>
+#include <stdio.h>
+
+#if defined(CONFIG_WIFI)
+#include <zephyr/net/wifi.h>
+#include <zephyr/net/wifi_mgmt.h>
+#endif
 
 LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -85,16 +91,102 @@ int app_net_wait_connected(k_timeout_t timeout)
 	return k_sem_take(&net_connected_sem, timeout) == 0 ? 0 : -ETIMEDOUT;
 }
 
+/* --- Diagnostics: gather network details and render them on the display --- */
+
+static enum display_stage g_stage = DISPLAY_STAGE_BOOT;
+static int g_last_reason = -1; /* last Wi-Fi disconnect/connect reason code */
+static char lb[8][22];
+static struct k_work_delayable status_work;
+
+static void fmt_ip(char *dst, size_t n, uint32_t be)
+{
+	const uint8_t *o = (const uint8_t *)&be;
+
+	snprintf(dst, n, "%u.%u.%u.%u", o[0], o[1], o[2], o[3]);
+}
+
+/* Build the diagnostic lines (IP/GW/mask/Wi-Fi RSSI/state/reason/host) and draw
+ * them. Called on connectivity changes and periodically so RSSI stays fresh and
+ * silent Wi-Fi drops become visible. */
+static void render_status(enum display_stage stage)
+{
+	struct net_if *iface = net_if_get_default();
+	const char *lines[8];
+	int n = 0;
+	char tmp[16];
+
+	g_stage = stage;
+
+	fmt_ip(tmp, sizeof(tmp), current_ipv4);
+	snprintf(lb[0], sizeof(lb[0]), "IP %s", tmp);
+	lines[n++] = lb[0];
+
+	/* Gateway/netmask come from the native IP stack (hardware); native_sim
+	 * offloaded sockets (NSOS) has no such notion. */
+#if !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	if (iface != NULL) {
+		struct net_in_addr gw = net_if_ipv4_get_gw(iface);
+		struct net_in_addr self = { .s_addr = current_ipv4 };
+		struct net_in_addr mask =
+			net_if_ipv4_get_netmask_by_addr(iface, &self);
+
+		fmt_ip(tmp, sizeof(tmp), gw.s_addr);
+		snprintf(lb[1], sizeof(lb[1]), "GW %s", tmp);
+		lines[n++] = lb[1];
+		fmt_ip(tmp, sizeof(tmp), mask.s_addr);
+		snprintf(lb[2], sizeof(lb[2]), "MASK %s", tmp);
+		lines[n++] = lb[2];
+	}
+#else
+	ARG_UNUSED(iface);
+#endif
+
+#if defined(CONFIG_WIFI)
+	struct net_if *wifi = net_if_get_first_wifi();
+	struct wifi_iface_status st = {0};
+
+	if (wifi != NULL &&
+	    net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, wifi, &st, sizeof(st)) == 0) {
+		snprintf(lb[3], sizeof(lb[3]), "RSSI %d CH%u", st.rssi,
+			 st.channel);
+		lines[n++] = lb[3];
+		snprintf(lb[4], sizeof(lb[4]), "WIFI ST %d", st.state);
+		lines[n++] = lb[4];
+	}
+#endif
+
+	if (g_last_reason >= 0) {
+		snprintf(lb[5], sizeof(lb[5]), "LAST RSN %d", g_last_reason);
+		lines[n++] = lb[5];
+	}
+	snprintf(lb[6], sizeof(lb[6]), "%s", app_net_hostname());
+	lines[n++] = lb[6];
+
+	display_status_lines(stage, lines, n);
+}
+
+void app_net_show_status(enum display_stage stage)
+{
+	render_status(stage);
+}
+
+static void status_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	render_status(g_stage);
+	k_work_reschedule(&status_work, K_SECONDS(3));
+}
+
 static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
 	if (up) {
 		update_identity(); /* MAC (and unique hostname) are set by now */
 		current_ipv4 = read_iface_ipv4();
-		display_status_ipv4(DISPLAY_STAGE_CONNECTED, current_ipv4);
+		render_status(DISPLAY_STAGE_CONNECTED);
 		k_sem_give(&net_connected_sem);
 	} else {
-		display_status_stage(DISPLAY_STAGE_WIFI_CONNECTING);
+		render_status(DISPLAY_STAGE_WIFI_CONNECTING);
 	}
 }
 
@@ -189,21 +281,19 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 	if (event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
+		g_last_reason = status->disconn_reason;
 		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
 			status->disconn_reason);
-		/* DIAG: show the disconnect reason code on a blue background. */
-		display_status_code(DISPLAY_STAGE_WIFI_CONNECTING,
-				    (uint32_t)status->disconn_reason);
+		render_status(DISPLAY_STAGE_WIFI_CONNECTING);
 		k_work_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
 		if (status->status) {
+			g_last_reason = status->status;
 			LOG_WRN("Wi-Fi association failed (%d) — retrying",
 				status->status);
-			/* DIAG: show the connect failure code on orange. */
-			display_status_code(DISPLAY_STAGE_ERROR,
-					    (uint32_t)status->status);
+			render_status(DISPLAY_STAGE_ERROR);
 			k_work_reschedule(&reconnect_work, K_SECONDS(2));
 		} else {
 			LOG_INF("Wi-Fi associated; awaiting IP address");
@@ -219,6 +309,10 @@ int app_net_init(void)
 	net_mgmt_add_event_callback(&l4_cb);
 	net_mgmt_init_event_callback(&wifi_cb, wifi_event_handler, WIFI_EVENTS);
 	net_mgmt_add_event_callback(&wifi_cb);
+
+	/* Periodically refresh the on-screen diagnostics (RSSI, state, ...). */
+	k_work_init_delayable(&status_work, status_work_handler);
+	k_work_reschedule(&status_work, K_SECONDS(3));
 
 	return wifi_connect();
 }

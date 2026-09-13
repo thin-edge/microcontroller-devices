@@ -90,7 +90,7 @@ static void opcua_thread_fn(void *a, void *b, void *c)
 
 	LOG_INF("OPC-UA server listening on opc.tcp://<device>:%d",
 		CONFIG_APP_OPCUA_PORT);
-	display_status_ipv4(DISPLAY_STAGE_SERVING, app_net_ipv4());
+	app_net_show_status(DISPLAY_STAGE_SERVING);
 
 	/* Drive the server loop and sampling ourselves. We poll rather than let
 	 * open62541 block in select() internally (more robust across Zephyr's

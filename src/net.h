@@ -8,6 +8,7 @@
 #define APP_NET_H_
 
 #include <zephyr/kernel.h>
+#include "display.h"
 
 /**
  * Start connectivity. On Wi-Fi targets this begins station-mode association
@@ -45,5 +46,12 @@ uint32_t app_net_ipv4(void);
  *         used as the OPC-UA application name and mDNS/DNS-SD identity.
  */
 const char *app_net_hostname(void);
+
+/**
+ * Render the current network diagnostics (IP, gateway, netmask, Wi-Fi RSSI/
+ * state, last disconnect reason, hostname) on the status display for the given
+ * stage. No-op when no display is present.
+ */
+void app_net_show_status(enum display_stage stage);
 
 #endif /* APP_NET_H_ */
