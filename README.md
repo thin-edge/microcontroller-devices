@@ -204,13 +204,13 @@ Override any value at build time, e.g. `-- -DCONFIG_APP_OPCUA_PORT=4855`.
 
 ## Writable data points & subscriptions
 
-The Device object exposes two **writable** control nodes (in application
-namespace `ns=2`) alongside the read-only measurements:
+All application nodes live in namespace `ns=1`. The Device object exposes two
+**writable** control nodes alongside the read-only measurements:
 
 | Node id | Name | Type | Access | Notes |
 |---------|------|------|--------|-------|
-| `ns=2;s=Setpoint` | Setpoint | Int32 | read/write | operator target; clamped to `APP_SETPOINT_MIN`..`APP_SETPOINT_MAX` (default −1000..1000) |
-| `ns=2;s=Running` | Running | Boolean | read/write | whether the simulated process is running |
+| `ns=1;s=Setpoint` | Setpoint | Int32 | read/write | operator target; clamped to `APP_SETPOINT_MIN`..`APP_SETPOINT_MAX` (default −1000..1000) |
+| `ns=1;s=Running` | Running | Boolean | read/write | whether the simulated process is running |
 
 Writes are validated (out-of-range `Setpoint` is clamped; writing a read-only
 measurement returns `BadNotWritable`). Values are held in RAM (not persisted).
@@ -218,8 +218,8 @@ Example:
 
 ```python
 from asyncua import ua
-await client.get_node("ns=2;s=Setpoint").write_value(ua.Variant(500, ua.VariantType.Int32))
-await client.get_node("ns=2;s=Running").write_value(ua.Variant(True, ua.VariantType.Boolean))
+await client.get_node("ns=1;s=Setpoint").write_value(ua.Variant(500, ua.VariantType.Int32))
+await client.get_node("ns=1;s=Running").write_value(ua.Variant(True, ua.VariantType.Boolean))
 ```
 
 **Subscriptions** (monitored items / change notifications) are **off by default**.

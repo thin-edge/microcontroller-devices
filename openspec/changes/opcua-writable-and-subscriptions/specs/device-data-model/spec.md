@@ -2,8 +2,8 @@
 
 ### Requirement: Writable control data points
 The address space SHALL expose writable control nodes under the Device object in
-an application namespace (ns=2): an integer `Setpoint` (Int32, `ns=2;s=Setpoint`)
-and a boolean `Running` (`ns=2;s=Running`), each with read and write access.
+the application namespace (ns=1): an integer `Setpoint` (Int32, `ns=1;s=Setpoint`)
+and a boolean `Running` (`ns=1;s=Running`), each with read and write access.
 Their values are held in RAM (not persisted across reboot).
 
 #### Scenario: Setpoint is writable and reads back

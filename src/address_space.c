@@ -22,9 +22,8 @@ static UA_NodeId device_node_id;
 static UA_NodeId measurement_ids[MAX_MEASUREMENTS];
 static size_t measurement_count;
 
-/* Writable control points (in-RAM, not persisted), exposed in a dedicated
- * application namespace (ns=2). */
-static UA_UInt16 control_ns;
+/* Writable control points (in-RAM, not persisted), exposed in the application
+ * namespace (ns=1) alongside the device identity and measurements. */
 static int32_t g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
 static bool g_running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
 static bool writing_back; /* guards value-callback recursion on clamp write-back */
@@ -161,7 +160,7 @@ static void on_running_write(UA_Server *server, const UA_NodeId *sid,
 	LOG_INF("Running written: %s", g_running ? "true" : "false");
 }
 
-/* Add a writable scalar node under Device (in the control namespace) and
+/* Add a writable scalar node under Device (in the application namespace) and
  * register its write callback. `id` is both the string node id and browse name. */
 static UA_StatusCode add_writable(UA_Server *server, const char *id,
 				  const char *description,
@@ -177,10 +176,10 @@ static UA_StatusCode add_writable(UA_Server *server, const char *id,
 	vAttr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
 
 	UA_StatusCode rc = UA_Server_addVariableNode(
-		server, UA_NODEID_STRING(control_ns, (char *)id),
+		server, UA_NODEID_STRING(APP_NS, (char *)id),
 		device_node_id,
 		UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
-		UA_QUALIFIEDNAME(control_ns, (char *)id),
+		UA_QUALIFIEDNAME(APP_NS, (char *)id),
 		UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
 		vAttr, NULL, NULL);
 	if (rc != UA_STATUSCODE_GOOD) {
@@ -188,7 +187,7 @@ static UA_StatusCode add_writable(UA_Server *server, const char *id,
 	}
 
 	return UA_Server_setVariableNode_valueCallback(
-		server, UA_NODEID_STRING(control_ns, (char *)id), cb);
+		server, UA_NODEID_STRING(APP_NS, (char *)id), cb);
 }
 
 static void add_control_nodes(UA_Server *server)
@@ -197,8 +196,6 @@ static void add_control_nodes(UA_Server *server)
 	UA_Boolean run = g_running;
 	UA_ValueCallback sp_cb = { .onRead = NULL, .onWrite = on_setpoint_write };
 	UA_ValueCallback run_cb = { .onRead = NULL, .onWrite = on_running_write };
-
-	control_ns = UA_Server_addNamespace(server, "urn:tedge-opcua:device");
 
 	if (add_writable(server, "Setpoint", "Operator-settable target value",
 			 &UA_TYPES[UA_TYPES_INT32], &sp, sp_cb) != UA_STATUSCODE_GOOD) {
