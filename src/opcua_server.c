@@ -27,10 +27,11 @@ static void configure_server(UA_Server *srv)
 {
 	UA_ServerConfig *config = UA_Server_getConfig(srv);
 
-	/* Identify the application/server by the configured device name. */
+	/* Identify the application/server by the unique per-device hostname so
+	 * multiple devices on the network are individually distinguishable. */
 	UA_LocalizedText_clear(&config->applicationDescription.applicationName);
 	config->applicationDescription.applicationName =
-		UA_LOCALIZEDTEXT_ALLOC("en-US", (char *)CONFIG_APP_DEVICE_NAME);
+		UA_LOCALIZEDTEXT_ALLOC("en-US", (char *)app_net_hostname());
 
 	/* Bound resources for a constrained device: cap sessions and channels
 	 * so excess client connections are rejected rather than exhausting

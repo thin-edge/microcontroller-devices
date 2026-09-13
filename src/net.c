@@ -12,14 +12,43 @@
 
 LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
 
+#if defined(CONFIG_NET_HOSTNAME_ENABLE)
+#include <zephyr/net/hostname.h>
+#endif
+
 #if defined(CONFIG_DNS_SD)
 #include <zephyr/net/dns_sd.h>
+#include <string.h>
 /* Advertise the OPC-UA server as a DNS-SD service (_opcua-tcp._tcp) so it can be
- * discovered on the LAN without a known IP. The mDNS responder separately makes
- * the device reachable as <CONFIG_NET_HOSTNAME>.local. */
-DNS_SD_REGISTER_TCP_SERVICE(opcua_dns_sd, CONFIG_NET_HOSTNAME, "_opcua-tcp",
+ * discovered on the LAN without a known IP. The instance name lives in a
+ * mutable buffer that is filled at runtime with the unique per-device hostname
+ * (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC), so multiple devices on the same
+ * network advertise distinct instances and do not clash. The mDNS responder
+ * separately answers for <unique-hostname>.local. */
+static char opcua_sd_instance[64] = CONFIG_NET_HOSTNAME;
+DNS_SD_REGISTER_TCP_SERVICE(opcua_dns_sd, opcua_sd_instance, "_opcua-tcp",
 			    "local", DNS_SD_EMPTY_TXT, CONFIG_APP_OPCUA_PORT);
 #endif
+
+/* Copy the current (unique) hostname into the DNS-SD instance buffer. */
+static void update_identity(void)
+{
+#if defined(CONFIG_DNS_SD) && defined(CONFIG_NET_HOSTNAME_ENABLE)
+	const char *h = net_hostname_get();
+
+	strncpy(opcua_sd_instance, h, sizeof(opcua_sd_instance) - 1);
+	opcua_sd_instance[sizeof(opcua_sd_instance) - 1] = '\0';
+#endif
+}
+
+const char *app_net_hostname(void)
+{
+#if defined(CONFIG_NET_HOSTNAME_ENABLE)
+	return net_hostname_get();
+#else
+	return CONFIG_APP_DEVICE_NAME;
+#endif
+}
 
 /* Signalled once L4 connectivity is available. */
 static K_SEM_DEFINE(net_connected_sem, 0, 1);
@@ -60,6 +89,7 @@ static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
 	if (up) {
+		update_identity(); /* MAC (and unique hostname) are set by now */
 		current_ipv4 = read_iface_ipv4();
 		display_status_ipv4(DISPLAY_STAGE_CONNECTED, current_ipv4);
 		k_sem_give(&net_connected_sem);

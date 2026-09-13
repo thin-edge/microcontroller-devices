@@ -2,6 +2,7 @@
 
 #include "address_space.h"
 #include "data_source.h"
+#include "net.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -24,7 +25,9 @@ static size_t measurement_count;
 static UA_StatusCode add_device_object(UA_Server *server)
 {
 	UA_ObjectAttributes oAttr = UA_ObjectAttributes_default;
-	oAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)CONFIG_APP_DEVICE_NAME);
+	/* Display the unique per-device hostname so devices are distinguishable
+	 * when browsing; keep the browse name stable for predictable navigation. */
+	oAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)app_net_hostname());
 	oAttr.description = UA_LOCALIZEDTEXT("en-US",
 					    "Zephyr OPC-UA device (Phase 1)");
 
@@ -66,6 +69,29 @@ static UA_StatusCode add_measurement_variable(UA_Server *server, size_t index)
 		vAttr, NULL, NULL);
 }
 
+/* A read-only string node exposing the device's unique id (hostname/MAC), so a
+ * client can positively identify which physical device it is talking to. */
+static UA_StatusCode add_device_id(UA_Server *server)
+{
+	UA_VariableAttributes vAttr = UA_VariableAttributes_default;
+	UA_String id = UA_STRING((char *)app_net_hostname());
+
+	UA_Variant_setScalar(&vAttr.value, &id, &UA_TYPES[UA_TYPES_STRING]);
+	vAttr.displayName = UA_LOCALIZEDTEXT("en-US", "DeviceId");
+	vAttr.description = UA_LOCALIZEDTEXT("en-US",
+					     "Unique device id (hostname incl. MAC suffix)");
+	vAttr.dataType = UA_TYPES[UA_TYPES_STRING].typeId;
+	vAttr.accessLevel = UA_ACCESSLEVELMASK_READ;
+
+	return UA_Server_addVariableNode(
+		server, UA_NODEID_STRING(APP_NS, "DeviceId"),
+		device_node_id,
+		UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
+		UA_QUALIFIEDNAME(APP_NS, "DeviceId"),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
+		vAttr, NULL, NULL);
+}
+
 UA_StatusCode address_space_setup(UA_Server *server)
 {
 	UA_StatusCode rc;
@@ -78,6 +104,8 @@ UA_StatusCode address_space_setup(UA_Server *server)
 			UA_StatusCode_name(rc));
 		return rc;
 	}
+
+	(void)add_device_id(server); /* best-effort; identity aid only */
 
 	measurement_count = data_source_count();
 	if (measurement_count > MAX_MEASUREMENTS) {

@@ -39,4 +39,11 @@ bool app_net_is_connected(void);
  */
 uint32_t app_net_ipv4(void);
 
+/**
+ * @return the device's unique network hostname (base name plus a MAC-derived
+ *         suffix when CONFIG_NET_HOSTNAME_UNIQUE is enabled). Stable per chip;
+ *         used as the OPC-UA application name and mDNS/DNS-SD identity.
+ */
+const char *app_net_hostname(void);
+
 #endif /* APP_NET_H_ */
