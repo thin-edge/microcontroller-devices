@@ -2,6 +2,8 @@
 
 #include "opcua_server.h"
 #include "address_space.h"
+#include "net.h"
+#include "display.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -80,6 +82,7 @@ static void opcua_thread_fn(void *a, void *b, void *c)
 
 	LOG_INF("OPC-UA server listening on opc.tcp://<device>:%d",
 		CONFIG_APP_OPCUA_PORT);
+	display_status_ipv4(DISPLAY_STAGE_SERVING, app_net_ipv4());
 
 	/* Drive the server loop and sampling ourselves. We poll rather than let
 	 * open62541 block in select() internally (more robust across Zephyr's

@@ -36,6 +36,14 @@ config APP_SAMPLE_INTERVAL_MS
 	  Interval at which the data source is sampled and OPC-UA variable
 	  node values are refreshed.
 
+config APP_DISPLAY_STATUS
+	bool "Show connectivity status on a TFT display"
+	default n
+	help
+	  On boards with a TFT (e.g. Adafruit Feather ESP32-S2 TFT), show a
+	  colour-coded connectivity stage and the device's IPv4 address as large
+	  digits. Useful to relay status when no serial console is available.
+
 config APP_OPCUA_SERVER
 	bool "Enable the OPC-UA server (compiles the vendored open62541 stack)"
 	default y

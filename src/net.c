@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 #include "net.h"
+#include "display.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/net_event.h>
 
@@ -22,10 +24,28 @@ DNS_SD_REGISTER_TCP_SERVICE(opcua_dns_sd, CONFIG_NET_HOSTNAME, "_opcua-tcp",
 /* Signalled once L4 connectivity is available. */
 static K_SEM_DEFINE(net_connected_sem, 0, 1);
 static atomic_t connected;
+static uint32_t current_ipv4; /* network byte order */
 
 bool app_net_is_connected(void)
 {
 	return atomic_get(&connected) != 0;
+}
+
+uint32_t app_net_ipv4(void)
+{
+	return current_ipv4;
+}
+
+static uint32_t read_iface_ipv4(void)
+{
+	struct net_if *iface = net_if_get_default();
+	struct net_in_addr *a;
+
+	if (iface == NULL) {
+		return 0;
+	}
+	a = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+	return a ? a->s_addr : 0;
 }
 
 int app_net_wait_connected(k_timeout_t timeout)
@@ -40,7 +60,11 @@ static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
 	if (up) {
+		current_ipv4 = read_iface_ipv4();
+		display_status_ipv4(DISPLAY_STAGE_CONNECTED, current_ipv4);
 		k_sem_give(&net_connected_sem);
+	} else {
+		display_status_stage(DISPLAY_STAGE_WIFI_CONNECTING);
 	}
 }
 
@@ -133,7 +157,13 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 	ARG_UNUSED(iface);
 
 	if (event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
-		LOG_WRN("Wi-Fi disconnected — will attempt to reconnect");
+		const struct wifi_status *status = (const struct wifi_status *)cb->info;
+
+		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
+			status->disconn_reason);
+		/* DIAG: show the disconnect reason code on a blue background. */
+		display_status_code(DISPLAY_STAGE_WIFI_CONNECTING,
+				    (uint32_t)status->disconn_reason);
 		k_work_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
@@ -141,6 +171,9 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		if (status->status) {
 			LOG_WRN("Wi-Fi association failed (%d) — retrying",
 				status->status);
+			/* DIAG: show the connect failure code on orange. */
+			display_status_code(DISPLAY_STAGE_ERROR,
+					    (uint32_t)status->status);
 			k_work_reschedule(&reconnect_work, K_SECONDS(2));
 		} else {
 			LOG_INF("Wi-Fi associated; awaiting IP address");

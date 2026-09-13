@@ -115,6 +115,43 @@ docker exec -w /ws/app zephyr-dev ./build/zephyr/zephyr.exe   # boots, starts se
 Raspberry Pi Pico W flashes via UF2: hold BOOTSEL, plug in, copy
 `build/zephyr/zephyr.uf2` to the `RPI-RP2` volume (same on macOS/Linux).
 
+## Build & flash the ESP32-S2 Feather TFT
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b adafruit_feather_esp32s2_tft/esp32s2 . --pristine \
+  -- -DEXTRA_CONF_FILE=overlay-wifi-credentials.conf
+```
+
+The Feather S2 has **native USB only** (no USB-serial bridge), so:
+
+- **Enter the ROM bootloader before flashing:** hold `BOOT`/DFU, tap `RESET`,
+  release `BOOT`. It enumerates as `/dev/cu.usbmodem*`.
+- **Flash without letting esptool touch reset** (native USB drops otherwise):
+  ```sh
+  P=$(ls /dev/cu.usbmodem* | head -1)
+  ~/flashenv/bin/python -m esptool --chip esp32s2 --port "$P" \
+    --before no_reset --after hard_reset --baud 460800 \
+    write_flash 0x1000 build/zephyr/zephyr.bin
+  ```
+- There is **no serial console** on this board under Zephyr (its console is on
+  `uart1`/GPIO39, and the S2 has no USB-Serial-JTAG). Use the on-board **TFT
+  status display** (below) to read connectivity state instead.
+
+### TFT status display
+
+On the Feather ESP32-S2 TFT (`CONFIG_APP_DISPLAY_STATUS=y`, enabled in its board
+conf) the screen shows the boot/connectivity stage and the device IP so it can
+be read without a console:
+
+| Screen | Meaning |
+|--------|---------|
+| **Red** | Booting |
+| **Blue** | Connecting to Wi-Fi (a number = a Wi-Fi disconnect reason code) |
+| **Green** + 4 stacked numbers | Connected; the numbers are the IPv4 octets |
+| **Teal** + IP | OPC-UA server running |
+| **Orange** (+ number) | Error stage (number = Wi-Fi connect failure code) |
+
 ## Wi-Fi credentials (never commit secrets)
 
 ```sh

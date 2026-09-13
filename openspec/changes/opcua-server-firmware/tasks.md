@@ -10,18 +10,26 @@ Build/verify environment: Zephyr 4.4.2 + SDK 1.0.1 in the
 `zephyrprojectrtos/zephyr-build` Docker image on macOS; firmware flashed to the
 board from the host with `esptool`.
 
-Not completed this session (see notes): ESP32-S2 and Pico W builds (the on-hand
-WROOM was prioritised); the automated `native_sim` self-test (blocked by an NSOS
-`select()` limitation on accepted sockets — hardware verification was used
-instead).
+ESP32-S2 (Adafruit Feather ESP32-S2 TFT) is **firmware-verified on hardware**:
+it boots, associates to Wi-Fi, gets a DHCP lease, and starts the OPC-UA server,
+all confirmed on its built-in TFT (a status display was added — colour-coded
+stage + the device IP as large digits — since the Feather S2 has no usable
+serial console). The client browse/read hop could not be completed only because
+the mesh network isolated the segment the S2 associated to (Mac ↔ S2 peer
+traffic was blocked; ARP/mDNS/ping all failed while the WROOM on the same SSID
+was reachable) — a network-topology matter, not a firmware one.
+
+Not completed this session (see notes): Pico W build (stretch); the automated
+`native_sim` self-test (blocked by an NSOS `select()` limitation on accepted
+sockets — hardware verification was used instead).
 
 ## 1. Zephyr workspace and skeleton
 
 - [x] 1.1 Initialize the Zephyr workspace: `west.yml` pins Zephyr v4.4.2 + open62541 v1.4.0; `west init`/`west update` documented in README
 - [x] 1.2 Create the application skeleton (`CMakeLists.txt`, `prj.conf`, `src/main.c`) that boots and logs on `native_sim`
-- [x] 1.3 ESP32-WROOM-32 (`esp32_devkitc/esp32/procpu`) builds, boots and logs over serial on real hardware; per-board `boards/*.conf` added — **ESP32-S2 build not attempted this session**
+- [x] 1.3 ESP32-WROOM-32 (`esp32_devkitc/esp32/procpu`) and ESP32-S2 Feather (`adafruit_feather_esp32s2_tft/esp32s2`) both build, boot and run on real hardware; per-board `boards/*.conf`/overlays added (S2 overlay enables the Wi-Fi + TFT nodes)
 - [ ] 1.4 Add the Pico W board target and confirm it builds (stretch — not attempted; `boards/rpi_pico.conf` authored but unbuilt)
-- [ ] 1.5 Enable PSRAM on the ESP32-S2 board config and confirm it is available (config authored; not built/verified — WROOM was prioritised)
+- [~] 1.5 ESP32-S2 uses its 320 KB internal SRAM (ample for the tuned build); PSRAM left off (its linker region needs extra config — deferred, not required)
 
 ## 2. Wi-Fi connectivity
 
@@ -72,8 +80,9 @@ instead).
 - [ ] 8.2 Automated `native_sim` OPC-UA browse/read test — **blocked**: NSOS `select()` does not report readability on accepted sockets, so the handshake cannot complete under `native_sim`. Verified on hardware instead
 - [ ] 8.3 Automated value-refresh test — same NSOS blocker; verified manually on hardware (values change across reads)
 - [~] 8.4 Interoperability with a reference client — validated with the `asyncua` Python client (not UaExpert)
-- [x] 8.5 Flashed ESP32-WROOM-32 from macOS and validated the full path over Wi-Fi: mDNS discover → connect → browse → read → live updates. **ESP32-S2 not done**
+- [x] 8.5 Flashed ESP32-WROOM-32 from macOS and validated the full path over Wi-Fi: mDNS discover → connect → browse → read → live updates. ESP32-S2 flashed + verified to the "OPC-UA serving + IP shown" stage on its TFT; client browse/read blocked by mesh segment isolation (not firmware)
 - [x] 8.6 Stability: 30 s / 15-read session with no disconnects (after the monotonic-clock fix); Wi-Fi reconnect observed at association
+- [x] 8.7 Added a TFT status display (Adafruit Feather ESP32-S2 TFT) — colour-coded stage + device IP as large digits — used as the diagnostic path where no serial console exists
 
 ## 9. Documentation
 

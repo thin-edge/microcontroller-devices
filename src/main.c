@@ -12,6 +12,7 @@
 #include <zephyr/logging/log.h>
 
 #include "net.h"
+#include "display.h"
 
 #if defined(CONFIG_APP_OPCUA_SERVER)
 #include "opcua_server.h"
@@ -26,9 +27,13 @@ int main(void)
 	LOG_INF("OPC-UA server firmware starting: device \"%s\"",
 		CONFIG_APP_DEVICE_NAME);
 
+	display_status_init();
+	display_status_stage(DISPLAY_STAGE_WIFI_CONNECTING);
+
 	ret = app_net_init();
 	if (ret) {
 		LOG_ERR("Connectivity init failed (%d)", ret);
+		display_status_stage(DISPLAY_STAGE_ERROR);
 		return 0;
 	}
 
@@ -36,6 +41,7 @@ int main(void)
 	ret = app_net_wait_connected(K_SECONDS(60));
 	if (ret) {
 		LOG_ERR("Network did not come up in time (%d)", ret);
+		display_status_stage(DISPLAY_STAGE_ERROR);
 		return 0;
 	}
 
@@ -43,6 +49,7 @@ int main(void)
 	ret = opcua_server_start();
 	if (ret) {
 		LOG_ERR("Failed to start OPC-UA server (%d)", ret);
+		display_status_stage(DISPLAY_STAGE_ERROR);
 		return 0;
 	}
 	LOG_INF("OPC-UA server running on port %d", CONFIG_APP_OPCUA_PORT);

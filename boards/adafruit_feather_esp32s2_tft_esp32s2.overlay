@@ -7,3 +7,9 @@
 &wifi {
 	status = "okay";
 };
+
+/* Enable the built-in ST7789 TFT (disabled by default on this board) so the
+ * firmware can show connectivity status / the device IP on-screen. */
+&st7789v_tft {
+	status = "okay";
+};

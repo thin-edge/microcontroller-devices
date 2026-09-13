@@ -33,4 +33,10 @@ int app_net_wait_connected(k_timeout_t timeout);
  */
 bool app_net_is_connected(void);
 
+/**
+ * @return the device's current IPv4 address in network byte order, or 0 if
+ *         none is assigned (e.g. on native_sim offloaded sockets).
+ */
+uint32_t app_net_ipv4(void);
+
 #endif /* APP_NET_H_ */

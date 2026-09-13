@@ -14,6 +14,9 @@ target_sources(app PRIVATE src/net.c)
 # which Zephyr omits under CONFIG_NET_SOCKETS_OFFLOAD. Not built on hardware.
 target_sources_ifdef(CONFIG_NET_SOCKETS_OFFLOAD app PRIVATE src/nsos_compat.c)
 
+# Optional TFT status display (no-op when CONFIG_APP_DISPLAY_STATUS is off).
+target_sources(app PRIVATE src/display.c)
+
 # OPC-UA server, address space and data source. Compiled only when the
 # OPC-UA server is enabled so the base skeleton builds standalone.
 target_sources_ifdef(CONFIG_APP_OPCUA_SERVER app PRIVATE
