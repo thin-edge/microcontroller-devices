@@ -22,19 +22,21 @@ static UA_NodeId device_node_id;
 static UA_NodeId measurement_ids[MAX_MEASUREMENTS];
 static size_t measurement_count;
 
-/* Writable control points (in-RAM, not persisted). */
-static double g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
-static bool g_enabled = IS_ENABLED(CONFIG_APP_ENABLED_DEFAULT);
+/* Writable control points (in-RAM, not persisted), exposed in a dedicated
+ * application namespace (ns=2). */
+static UA_UInt16 control_ns;
+static int32_t g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
+static bool g_running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
 static bool writing_back; /* guards value-callback recursion on clamp write-back */
 
-double address_space_setpoint(void)
+int32_t address_space_setpoint(void)
 {
 	return g_setpoint;
 }
 
-bool address_space_enabled(void)
+bool address_space_running(void)
 {
-	return g_enabled;
+	return g_running;
 }
 
 static UA_StatusCode add_device_object(UA_Server *server)
@@ -117,34 +119,33 @@ static void on_setpoint_write(UA_Server *server, const UA_NodeId *sid,
 	ARG_UNUSED(sid); ARG_UNUSED(sctx); ARG_UNUSED(nctx); ARG_UNUSED(range);
 
 	if (writing_back || !data->hasValue ||
-	    !UA_Variant_hasScalarType(&data->value, &UA_TYPES[UA_TYPES_DOUBLE])) {
+	    !UA_Variant_hasScalarType(&data->value, &UA_TYPES[UA_TYPES_INT32])) {
 		return;
 	}
 
-	double v = *(UA_Double *)data->value.data;
-	double clamped = v;
+	int32_t v = *(UA_Int32 *)data->value.data;
+	int32_t clamped = v;
 
-	if (clamped < (double)CONFIG_APP_SETPOINT_MIN) {
-		clamped = (double)CONFIG_APP_SETPOINT_MIN;
+	if (clamped < CONFIG_APP_SETPOINT_MIN) {
+		clamped = CONFIG_APP_SETPOINT_MIN;
 	}
-	if (clamped > (double)CONFIG_APP_SETPOINT_MAX) {
-		clamped = (double)CONFIG_APP_SETPOINT_MAX;
+	if (clamped > CONFIG_APP_SETPOINT_MAX) {
+		clamped = CONFIG_APP_SETPOINT_MAX;
 	}
 	g_setpoint = clamped;
-	/* picolibc is built without float printf; log the integer part. */
-	LOG_INF("setpoint written: %d (raw %d)", (int)clamped, (int)v);
+	LOG_INF("Setpoint written: %d (raw %d)", clamped, v);
 
 	if (clamped != v) {
 		UA_Variant val;
 
-		UA_Variant_setScalar(&val, &clamped, &UA_TYPES[UA_TYPES_DOUBLE]);
+		UA_Variant_setScalar(&val, &clamped, &UA_TYPES[UA_TYPES_INT32]);
 		writing_back = true;
 		UA_Server_writeValue(server, *nodeId, val);
 		writing_back = false;
 	}
 }
 
-static void on_enabled_write(UA_Server *server, const UA_NodeId *sid,
+static void on_running_write(UA_Server *server, const UA_NodeId *sid,
 			     void *sctx, const UA_NodeId *nodeId, void *nctx,
 			     const UA_NumericRange *range,
 			     const UA_DataValue *data)
@@ -156,27 +157,30 @@ static void on_enabled_write(UA_Server *server, const UA_NodeId *sid,
 	    !UA_Variant_hasScalarType(&data->value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
 		return;
 	}
-	g_enabled = *(UA_Boolean *)data->value.data;
-	LOG_INF("enabled written: %s", g_enabled ? "true" : "false");
+	g_running = *(UA_Boolean *)data->value.data;
+	LOG_INF("Running written: %s", g_running ? "true" : "false");
 }
 
-/* Add a writable scalar node under Device and register its write callback. */
-static UA_StatusCode add_writable(UA_Server *server, const char *name,
+/* Add a writable scalar node under Device (in the control namespace) and
+ * register its write callback. `id` is both the string node id and browse name. */
+static UA_StatusCode add_writable(UA_Server *server, const char *id,
+				  const char *description,
 				  const UA_DataType *type, void *initial,
 				  UA_ValueCallback cb)
 {
 	UA_VariableAttributes vAttr = UA_VariableAttributes_default;
 
 	UA_Variant_setScalar(&vAttr.value, initial, type);
-	vAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)name);
+	vAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)id);
+	vAttr.description = UA_LOCALIZEDTEXT("en-US", (char *)description);
 	vAttr.dataType = type->typeId;
 	vAttr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
 
 	UA_StatusCode rc = UA_Server_addVariableNode(
-		server, UA_NODEID_STRING(APP_NS, (char *)name),
+		server, UA_NODEID_STRING(control_ns, (char *)id),
 		device_node_id,
 		UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
-		UA_QUALIFIEDNAME(APP_NS, (char *)name),
+		UA_QUALIFIEDNAME(control_ns, (char *)id),
 		UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
 		vAttr, NULL, NULL);
 	if (rc != UA_STATUSCODE_GOOD) {
@@ -184,23 +188,25 @@ static UA_StatusCode add_writable(UA_Server *server, const char *name,
 	}
 
 	return UA_Server_setVariableNode_valueCallback(
-		server, UA_NODEID_STRING(APP_NS, (char *)name), cb);
+		server, UA_NODEID_STRING(control_ns, (char *)id), cb);
 }
 
 static void add_control_nodes(UA_Server *server)
 {
-	UA_Double sp = g_setpoint;
-	UA_Boolean en = g_enabled;
+	UA_Int32 sp = g_setpoint;
+	UA_Boolean run = g_running;
 	UA_ValueCallback sp_cb = { .onRead = NULL, .onWrite = on_setpoint_write };
-	UA_ValueCallback en_cb = { .onRead = NULL, .onWrite = on_enabled_write };
+	UA_ValueCallback run_cb = { .onRead = NULL, .onWrite = on_running_write };
 
-	if (add_writable(server, "setpoint", &UA_TYPES[UA_TYPES_DOUBLE], &sp,
-			 sp_cb) != UA_STATUSCODE_GOOD) {
-		LOG_WRN("Failed to add writable setpoint node");
+	control_ns = UA_Server_addNamespace(server, "urn:tedge-opcua:device");
+
+	if (add_writable(server, "Setpoint", "Operator-settable target value",
+			 &UA_TYPES[UA_TYPES_INT32], &sp, sp_cb) != UA_STATUSCODE_GOOD) {
+		LOG_WRN("Failed to add writable Setpoint node");
 	}
-	if (add_writable(server, "enabled", &UA_TYPES[UA_TYPES_BOOLEAN], &en,
-			 en_cb) != UA_STATUSCODE_GOOD) {
-		LOG_WRN("Failed to add writable enabled node");
+	if (add_writable(server, "Running", "Whether the simulated process is running",
+			 &UA_TYPES[UA_TYPES_BOOLEAN], &run, run_cb) != UA_STATUSCODE_GOOD) {
+		LOG_WRN("Failed to add writable Running node");
 	}
 }
 

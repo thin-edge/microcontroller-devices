@@ -51,19 +51,19 @@ config APP_OPCUA_MAX_MONITORED_ITEMS
 	  Cap on monitored items per subscription.
 
 config APP_SETPOINT_MIN
-	int "Writable setpoint minimum"
-	default 0
+	int "Writable Setpoint minimum"
+	default -1000
 
 config APP_SETPOINT_MAX
-	int "Writable setpoint maximum"
-	default 100
+	int "Writable Setpoint maximum"
+	default 1000
 
 config APP_SETPOINT_DEFAULT
-	int "Writable setpoint initial value"
-	default 20
+	int "Writable Setpoint initial value"
+	default 0
 
-config APP_ENABLED_DEFAULT
-	bool "Writable 'enabled' flag initial value"
+config APP_RUNNING_DEFAULT
+	bool "Writable 'Running' flag initial value"
 	default n
 
 config APP_DISPLAY_STATUS
