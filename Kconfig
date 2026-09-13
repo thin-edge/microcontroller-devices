@@ -92,6 +92,29 @@ config APP_WIFI
 	  Join a Wi-Fi network on boot. On native_sim this is not used; the
 	  host network backend provides connectivity instead.
 
+config APP_STATIC_IP
+	bool "Use a static IPv4 address instead of DHCP"
+	default n
+	help
+	  Assign a fixed IPv4 address on Wi-Fi association instead of using
+	  DHCP. Also set CONFIG_ESP32_WIFI_STA_AUTO_DHCPV4=n on ESP32 boards so
+	  DHCP does not override it (see overlay-static-ip.conf.example).
+
+config APP_STATIC_IP_ADDR
+	string "Static IPv4 address"
+	default "192.168.68.200"
+	depends on APP_STATIC_IP
+
+config APP_STATIC_NETMASK
+	string "Static IPv4 netmask"
+	default "255.255.252.0"
+	depends on APP_STATIC_IP
+
+config APP_STATIC_GW
+	string "Static IPv4 gateway"
+	default "192.168.68.1"
+	depends on APP_STATIC_IP
+
 config APP_WIFI_SSID
 	string "Wi-Fi SSID"
 	default ""

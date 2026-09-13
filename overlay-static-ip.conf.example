@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Static IPv4 overlay — EXAMPLE. Assign a fixed address instead of DHCP.
+# Apply it (in addition to the Wi-Fi credentials) at build time:
+#
+#   west build -b <board> . -- \
+#     -DEXTRA_CONF_FILE="overlay-wifi-credentials.conf;overlay-static-ip.conf"
+#
+# Pick an address in your subnet but outside the DHCP pool to avoid conflicts.
+
+CONFIG_APP_STATIC_IP=y
+CONFIG_APP_STATIC_IP_ADDR="192.168.68.200"
+CONFIG_APP_STATIC_NETMASK="255.255.252.0"
+CONFIG_APP_STATIC_GW="192.168.68.1"
+
+# Stop the ESP32 Wi-Fi driver from auto-starting DHCP (which would override the
+# static address).
+CONFIG_ESP32_WIFI_STA_AUTO_DHCPV4=n

@@ -150,8 +150,15 @@ static void render_status(enum display_stage stage)
 		snprintf(lb[3], sizeof(lb[3]), "RSSI %d CH%u", st.rssi,
 			 st.channel);
 		lines[n++] = lb[3];
-		snprintf(lb[4], sizeof(lb[4]), "WIFI ST %d", st.state);
+		snprintf(lb[4], sizeof(lb[4]), "WST%d %.10s", st.state, st.ssid);
 		lines[n++] = lb[4];
+		/* BSSID of the AP we associated to — identifies the exact node. */
+		snprintf(lb[7], sizeof(lb[7]),
+			 "AP %02X%02X%02X%02X%02X%02X",
+			 (uint8_t)st.bssid[0], (uint8_t)st.bssid[1],
+			 (uint8_t)st.bssid[2], (uint8_t)st.bssid[3],
+			 (uint8_t)st.bssid[4], (uint8_t)st.bssid[5]);
+		lines[n++] = lb[7];
 	}
 #endif
 
@@ -213,6 +220,32 @@ int app_net_init(void)
 static struct net_mgmt_event_callback l4_cb;
 static struct net_mgmt_event_callback wifi_cb;
 static struct k_work_delayable reconnect_work;
+
+#if defined(CONFIG_APP_STATIC_IP)
+/* Assign a fixed IPv4 address/netmask/gateway (instead of DHCP) once the Wi-Fi
+ * link is up. Requires DHCP auto-start to be disabled so it is not overridden. */
+static void apply_static_ip(struct net_if *iface)
+{
+	struct net_in_addr addr, nm, gw;
+
+	if (iface == NULL) {
+		return;
+	}
+	if (net_addr_pton(NET_AF_INET, CONFIG_APP_STATIC_IP_ADDR, &addr) != 0) {
+		LOG_ERR("Invalid static IP '%s'", CONFIG_APP_STATIC_IP_ADDR);
+		return;
+	}
+	net_if_ipv4_addr_add(iface, &addr, NET_ADDR_MANUAL, 0);
+	if (net_addr_pton(NET_AF_INET, CONFIG_APP_STATIC_NETMASK, &nm) == 0) {
+		net_if_ipv4_set_netmask_by_addr(iface, &addr, &nm);
+	}
+	if (net_addr_pton(NET_AF_INET, CONFIG_APP_STATIC_GW, &gw) == 0) {
+		net_if_ipv4_set_gw(iface, &gw);
+	}
+	LOG_INF("Applied static IP %s (gw %s)", CONFIG_APP_STATIC_IP_ADDR,
+		CONFIG_APP_STATIC_GW);
+}
+#endif
 
 static int wifi_connect(void)
 {
@@ -297,6 +330,9 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 			k_work_reschedule(&reconnect_work, K_SECONDS(2));
 		} else {
 			LOG_INF("Wi-Fi associated; awaiting IP address");
+#if defined(CONFIG_APP_STATIC_IP)
+			apply_static_ip(iface);
+#endif
 		}
 	}
 }
