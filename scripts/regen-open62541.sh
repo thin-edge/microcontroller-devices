@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# Regenerate the vendored open62541 amalgamation (third_party/open62541/) and
+# apply the small patches needed to build/run it on Zephyr.
+#
+# The amalgamation is a single-file build of open62541 configured for a
+# constrained, read-only, POSIX-architecture profile. We vendor the generated
+# open62541.{c,h} so the firmware builds without a code-generation step.
+#
+# Usage:
+#   scripts/regen-open62541.sh [OPEN62541_SRC_DIR] [UA_LOGLEVEL]
+#
+#   OPEN62541_SRC_DIR  Path to the open62541 checkout
+#                      (default: $WEST_TOPDIR/modules/lib/open62541, or the
+#                       sibling modules/ dir of this repo).
+#   UA_LOGLEVEL        open62541 log level to compile in (default 300 = INFO;
+#                      use 100 for DEBUG/TRACE when diagnosing).
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+out="${here}/third_party/open62541"
+
+src="${1:-}"
+loglevel="${2:-300}"
+if [ -z "${src}" ]; then
+  if [ -n "${WEST_TOPDIR:-}" ] && [ -d "${WEST_TOPDIR}/modules/lib/open62541" ]; then
+    src="${WEST_TOPDIR}/modules/lib/open62541"
+  else
+    src="${here}/../modules/lib/open62541"
+  fi
+fi
+echo "open62541 source: ${src}"
+echo "output:           ${out}"
+echo "UA_LOGLEVEL:      ${loglevel}"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
+# Generate the amalgamation with a minimal, read-only, POSIX-architecture
+# profile (no subscriptions/methods/discovery/history; single-threaded).
+cmake -S "${src}" -B "${tmp}" \
+  -DUA_ENABLE_AMALGAMATION=ON \
+  -DUA_ARCHITECTURE=posix \
+  -DUA_NAMESPACE_ZERO=MINIMAL \
+  -DUA_ENABLE_SUBSCRIPTIONS=OFF \
+  -DUA_ENABLE_METHODCALLS=OFF \
+  -DUA_ENABLE_DISCOVERY=OFF \
+  -DUA_ENABLE_HISTORIZING=OFF \
+  -DUA_MULTITHREADING=0 \
+  -DUA_LOGLEVEL="${loglevel}" \
+  -DUA_ENABLE_NODEMANAGEMENT=ON \
+  -DCMAKE_BUILD_TYPE=MinSizeRel >/dev/null
+cmake --build "${tmp}" --target open62541-amalgamation >/dev/null 2>&1 || cmake --build "${tmp}" >/dev/null
+
+mkdir -p "${out}"
+cp "${tmp}/open62541.c" "${tmp}/open62541.h" "${out}/"
+
+# --- Zephyr portability patches (applied to the generated amalgamation) ---
+python3 - "${out}/open62541.c" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+
+def sub(old, new, n=1):
+    global s
+    c = s.count(old)
+    assert c == n, f"expected {n} occurrence(s), found {c}: {old[:60]!r}"
+    s = s.replace(old, new)
+
+# 1) IPv4-only: Zephyr's struct ipv6_mreq differs; we don't use IPv6/multicast.
+sub("#define UA_IPV6 1", "#define UA_IPV6 0", n=2)
+
+# 2) Skip the POSIX InterruptManager: it needs a self-signaling pipe whose
+#    fcntl(O_NONBLOCK) is unsupported on Zephyr socket/pipe fds. We drive the
+#    server via run_iterate(), so signal handling is not needed.
+sub("            conf->eventLoop->registerEventSource(conf->eventLoop, &im->eventSource);",
+    "            (void)im; /* Zephyr patch: skip interrupt manager (POSIX self-pipe fcntl unsupported) */")
+
+# 3/4) Skip the UDP and raw-Ethernet connection managers: OPC-UA binary is
+#      TCP-only for us (discovery multicast is disabled), and AF_PACKET raw
+#      sockets are unsupported under native_sim NSOS.
+sub("            conf->eventLoop->registerEventSource(conf->eventLoop, (UA_EventSource *)udpCM);",
+    "            (void)udpCM; /* Zephyr patch: UDP CM not needed (TCP-only OPC-UA) */")
+sub("            conf->eventLoop->registerEventSource(conf->eventLoop, (UA_EventSource *)ethCM);",
+    "            (void)ethCM; /* Zephyr patch: raw Ethernet CM unsupported under NSOS */")
+
+# 5) The (unregistered, unused) InterruptManager still contains a pipe() call
+#    that ESP32/Zephyr does not provide. Neutralise it so it compiles; the
+#    function is never invoked.
+sub("    int err = pipe(pipefd);",
+    "    int err = -1; (void)pipefd; /* Zephyr patch: pipe() unavailable; interrupt manager unused */")
+
+# 6) Shrink the eventloop's shared RX buffer from 128 kB to 8 kB. The 128 kB
+#    single allocation does not fit on a constrained MCU (e.g. ESP32-WROOM,
+#    ~68 kB free heap after Wi-Fi). 8 kB is ample for OPC-UA.
+sub("    UA_UInt32 rxBufSize = 2u << 16; /* The default is 64kb */",
+    "    UA_UInt32 rxBufSize = 1u << 13; /* Zephyr patch: 8kB shared RX buffer (was 128kB) */")
+
+# 7) Zephyr's getaddrinfo() rejects a NULL node (used by open62541 to listen on
+#    all interfaces) with EAI_NONAME. Fall back to numeric "0.0.0.0", which
+#    Zephyr accepts. Applies to both the listen and active-connect paths.
+sub("    int retcode = getaddrinfo(hostname, portstr, &hints, &res);",
+    "    int retcode = getaddrinfo(hostname ? hostname : \"0.0.0.0\", portstr, &hints, &res); /* Zephyr patch: NULL host unsupported */",
+    n=2)
+
+# 8) Zephyr's POSIX CLOCK_MONOTONIC(_RAW) does not advance reliably, which
+#    breaks open62541's internal timers (repeated callbacks) and SecureChannel
+#    lifetime management (clients get disconnected). Use Zephyr's k_uptime_get()
+#    monotonic millisecond clock instead. (UA_DATETIME_SEC is 100ns ticks/sec.)
+sub("UA_DateTime UA_DateTime_nowMonotonic(void) {\n#if defined(__APPLE__) || defined(__MACH__)",
+    "UA_DateTime UA_DateTime_nowMonotonic(void) {\n    { extern int64_t k_uptime_get(void); return (UA_DateTime)(k_uptime_get() * (UA_DATETIME_SEC / 1000)); } /* Zephyr patch: CLOCK_MONOTONIC unreliable; use k_uptime */\n#if defined(__APPLE__) || defined(__MACH__)")
+
+open(p, "w").write(s)
+print("Applied Zephyr patches to open62541.c")
+PY
+
+echo "Done. Vendored amalgamation refreshed in ${out}"

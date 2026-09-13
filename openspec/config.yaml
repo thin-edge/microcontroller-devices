@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  Domain: Ready-to-use microcontroller (MCU) firmware built on Zephyr RTOS
+  that turns a device into an industrial-protocol data source — first an
+  OPC-UA server, later other industry protocols. A separate collector/
+  gateway device pulls data off these MCUs over that industrial protocol.
+  The MCU is the source; it does not do the collecting.
+
+  The repo is also a learning vehicle for Zephyr RTOS and MCUs generally.
+
+  Phasing (respect the ordering):
+    1. Industrial-protocol source firmware — Zephyr-based OPC-UA server
+       serving device/sensor data to an external client. (Current focus.)
+    2. Additional industry protocols as source options.
+    3. Exploratory, LATER: a lightweight thin-edge.io variant on Zephyr that
+       connects to Cumulocity directly. Only after earlier phases are done;
+       do not pull this into Phase 1 work.
+
+  Design priorities (in order):
+    1. Fit constrained MCU resources (flash, RAM, no/limited filesystem).
+    2. Reusability — easy to flash and configure across Zephyr boards.
+    3. Correct, interoperable industrial-protocol behavior (spec-compliant
+       OPC-UA that standard clients can discover and read).
+
+  Conventions:
+    - Firmware targets Zephyr RTOS (C, Zephyr build system / west).
+    - Prefer portability across Zephyr-supported boards over board-specific
+      hacks.
+
+rules:
+  proposal:
+    - State which industrial protocol and Zephyr board(s) the change targets.
+    - Include a "Non-goals" section.
+    - Call out MCU resource constraints (flash/RAM) the design must fit.
+    - Note which phase (1/2/3) the change belongs to; keep Phase 3
+      (thin-edge/Cumulocity) out of scope unless explicitly stated.
+  tasks:
+    - Break tasks into chunks of at most ~2 hours.
+    - Separate firmware (device/source) work from client/collector work.

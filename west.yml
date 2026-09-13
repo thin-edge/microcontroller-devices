@@ -1,0 +1,46 @@
+# West manifest for the OPC-UA server firmware (T2 "workspace application" topology).
+#
+# First-time setup (inside the Zephyr build container or a host Zephyr install):
+#   west init -l .          # this repo is the manifest repo
+#   west update             # clones Zephyr + modules + open62541 as siblings
+#   west zephyr-export
+#
+# See README.md for the macOS/Docker workflow.
+manifest:
+  version: "1.2"
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+    - name: open62541
+      url-base: https://github.com/open62541
+
+  projects:
+    # Upstream Zephyr. Pinned to v4.4.2, which targets Zephyr SDK 1.0.x and
+    # supports all our boards (native_sim, ESP32, ESP32-S2, Pico W).
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.2
+      import:
+        # Bring in the HAL/modules our boards and the OPC-UA stack need.
+        # Trimmed from the full set to keep `west update` smaller/faster.
+        name-allowlist:
+          - cmsis                 # Cortex-M (Pico W)
+          - hal_espressif         # ESP32 / ESP32-S2 SoC + Wi-Fi
+          - hal_infineon          # CYW43 Wi-Fi (Pico W)
+          - hal_rpi_pico          # RP2040
+          - mbedtls               # crypto (pulled in by ESP32 Wi-Fi; future TLS)
+          - tf-psa-crypto         # mbedtls 4.x PSA crypto backend
+          - picolibc              # default C library
+          - segger                # RTT logging (optional)
+
+    # OPC-UA stack. Integrated via the in-repo Zephyr module wrapper under
+    # modules/open62541 (see that directory's CMakeLists.txt / Kconfig).
+    - name: open62541
+      remote: open62541
+      revision: v1.4.0
+      path: modules/lib/open62541
+      submodules: true
+
+  self:
+    path: app

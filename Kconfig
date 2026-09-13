@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Application configuration. Board-independent tunables live here with
+# sensible defaults; board specifics live in boards/<board>.conf and overlays.
+
+mainmenu "OPC-UA Server Firmware"
+
+menu "OPC-UA server firmware options"
+
+config APP_DEVICE_NAME
+	string "Device / OPC-UA application name"
+	default "tedge-opcua-device"
+	help
+	  Human-readable name advertised as the OPC-UA application/server name
+	  and used to derive the default mDNS hostname.
+
+config APP_MDNS_HOSTNAME
+	string "mDNS hostname (advertised as <hostname>.local)"
+	default "tedge-opcua"
+	help
+	  Hostname advertised over mDNS. The device becomes reachable as
+	  "<hostname>.local" on the local network.
+
+config APP_OPCUA_PORT
+	int "OPC-UA server TCP port (opc.tcp)"
+	default 4840
+	range 1 65535
+	help
+	  TCP port the OPC-UA server listens on.
+
+config APP_SAMPLE_INTERVAL_MS
+	int "Data source sampling interval (ms)"
+	default 1000
+	range 50 3600000
+	help
+	  Interval at which the data source is sampled and OPC-UA variable
+	  node values are refreshed.
+
+config APP_OPCUA_SERVER
+	bool "Enable the OPC-UA server (compiles the vendored open62541 stack)"
+	default y
+	help
+	  When enabled, the OPC-UA server, address space and data-source
+	  modules are compiled and started. Disable to build the bare
+	  connectivity skeleton (useful for bring-up).
+
+menu "Wi-Fi (station mode) — hardware targets"
+
+config APP_WIFI
+	bool "Connect to Wi-Fi in station mode"
+	default y if WIFI
+	default n
+	help
+	  Join a Wi-Fi network on boot. On native_sim this is not used; the
+	  host network backend provides connectivity instead.
+
+config APP_WIFI_SSID
+	string "Wi-Fi SSID"
+	default ""
+	depends on APP_WIFI
+	help
+	  Wi-Fi network name. Provide via a git-ignored local overlay
+	  (see overlay-wifi-credentials.conf.example) rather than committing it.
+
+config APP_WIFI_PSK
+	string "Wi-Fi password (PSK)"
+	default ""
+	depends on APP_WIFI
+	help
+	  Wi-Fi pre-shared key. Provide via a git-ignored local overlay; do not
+	  commit real credentials to the repository.
+
+endmenu # Wi-Fi
+
+endmenu # OPC-UA server firmware options
+
+source "Kconfig.zephyr"

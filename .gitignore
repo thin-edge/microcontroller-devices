@@ -1,0 +1,19 @@
+# Zephyr / west workspace artifacts
+build/
+build*/
+twister-out*/
+*.pyc
+__pycache__/
+
+# West clones Zephyr and modules as siblings of this repo when it is used as
+# the manifest repo; ignore them if they land inside the tree.
+/zephyr/
+/modules/
+/bootloader/
+/tools/
+/.west/
+
+# Local Wi-Fi credentials and any local-only overlays — never commit secrets.
+overlay-wifi-credentials.conf
+*.local.conf
+credentials.conf
