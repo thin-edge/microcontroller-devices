@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * The Adafruit Feather ESP32-S2 board devicetree leaves the Wi-Fi node
+ * disabled. Enable it so CONFIG_WIFI_ESP32 (which depends on
+ * DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED) can be selected.
+ */
+&wifi {
+	status = "okay";
+};
