@@ -36,6 +36,36 @@ config APP_SAMPLE_INTERVAL_MS
 	  Interval at which the data source is sampled and OPC-UA variable
 	  node values are refreshed.
 
+config APP_OPCUA_MAX_SUBSCRIPTIONS
+	int "Max concurrent OPC-UA subscriptions"
+	default 2
+	range 0 16
+	help
+	  Cap on concurrent subscriptions, to bound RAM on constrained boards.
+
+config APP_OPCUA_MAX_MONITORED_ITEMS
+	int "Max monitored items per subscription"
+	default 8
+	range 0 64
+	help
+	  Cap on monitored items per subscription.
+
+config APP_SETPOINT_MIN
+	int "Writable setpoint minimum"
+	default 0
+
+config APP_SETPOINT_MAX
+	int "Writable setpoint maximum"
+	default 100
+
+config APP_SETPOINT_DEFAULT
+	int "Writable setpoint initial value"
+	default 20
+
+config APP_ENABLED_DEFAULT
+	bool "Writable 'enabled' flag initial value"
+	default n
+
 config APP_DISPLAY_STATUS
 	bool "Show connectivity status on a TFT display"
 	default n

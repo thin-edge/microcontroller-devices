@@ -202,6 +202,40 @@ Board-agnostic settings live in `Kconfig` / `prj.conf`:
 The mDNS hostname is `CONFIG_NET_HOSTNAME` (`tedge-opcua`), set per board.
 Override any value at build time, e.g. `-- -DCONFIG_APP_OPCUA_PORT=4855`.
 
+## Writable data points & subscriptions
+
+The Device object exposes two **writable** control nodes alongside the read-only
+measurements:
+
+| Node | Type | Access | Notes |
+|------|------|--------|-------|
+| `setpoint` | Double | read/write | clamped to `APP_SETPOINT_MIN`..`APP_SETPOINT_MAX` (default 0–100) |
+| `enabled` | Boolean | read/write | firmware logs the new value |
+
+Writes are validated (out-of-range `setpoint` is clamped; writing a read-only
+measurement returns `BadNotWritable`). Values are held in RAM (not persisted).
+Example:
+
+```python
+from asyncua import ua
+await client.get_node("ns=1;s=setpoint").write_value(ua.Variant(42.5, ua.VariantType.Double))
+await client.get_node("ns=1;s=enabled").write_value(ua.Variant(True, ua.VariantType.Boolean))
+```
+
+**Subscriptions** (monitored items / change notifications) are **off by default**.
+They require open62541's `REDUCED` namespace-zero, whose larger nodeset OOMs at
+namespace init on the ESP32-WROOM's ~68 KB heap. So the committed amalgamation
+uses the `minimal` profile (writes work, subscriptions off). To enable
+subscriptions on a **higher-RAM board** (e.g. an ESP32-S2 with PSRAM), regenerate
+with the `reduced` profile and rebuild:
+
+```sh
+scripts/regen-open62541.sh <open62541-src> 300 reduced   # NS0=REDUCED, subscriptions ON
+```
+
+Subscription resource caps are set from `APP_OPCUA_MAX_SUBSCRIPTIONS` /
+`APP_OPCUA_MAX_MONITORED_ITEMS`.
+
 ## open62541 integration
 
 open62541 is vendored as a single-file amalgamation in

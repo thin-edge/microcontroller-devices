@@ -23,6 +23,11 @@ out="${here}/third_party/open62541"
 
 src="${1:-}"
 loglevel="${2:-300}"
+# Profile: "minimal" (default) = MINIMAL ns0, no subscriptions — fits low-RAM
+# boards like the ESP32-WROOM (writes still work). "reduced" = REDUCED ns0 with
+# subscriptions enabled — needs more RAM than the WROOM has (OOMs at ns0 init);
+# use it only on higher-RAM boards (e.g. ESP32-S2 with PSRAM).
+profile="${3:-minimal}"
 if [ -z "${src}" ]; then
   if [ -n "${WEST_TOPDIR:-}" ] && [ -d "${WEST_TOPDIR}/modules/lib/open62541" ]; then
     src="${WEST_TOPDIR}/modules/lib/open62541"
@@ -30,20 +35,29 @@ if [ -z "${src}" ]; then
     src="${here}/../modules/lib/open62541"
   fi
 fi
+
+case "${profile}" in
+  reduced) NS0=REDUCED; SUBS=ON ;;
+  minimal) NS0=MINIMAL; SUBS=OFF ;;
+  *) echo "unknown profile '${profile}' (use minimal|reduced)"; exit 2 ;;
+esac
+
 echo "open62541 source: ${src}"
 echo "output:           ${out}"
+echo "profile:          ${profile} (NS0=${NS0}, SUBSCRIPTIONS=${SUBS})"
 echo "UA_LOGLEVEL:      ${loglevel}"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
-# Generate the amalgamation with a minimal, read-only, POSIX-architecture
-# profile (no subscriptions/methods/discovery/history; single-threaded).
+# Generate the amalgamation (read-only base, POSIX architecture, single-threaded,
+# no methods/discovery/history). Namespace-zero level and subscriptions depend on
+# the selected profile (see above).
 cmake -S "${src}" -B "${tmp}" \
   -DUA_ENABLE_AMALGAMATION=ON \
   -DUA_ARCHITECTURE=posix \
-  -DUA_NAMESPACE_ZERO=MINIMAL \
-  -DUA_ENABLE_SUBSCRIPTIONS=OFF \
+  -DUA_NAMESPACE_ZERO="${NS0}" \
+  -DUA_ENABLE_SUBSCRIPTIONS="${SUBS}" \
   -DUA_ENABLE_METHODCALLS=OFF \
   -DUA_ENABLE_DISCOVERY=OFF \
   -DUA_ENABLE_HISTORIZING=OFF \

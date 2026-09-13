@@ -43,6 +43,13 @@ static void configure_server(UA_Server *srv)
 	/* Small per-connection send/recv buffers (8 kB) to fit constrained RAM.
 	 * OPC-UA's minimum is 8192 bytes; our reads are tiny. */
 	config->tcpBufSize = 8192;
+
+#ifdef UA_ENABLE_SUBSCRIPTIONS
+	/* Cap subscription resources so a client cannot exhaust device RAM. */
+	config->maxSubscriptions = CONFIG_APP_OPCUA_MAX_SUBSCRIPTIONS;
+	config->maxMonitoredItemsPerSubscription =
+		CONFIG_APP_OPCUA_MAX_MONITORED_ITEMS;
+#endif
 }
 
 static void opcua_thread_fn(void *a, void *b, void *c)
