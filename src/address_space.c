@@ -120,6 +120,9 @@ static void add_info_nodes(UA_Server *server)
 	(void)add_readonly_string(server, "DeviceId",
 		"Unique device id (hostname incl. MAC suffix)",
 		app_net_hostname());
+	(void)add_readonly_string(server, "FirmwareName",
+		"Firmware image/application name",
+		CONFIG_APP_FIRMWARE_NAME);
 	(void)add_readonly_string(server, "FirmwareVersion",
 		"Application firmware version (from the VERSION file)",
 		APP_VERSION_STRING);

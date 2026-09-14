@@ -14,6 +14,16 @@ config APP_DEVICE_NAME
 	  Human-readable name advertised as the OPC-UA application/server name
 	  and used to derive the default mDNS hostname.
 
+config APP_FIRMWARE_NAME
+	string "Firmware name"
+	default "zephyr-opcua-server"
+	help
+	  Identifies the firmware image/application (as opposed to the device).
+	  Exposed as the OPC-UA node ns=1;s=FirmwareName and paired with
+	  FirmwareVersion so a collector can tell which firmware a device runs
+	  (e.g. distinct names for Phase-2 protocol variants). Maps naturally to
+	  a Cumulocity firmware "name".
+
 config APP_MDNS_HOSTNAME
 	string "mDNS hostname (advertised as <hostname>.local)"
 	default "tedge-opcua"
