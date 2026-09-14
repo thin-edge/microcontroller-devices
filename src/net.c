@@ -16,6 +16,14 @@
 #include <zephyr/net/wifi_mgmt.h>
 #endif
 
+#if defined(CONFIG_WIFI_ESP32) && defined(CONFIG_APP_WIFI)
+#include <esp_wifi.h>
+#endif
+
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+#include <zephyr/net/icmp.h>
+#endif
+
 LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
 
 #if defined(CONFIG_NET_HOSTNAME_ENABLE)
@@ -95,7 +103,8 @@ int app_net_wait_connected(k_timeout_t timeout)
 
 static enum display_stage g_stage = DISPLAY_STAGE_BOOT;
 static int g_last_reason = -1; /* last Wi-Fi disconnect/connect reason code */
-static char lb[8][22];
+static uint32_t status_ticks;  /* status_work cycles executed (diagnostic) */
+static char lb[10][22];
 static struct k_work_delayable status_work;
 
 static void fmt_ip(char *dst, size_t n, uint32_t be)
@@ -105,13 +114,79 @@ static void fmt_ip(char *dst, size_t n, uint32_t be)
 	snprintf(dst, n, "%u.%u.%u.%u", o[0], o[1], o[2], o[3]);
 }
 
+/* --- Gateway ping: does the device's Wi-Fi data path actually pass traffic? --- */
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+static struct net_icmp_ctx ping_ctx;
+static bool ping_ready;
+static atomic_t ping_ok;   /* echo replies received */
+static uint32_t ping_sent; /* echo requests sent */
+static int ping_init_rc = -999; /* last net_icmp_init_ctx() result */
+static int ping_send_rc = -999; /* last echo-request send result */
+/* How far ping_gateway_once() got: 0=never called, 1=no iface, 2=gw==0,
+ * 3=init done, 4=send attempted. */
+static int ping_stage;
+
+static enum net_verdict ping_reply(struct net_icmp_ctx *ctx, struct net_pkt *pkt,
+				   struct net_icmp_ip_hdr *ip_hdr,
+				   struct net_icmp_hdr *icmp_hdr, void *user_data)
+{
+	ARG_UNUSED(ctx); ARG_UNUSED(pkt); ARG_UNUSED(ip_hdr);
+	ARG_UNUSED(icmp_hdr); ARG_UNUSED(user_data);
+	atomic_inc(&ping_ok);
+	return NET_OK;
+}
+
+/* Send one echo request to the gateway (non-blocking). Replies are counted
+ * asynchronously by ping_reply(). */
+static void ping_gateway_once(void)
+{
+	struct net_if *iface = net_if_get_default();
+
+	ping_stage = 1;
+	if (iface == NULL) {
+		return;
+	}
+
+	struct net_in_addr target;
+
+	ping_stage = 2;
+	if (net_addr_pton(NET_AF_INET, CONFIG_APP_PING_TARGET, &target) != 0) {
+		return; /* bad target address */
+	}
+	ping_stage = 3;
+	if (!ping_ready) {
+		ping_init_rc = net_icmp_init_ctx(&ping_ctx, NET_AF_INET,
+						 NET_ICMPV4_ECHO_REPLY, 0,
+						 ping_reply);
+		if (ping_init_rc != 0) {
+			return;
+		}
+		ping_ready = true;
+	}
+
+	struct net_sockaddr_in dst = {
+		.sin_family = NET_AF_INET, .sin_addr = target,
+	};
+	struct net_icmp_ping_params p = {
+		.identifier = 1, .sequence = (uint16_t)(ping_sent + 1),
+	};
+
+	ping_stage = 4;
+	ping_send_rc = net_icmp_send_echo_request_no_wait(
+		&ping_ctx, iface, (struct net_sockaddr *)&dst, &p, NULL);
+	if (ping_send_rc == 0) {
+		ping_sent++;
+	}
+}
+#endif /* CONFIG_NET_IPV4 && !CONFIG_NET_SOCKETS_OFFLOAD */
+
 /* Build the diagnostic lines (IP/GW/mask/Wi-Fi RSSI/state/reason/host) and draw
  * them. Called on connectivity changes and periodically so RSSI stays fresh and
  * silent Wi-Fi drops become visible. */
 static void render_status(enum display_stage stage)
 {
 	struct net_if *iface = net_if_get_default();
-	const char *lines[8];
+	const char *lines[10];
 	int n = 0;
 	char tmp[16];
 
@@ -166,6 +241,14 @@ static void render_status(enum display_stage stage)
 		snprintf(lb[5], sizeof(lb[5]), "LAST RSN %d", g_last_reason);
 		lines[n++] = lb[5];
 	}
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	snprintf(lb[8], sizeof(lb[8]), "GWPING %d/%u t%u",
+		 (int)atomic_get(&ping_ok), ping_sent, status_ticks);
+	lines[n++] = lb[8];
+	snprintf(lb[9], sizeof(lb[9]), "P st%d i%d s%d", ping_stage,
+		 ping_init_rc, ping_send_rc);
+	lines[n++] = lb[9];
+#endif
 	snprintf(lb[6], sizeof(lb[6]), "%s", app_net_hostname());
 	lines[n++] = lb[6];
 
@@ -180,6 +263,10 @@ void app_net_show_status(enum display_stage stage)
 static void status_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+	status_ticks++;
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	ping_gateway_once(); /* one echo request per cycle to the gateway */
+#endif
 	render_status(g_stage);
 	k_work_reschedule(&status_work, K_SECONDS(3));
 }
@@ -247,6 +334,34 @@ static void apply_static_ip(struct net_if *iface)
 }
 #endif
 
+/* Optionally override the Wi-Fi station MAC before connecting (ESP32 only).
+ * Called while Wi-Fi is initialised but not yet started/connected. */
+static void maybe_override_mac(void)
+{
+#if defined(CONFIG_WIFI_ESP32) && defined(CONFIG_APP_WIFI)
+	if (strlen(CONFIG_APP_WIFI_MAC) == 0) {
+		return;
+	}
+
+	unsigned int b[6];
+
+	if (sscanf(CONFIG_APP_WIFI_MAC, "%x:%x:%x:%x:%x:%x",
+		   &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) {
+		LOG_ERR("Bad APP_WIFI_MAC '%s'", CONFIG_APP_WIFI_MAC);
+		return;
+	}
+
+	uint8_t mac[6];
+
+	for (int i = 0; i < 6; i++) {
+		mac[i] = (uint8_t)b[i];
+	}
+	int rc = esp_wifi_set_mac(WIFI_IF_STA, mac);
+
+	LOG_INF("esp_wifi_set_mac(%s) -> %d", CONFIG_APP_WIFI_MAC, rc);
+#endif
+}
+
 static int wifi_connect(void)
 {
 	struct net_if *iface = net_if_get_first_wifi();
@@ -256,6 +371,20 @@ static int wifi_connect(void)
 		LOG_ERR("No Wi-Fi interface found");
 		return -ENODEV;
 	}
+
+	maybe_override_mac();
+
+#if defined(CONFIG_WIFI_ESP32) && defined(CONFIG_APP_WIFI)
+	/* Disable Wi-Fi power save. With modem sleep the device dozes between
+	 * beacons and unicast frames (ARP/ping/TCP) can be dropped — the device
+	 * associates and DHCP limps through, but it appears unreachable. An
+	 * always-on OPC-UA server should stay awake. */
+	{
+		int ps = esp_wifi_set_ps(WIFI_PS_NONE);
+
+		LOG_INF("esp_wifi_set_ps(NONE) -> %d", ps);
+	}
+#endif
 
 	params.ssid = (const uint8_t *)CONFIG_APP_WIFI_SSID;
 	params.ssid_length = strlen(CONFIG_APP_WIFI_SSID);

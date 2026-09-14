@@ -92,6 +92,14 @@ config APP_WIFI
 	  Join a Wi-Fi network on boot. On native_sim this is not used; the
 	  host network backend provides connectivity instead.
 
+config APP_PING_TARGET
+	string "On-device ping target for the data-path diagnostic"
+	default "192.168.68.1"
+	depends on APP_WIFI
+	help
+	  IPv4 address the firmware periodically pings to test whether its
+	  Wi-Fi data path passes traffic. Result shown on the display as GWPING.
+
 config APP_STATIC_IP
 	bool "Use a static IPv4 address instead of DHCP"
 	default n
@@ -114,6 +122,16 @@ config APP_STATIC_GW
 	string "Static IPv4 gateway"
 	default "192.168.68.1"
 	depends on APP_STATIC_IP
+
+config APP_WIFI_MAC
+	string "Override Wi-Fi station MAC (AA:BB:CC:DD:EE:FF; empty = factory MAC)"
+	default ""
+	depends on APP_WIFI
+	help
+	  If non-empty, set the Wi-Fi station MAC to this address before
+	  connecting (ESP32 only). Use a locally-administered unicast address
+	  (second-least-significant bit of the first octet set, e.g. 02:...).
+	  Useful to test whether the router is blocking the factory MAC.
 
 config APP_WIFI_SSID
 	string "Wi-Fi SSID"
