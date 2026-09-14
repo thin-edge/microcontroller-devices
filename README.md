@@ -21,11 +21,26 @@ reads live, updating measurements (temperature/humidity/pressure).
 | Board | Zephyr board target | Role | Status |
 |-------|---------------------|------|--------|
 | ESP32-WROOM-32 | `esp32_devkitc/esp32/procpu` | co-primary | **verified on hardware** |
-| Feather ESP32-S2 TFT | `esp32s2_saola` (representative) | co-primary | config authored, not yet built |
+| Feather ESP32-S2 TFT | `adafruit_feather_esp32s2_tft/esp32s2` | co-primary | builds & flashes; **Wi-Fi data path broken upstream — see note** |
 | Raspberry Pi Pico W | `rpi_pico/rp2040/w` | stretch | config authored, not yet built |
 | Host simulation | `native_sim/native/64` | dev / CI | builds & runs (see NSOS note) |
 
 All hardware targets are Wi-Fi-only (station mode).
+
+> **ESP32-S2 Feather Wi-Fi note:** the same firmware that works end-to-end on
+> the WROOM builds and flashes on the S2, and the S2 *associates* (correct SSID,
+> RSSI, and it obtains a DHCP lease), but its **IP data path does not pass
+> traffic** under Zephyr 4.4.2: no default gateway is installed, ICMP echo
+> requests send but never get a reply, and the network path hangs on the first
+> transmit. Systematically ruled out as causes: DHCP-vs-static IP, MAC
+> block/override, Wi-Fi power-save, router L2 isolation, Kconfig (`WIFI_ESP32` /
+> `NET_L2_WIFI_MGMT` / `NET_L2_ETHERNET` are correct and identical to the working
+> WROOM), and RAM starvation (server disabled + enlarged Wi-Fi buffers still
+> hang). Diagnose in the field with `CONFIG_APP_PING_TARGET` + the on-display
+> `GWPING` line. This is single-core ESP32-S2 Wi-Fi immaturity upstream, not
+> firmware config. Paths forward if the S2 is needed: try a newer Zephyr /
+> `hal_espressif`, or use ESP-IDF for the S2, or track it via a Zephyr issue.
+> **Use the WROOM for real deployments.**
 
 Built and verified with **Zephyr v4.4.2** and **Zephyr SDK 1.0.1** (as shipped
 in the `zephyrprojectrtos/zephyr-build` image).
