@@ -6,6 +6,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <app_version.h> /* APP_VERSION_STRING, generated from the VERSION file */
 
 #include <open62541.h>
 
@@ -85,27 +86,46 @@ static UA_StatusCode add_measurement_variable(UA_Server *server, size_t index)
 		vAttr, NULL, NULL);
 }
 
-/* A read-only string node exposing the device's unique id (hostname/MAC), so a
- * client can positively identify which physical device it is talking to. */
-static UA_StatusCode add_device_id(UA_Server *server)
+/* Add a read-only string node under Device. `value` must point at storage that
+ * outlives the server (a static buffer or string literal): UA_STRING does not
+ * copy, so the node references it directly. */
+static UA_StatusCode add_readonly_string(UA_Server *server, const char *id,
+					 const char *description,
+					 const char *value)
 {
 	UA_VariableAttributes vAttr = UA_VariableAttributes_default;
-	UA_String id = UA_STRING((char *)app_net_hostname());
+	UA_String s = UA_STRING((char *)value);
 
-	UA_Variant_setScalar(&vAttr.value, &id, &UA_TYPES[UA_TYPES_STRING]);
-	vAttr.displayName = UA_LOCALIZEDTEXT("en-US", "DeviceId");
-	vAttr.description = UA_LOCALIZEDTEXT("en-US",
-					     "Unique device id (hostname incl. MAC suffix)");
+	UA_Variant_setScalar(&vAttr.value, &s, &UA_TYPES[UA_TYPES_STRING]);
+	vAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)id);
+	vAttr.description = UA_LOCALIZEDTEXT("en-US", (char *)description);
 	vAttr.dataType = UA_TYPES[UA_TYPES_STRING].typeId;
 	vAttr.accessLevel = UA_ACCESSLEVELMASK_READ;
 
 	return UA_Server_addVariableNode(
-		server, UA_NODEID_STRING(APP_NS, "DeviceId"),
+		server, UA_NODEID_STRING(APP_NS, (char *)id),
 		device_node_id,
 		UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
-		UA_QUALIFIEDNAME(APP_NS, "DeviceId"),
+		UA_QUALIFIEDNAME(APP_NS, (char *)id),
 		UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
 		vAttr, NULL, NULL);
+}
+
+/* Read-only identity/build nodes: which physical device this is, and which
+ * firmware it is running (so an operator/collector can tell at a glance whether
+ * a device needs reflashing). The hostname buffer and the version/build-time
+ * literals all have static lifetime, so add_readonly_string may reference them. */
+static void add_info_nodes(UA_Server *server)
+{
+	(void)add_readonly_string(server, "DeviceId",
+		"Unique device id (hostname incl. MAC suffix)",
+		app_net_hostname());
+	(void)add_readonly_string(server, "FirmwareVersion",
+		"Application firmware version (from the VERSION file)",
+		APP_VERSION_STRING);
+	(void)add_readonly_string(server, "BuildTimestamp",
+		"Firmware build date/time (compiler __DATE__ __TIME__)",
+		__DATE__ " " __TIME__);
 }
 
 /* Value-callback invoked after a client writes the setpoint node. Clamp to the
@@ -220,7 +240,7 @@ UA_StatusCode address_space_setup(UA_Server *server)
 		return rc;
 	}
 
-	(void)add_device_id(server); /* best-effort; identity aid only */
+	add_info_nodes(server); /* DeviceId + FirmwareVersion + BuildTimestamp */
 
 	measurement_count = data_source_count();
 	if (measurement_count > MAX_MEASUREMENTS) {
