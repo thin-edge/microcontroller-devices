@@ -69,7 +69,7 @@
 /* #undef UA_ENABLE_PUBSUB_FILE_CONFIG */
 /* #undef UA_ENABLE_PUBSUB_INFORMATIONMODEL */
 #define UA_ENABLE_DA
-#define UA_ENABLE_DIAGNOSTICS
+/* #undef UA_ENABLE_DIAGNOSTICS */
 /* #undef UA_ENABLE_HISTORIZING */
 #define UA_ENABLE_PARSING
 /* #undef UA_ENABLE_SUBSCRIPTIONS_EVENTS */
@@ -23793,7 +23793,7 @@ _UA_BEGIN_DECLS
  * Every type is assigned an index in an array containing the type descriptions.
  * These descriptions are used during type handling (copying, deletion,
  * binary encoding, ...). */
-#define UA_TYPES_COUNT 227
+#define UA_TYPES_COUNT 223
 extern UA_EXPORT UA_DataType UA_TYPES[UA_TYPES_COUNT];
 
 /* Boolean */
@@ -25871,74 +25871,13 @@ typedef struct {
 
 #define UA_TYPES_SERVERSTATUSDATATYPE 207
 
-/* SessionSecurityDiagnosticsDataType */
-typedef struct {
-    UA_NodeId sessionId;
-    UA_String clientUserIdOfSession;
-    size_t clientUserIdHistorySize;
-    UA_String *clientUserIdHistory;
-    UA_String authenticationMechanism;
-    UA_String encoding;
-    UA_String transportProtocol;
-    UA_MessageSecurityMode securityMode;
-    UA_String securityPolicyUri;
-    UA_ByteString clientCertificate;
-} UA_SessionSecurityDiagnosticsDataType;
-
-#define UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE 208
-
-/* ServiceCounterDataType */
-typedef struct {
-    UA_UInt32 totalCount;
-    UA_UInt32 errorCount;
-} UA_ServiceCounterDataType;
-
-#define UA_TYPES_SERVICECOUNTERDATATYPE 209
-
-/* SubscriptionDiagnosticsDataType */
-typedef struct {
-    UA_NodeId sessionId;
-    UA_UInt32 subscriptionId;
-    UA_Byte priority;
-    UA_Double publishingInterval;
-    UA_UInt32 maxKeepAliveCount;
-    UA_UInt32 maxLifetimeCount;
-    UA_UInt32 maxNotificationsPerPublish;
-    UA_Boolean publishingEnabled;
-    UA_UInt32 modifyCount;
-    UA_UInt32 enableCount;
-    UA_UInt32 disableCount;
-    UA_UInt32 republishRequestCount;
-    UA_UInt32 republishMessageRequestCount;
-    UA_UInt32 republishMessageCount;
-    UA_UInt32 transferRequestCount;
-    UA_UInt32 transferredToAltClientCount;
-    UA_UInt32 transferredToSameClientCount;
-    UA_UInt32 publishRequestCount;
-    UA_UInt32 dataChangeNotificationsCount;
-    UA_UInt32 eventNotificationsCount;
-    UA_UInt32 notificationsCount;
-    UA_UInt32 latePublishRequestCount;
-    UA_UInt32 currentKeepAliveCount;
-    UA_UInt32 currentLifetimeCount;
-    UA_UInt32 unacknowledgedMessageCount;
-    UA_UInt32 discardedMessageCount;
-    UA_UInt32 monitoredItemCount;
-    UA_UInt32 disabledMonitoredItemCount;
-    UA_UInt32 monitoringQueueOverflowCount;
-    UA_UInt32 nextSequenceNumber;
-    UA_UInt32 eventQueueOverFlowCount;
-} UA_SubscriptionDiagnosticsDataType;
-
-#define UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE 210
-
 /* Range */
 typedef struct {
     UA_Double low;
     UA_Double high;
 } UA_Range;
 
-#define UA_TYPES_RANGE 211
+#define UA_TYPES_RANGE 208
 
 /* EUInformation */
 typedef struct {
@@ -25948,7 +25887,7 @@ typedef struct {
     UA_LocalizedText description;
 } UA_EUInformation;
 
-#define UA_TYPES_EUINFORMATION 212
+#define UA_TYPES_EUINFORMATION 209
 
 /* AxisScaleEnumeration */
 typedef enum {
@@ -25960,7 +25899,7 @@ typedef enum {
 
 UA_STATIC_ASSERT(sizeof(UA_AxisScaleEnumeration) == sizeof(UA_Int32), enum_must_be_32bit);
 
-#define UA_TYPES_AXISSCALEENUMERATION 213
+#define UA_TYPES_AXISSCALEENUMERATION 210
 
 /* ComplexNumberType */
 typedef struct {
@@ -25968,7 +25907,7 @@ typedef struct {
     UA_Float imaginary;
 } UA_ComplexNumberType;
 
-#define UA_TYPES_COMPLEXNUMBERTYPE 214
+#define UA_TYPES_COMPLEXNUMBERTYPE 211
 
 /* DoubleComplexNumberType */
 typedef struct {
@@ -25976,7 +25915,7 @@ typedef struct {
     UA_Double imaginary;
 } UA_DoubleComplexNumberType;
 
-#define UA_TYPES_DOUBLECOMPLEXNUMBERTYPE 215
+#define UA_TYPES_DOUBLECOMPLEXNUMBERTYPE 212
 
 /* AxisInformation */
 typedef struct {
@@ -25988,7 +25927,7 @@ typedef struct {
     UA_Double *axisSteps;
 } UA_AxisInformation;
 
-#define UA_TYPES_AXISINFORMATION 216
+#define UA_TYPES_AXISINFORMATION 213
 
 /* XVType */
 typedef struct {
@@ -25996,7 +25935,7 @@ typedef struct {
     UA_Float value;
 } UA_XVType;
 
-#define UA_TYPES_XVTYPE 217
+#define UA_TYPES_XVTYPE 214
 
 /* EnumDefinition */
 typedef struct {
@@ -26004,7 +25943,7 @@ typedef struct {
     UA_EnumField *fields;
 } UA_EnumDefinition;
 
-#define UA_TYPES_ENUMDEFINITION 218
+#define UA_TYPES_ENUMDEFINITION 215
 
 /* ReadEventDetails */
 typedef struct {
@@ -26014,7 +25953,7 @@ typedef struct {
     UA_EventFilter filter;
 } UA_ReadEventDetails;
 
-#define UA_TYPES_READEVENTDETAILS 219
+#define UA_TYPES_READEVENTDETAILS 216
 
 /* ReadProcessedDetails */
 typedef struct {
@@ -26026,7 +25965,7 @@ typedef struct {
     UA_AggregateConfiguration aggregateConfiguration;
 } UA_ReadProcessedDetails;
 
-#define UA_TYPES_READPROCESSEDDETAILS 220
+#define UA_TYPES_READPROCESSEDDETAILS 217
 
 /* ModificationInfo */
 typedef struct {
@@ -26035,7 +25974,7 @@ typedef struct {
     UA_String userName;
 } UA_ModificationInfo;
 
-#define UA_TYPES_MODIFICATIONINFO 221
+#define UA_TYPES_MODIFICATIONINFO 218
 
 /* HistoryModifiedData */
 typedef struct {
@@ -26045,7 +25984,7 @@ typedef struct {
     UA_ModificationInfo *modificationInfos;
 } UA_HistoryModifiedData;
 
-#define UA_TYPES_HISTORYMODIFIEDDATA 222
+#define UA_TYPES_HISTORYMODIFIEDDATA 219
 
 /* HistoryEvent */
 typedef struct {
@@ -26053,7 +25992,7 @@ typedef struct {
     UA_HistoryEventFieldList *events;
 } UA_HistoryEvent;
 
-#define UA_TYPES_HISTORYEVENT 223
+#define UA_TYPES_HISTORYEVENT 220
 
 /* DataChangeNotification */
 typedef struct {
@@ -26063,7 +26002,7 @@ typedef struct {
     UA_DiagnosticInfo *diagnosticInfos;
 } UA_DataChangeNotification;
 
-#define UA_TYPES_DATACHANGENOTIFICATION 224
+#define UA_TYPES_DATACHANGENOTIFICATION 221
 
 /* EventNotificationList */
 typedef struct {
@@ -26071,57 +26010,7 @@ typedef struct {
     UA_EventFieldList *events;
 } UA_EventNotificationList;
 
-#define UA_TYPES_EVENTNOTIFICATIONLIST 225
-
-/* SessionDiagnosticsDataType */
-typedef struct {
-    UA_NodeId sessionId;
-    UA_String sessionName;
-    UA_ApplicationDescription clientDescription;
-    UA_String serverUri;
-    UA_String endpointUrl;
-    size_t localeIdsSize;
-    UA_String *localeIds;
-    UA_Double actualSessionTimeout;
-    UA_UInt32 maxResponseMessageSize;
-    UA_DateTime clientConnectionTime;
-    UA_DateTime clientLastContactTime;
-    UA_UInt32 currentSubscriptionsCount;
-    UA_UInt32 currentMonitoredItemsCount;
-    UA_UInt32 currentPublishRequestsInQueue;
-    UA_ServiceCounterDataType totalRequestCount;
-    UA_UInt32 unauthorizedRequestCount;
-    UA_ServiceCounterDataType readCount;
-    UA_ServiceCounterDataType historyReadCount;
-    UA_ServiceCounterDataType writeCount;
-    UA_ServiceCounterDataType historyUpdateCount;
-    UA_ServiceCounterDataType callCount;
-    UA_ServiceCounterDataType createMonitoredItemsCount;
-    UA_ServiceCounterDataType modifyMonitoredItemsCount;
-    UA_ServiceCounterDataType setMonitoringModeCount;
-    UA_ServiceCounterDataType setTriggeringCount;
-    UA_ServiceCounterDataType deleteMonitoredItemsCount;
-    UA_ServiceCounterDataType createSubscriptionCount;
-    UA_ServiceCounterDataType modifySubscriptionCount;
-    UA_ServiceCounterDataType setPublishingModeCount;
-    UA_ServiceCounterDataType publishCount;
-    UA_ServiceCounterDataType republishCount;
-    UA_ServiceCounterDataType transferSubscriptionsCount;
-    UA_ServiceCounterDataType deleteSubscriptionsCount;
-    UA_ServiceCounterDataType addNodesCount;
-    UA_ServiceCounterDataType addReferencesCount;
-    UA_ServiceCounterDataType deleteNodesCount;
-    UA_ServiceCounterDataType deleteReferencesCount;
-    UA_ServiceCounterDataType browseCount;
-    UA_ServiceCounterDataType browseNextCount;
-    UA_ServiceCounterDataType translateBrowsePathsToNodeIdsCount;
-    UA_ServiceCounterDataType queryFirstCount;
-    UA_ServiceCounterDataType queryNextCount;
-    UA_ServiceCounterDataType registerNodesCount;
-    UA_ServiceCounterDataType unregisterNodesCount;
-} UA_SessionDiagnosticsDataType;
-
-#define UA_TYPES_SESSIONDIAGNOSTICSDATATYPE 226
+#define UA_TYPES_EVENTNOTIFICATIONLIST 222
 
 
 _UA_END_DECLS
@@ -33632,114 +33521,6 @@ UA_ServerStatusDataType_equal(const UA_ServerStatusDataType *p1, const UA_Server
 
 
 
-/* SessionSecurityDiagnosticsDataType */
-static UA_INLINE void
-UA_SessionSecurityDiagnosticsDataType_init(UA_SessionSecurityDiagnosticsDataType *p) {
-    memset(p, 0, sizeof(UA_SessionSecurityDiagnosticsDataType));
-}
-
-static UA_INLINE UA_SessionSecurityDiagnosticsDataType *
-UA_SessionSecurityDiagnosticsDataType_new(void) {
-    return (UA_SessionSecurityDiagnosticsDataType*)UA_new(&UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE UA_StatusCode
-UA_SessionSecurityDiagnosticsDataType_copy(const UA_SessionSecurityDiagnosticsDataType *src, UA_SessionSecurityDiagnosticsDataType *dst) {
-    return UA_copy(src, dst, &UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]);
-}
-
-UA_DEPRECATED static UA_INLINE void
-UA_SessionSecurityDiagnosticsDataType_deleteMembers(UA_SessionSecurityDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SessionSecurityDiagnosticsDataType_clear(UA_SessionSecurityDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SessionSecurityDiagnosticsDataType_delete(UA_SessionSecurityDiagnosticsDataType *p) {
-    UA_delete(p, &UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]);
-}static UA_INLINE UA_Boolean
-UA_SessionSecurityDiagnosticsDataType_equal(const UA_SessionSecurityDiagnosticsDataType *p1, const UA_SessionSecurityDiagnosticsDataType *p2) {
-    return (UA_order(p1, p2, &UA_TYPES[UA_TYPES_SESSIONSECURITYDIAGNOSTICSDATATYPE]) == UA_ORDER_EQ);
-}
-
-
-
-/* ServiceCounterDataType */
-static UA_INLINE void
-UA_ServiceCounterDataType_init(UA_ServiceCounterDataType *p) {
-    memset(p, 0, sizeof(UA_ServiceCounterDataType));
-}
-
-static UA_INLINE UA_ServiceCounterDataType *
-UA_ServiceCounterDataType_new(void) {
-    return (UA_ServiceCounterDataType*)UA_new(&UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]);
-}
-
-static UA_INLINE UA_StatusCode
-UA_ServiceCounterDataType_copy(const UA_ServiceCounterDataType *src, UA_ServiceCounterDataType *dst) {
-    return UA_copy(src, dst, &UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]);
-}
-
-UA_DEPRECATED static UA_INLINE void
-UA_ServiceCounterDataType_deleteMembers(UA_ServiceCounterDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]);
-}
-
-static UA_INLINE void
-UA_ServiceCounterDataType_clear(UA_ServiceCounterDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]);
-}
-
-static UA_INLINE void
-UA_ServiceCounterDataType_delete(UA_ServiceCounterDataType *p) {
-    UA_delete(p, &UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]);
-}static UA_INLINE UA_Boolean
-UA_ServiceCounterDataType_equal(const UA_ServiceCounterDataType *p1, const UA_ServiceCounterDataType *p2) {
-    return (UA_order(p1, p2, &UA_TYPES[UA_TYPES_SERVICECOUNTERDATATYPE]) == UA_ORDER_EQ);
-}
-
-
-
-/* SubscriptionDiagnosticsDataType */
-static UA_INLINE void
-UA_SubscriptionDiagnosticsDataType_init(UA_SubscriptionDiagnosticsDataType *p) {
-    memset(p, 0, sizeof(UA_SubscriptionDiagnosticsDataType));
-}
-
-static UA_INLINE UA_SubscriptionDiagnosticsDataType *
-UA_SubscriptionDiagnosticsDataType_new(void) {
-    return (UA_SubscriptionDiagnosticsDataType*)UA_new(&UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE UA_StatusCode
-UA_SubscriptionDiagnosticsDataType_copy(const UA_SubscriptionDiagnosticsDataType *src, UA_SubscriptionDiagnosticsDataType *dst) {
-    return UA_copy(src, dst, &UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]);
-}
-
-UA_DEPRECATED static UA_INLINE void
-UA_SubscriptionDiagnosticsDataType_deleteMembers(UA_SubscriptionDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SubscriptionDiagnosticsDataType_clear(UA_SubscriptionDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SubscriptionDiagnosticsDataType_delete(UA_SubscriptionDiagnosticsDataType *p) {
-    UA_delete(p, &UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]);
-}static UA_INLINE UA_Boolean
-UA_SubscriptionDiagnosticsDataType_equal(const UA_SubscriptionDiagnosticsDataType *p1, const UA_SubscriptionDiagnosticsDataType *p2) {
-    return (UA_order(p1, p2, &UA_TYPES[UA_TYPES_SUBSCRIPTIONDIAGNOSTICSDATATYPE]) == UA_ORDER_EQ);
-}
-
-
-
 /* Range */
 static UA_INLINE void
 UA_Range_init(UA_Range *p) {
@@ -34276,42 +34057,6 @@ UA_EventNotificationList_delete(UA_EventNotificationList *p) {
 }static UA_INLINE UA_Boolean
 UA_EventNotificationList_equal(const UA_EventNotificationList *p1, const UA_EventNotificationList *p2) {
     return (UA_order(p1, p2, &UA_TYPES[UA_TYPES_EVENTNOTIFICATIONLIST]) == UA_ORDER_EQ);
-}
-
-
-
-/* SessionDiagnosticsDataType */
-static UA_INLINE void
-UA_SessionDiagnosticsDataType_init(UA_SessionDiagnosticsDataType *p) {
-    memset(p, 0, sizeof(UA_SessionDiagnosticsDataType));
-}
-
-static UA_INLINE UA_SessionDiagnosticsDataType *
-UA_SessionDiagnosticsDataType_new(void) {
-    return (UA_SessionDiagnosticsDataType*)UA_new(&UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE UA_StatusCode
-UA_SessionDiagnosticsDataType_copy(const UA_SessionDiagnosticsDataType *src, UA_SessionDiagnosticsDataType *dst) {
-    return UA_copy(src, dst, &UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]);
-}
-
-UA_DEPRECATED static UA_INLINE void
-UA_SessionDiagnosticsDataType_deleteMembers(UA_SessionDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SessionDiagnosticsDataType_clear(UA_SessionDiagnosticsDataType *p) {
-    UA_clear(p, &UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]);
-}
-
-static UA_INLINE void
-UA_SessionDiagnosticsDataType_delete(UA_SessionDiagnosticsDataType *p) {
-    UA_delete(p, &UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]);
-}static UA_INLINE UA_Boolean
-UA_SessionDiagnosticsDataType_equal(const UA_SessionDiagnosticsDataType *p1, const UA_SessionDiagnosticsDataType *p2) {
-    return (UA_order(p1, p2, &UA_TYPES[UA_TYPES_SESSIONDIAGNOSTICSDATATYPE]) == UA_ORDER_EQ);
 }
 
 

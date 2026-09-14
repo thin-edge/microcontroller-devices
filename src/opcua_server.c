@@ -12,6 +12,15 @@
 
 LOG_MODULE_REGISTER(app_opcua, CONFIG_LOG_DEFAULT_LEVEL);
 
+/* Called by the vendored open62541 event loop (Zephyr patch #9) when select()
+ * fails — e.g. a transient ENOMEM from the socket layer under connection churn.
+ * Yield briefly so the retry does not spin at ~100 Hz and starve the Wi-Fi/net
+ * threads (which otherwise makes the whole device fall off the network). */
+void ua_zephyr_backoff(void)
+{
+	k_msleep(50);
+}
+
 /* The open62541 encoders/decoders are stack-hungry; give the server thread
  * plenty of headroom. */
 #define OPCUA_THREAD_STACK_SIZE 16384
@@ -38,7 +47,12 @@ static void configure_server(UA_Server *srv)
 	 * memory. Keep secure channels >= sessions (open62541 requirement). */
 	config->maxSessions = 4;
 	config->maxSecureChannels = 6;
-	config->maxSessionTimeout = 60000.0; /* ms */
+	/* Reclaim abandoned sessions quickly. A client that disconnects without a
+	 * clean CloseSession (common with a polling collector or after a Wi-Fi
+	 * blip) otherwise pins session resources for the full timeout; under
+	 * repeated reconnects that starves the device. 10 s is ample for a healthy
+	 * client to stay alive with keep-alives. */
+	config->maxSessionTimeout = 10000.0; /* ms */
 
 	/* Small per-connection send/recv buffers (8 kB) to fit constrained RAM.
 	 * OPC-UA's minimum is 8192 bytes; our reads are tiny. */

@@ -61,6 +61,7 @@ cmake -S "${src}" -B "${tmp}" \
   -DUA_ENABLE_METHODCALLS=OFF \
   -DUA_ENABLE_DISCOVERY=OFF \
   -DUA_ENABLE_HISTORIZING=OFF \
+  -DUA_ENABLE_DIAGNOSTICS=OFF \
   -DUA_MULTITHREADING=0 \
   -DUA_LOGLEVEL="${loglevel}" \
   -DUA_ENABLE_NODEMANAGEMENT=ON \
@@ -124,6 +125,33 @@ sub("    int retcode = getaddrinfo(hostname, portstr, &hints, &res);",
 #    monotonic millisecond clock instead. (UA_DATETIME_SEC is 100ns ticks/sec.)
 sub("UA_DateTime UA_DateTime_nowMonotonic(void) {\n#if defined(__APPLE__) || defined(__MACH__)",
     "UA_DateTime UA_DateTime_nowMonotonic(void) {\n    { extern int64_t k_uptime_get(void); return (UA_DateTime)(k_uptime_get() * (UA_DATETIME_SEC / 1000)); } /* Zephyr patch: CLOCK_MONOTONIC unreliable; use k_uptime */\n#if defined(__APPLE__) || defined(__MACH__)")
+
+# 9) Back off on select() errors instead of spinning. When the socket layer
+#    is transiently out of resources (Zephyr returns ENOMEM from select/poll
+#    under connection churn), the event loop otherwise retries at the caller's
+#    ~100 Hz, flooding the log and starving the Wi-Fi/net threads until the
+#    whole device falls off the network. Yield ~50 ms so the stack can recover.
+sub('                           "Error during select: %s", errno_str));\n        return UA_STATUSCODE_GOOD;',
+    '                           "Error during select: %s", errno_str));\n        { extern void ua_zephyr_backoff(void); ua_zephyr_backoff(); } /* Zephyr patch: back off (k_msleep) on select error instead of spinning */\n        return UA_STATUSCODE_GOOD;')
+
+# 10) Do NOT tear down the TCP listen socket on a transient accept() error.
+#     Under net-buffer exhaustion (e.g. a burst of client (re)connections),
+#     accept() returns ECONNABORTED/ENOMEM/ENOBUFS; open62541 treats every
+#     accept error except EINTR as fatal and closes the server socket for good,
+#     so the device stays pingable but stops serving OPC-UA until a reboot.
+#     Treat these resource errors as retryable (like EINTR) so the listener
+#     survives the storm and resumes accepting once buffers free.
+sub("        /* Temporary error -- retry */\n        if(UA_ERRNO == UA_INTERRUPTED)\n            return;",
+    "        /* Temporary error -- retry. Zephyr patch: also retry on transient\n"
+    "         * resource-exhaustion errors so a net-buffer storm does not\n"
+    "         * permanently close the listen socket (device would then need a\n"
+    "         * reboot to serve again). */\n"
+    "        if(UA_ERRNO == UA_INTERRUPTED || UA_ERRNO == UA_WOULDBLOCK ||\n"
+    "           UA_ERRNO == EAGAIN || UA_ERRNO == ENOMEM ||\n"
+    "           UA_ERRNO == ENOBUFS || UA_ERRNO == ECONNABORTED) {\n"
+    "            extern void ua_zephyr_backoff(void); ua_zephyr_backoff();\n"
+    "            return;\n"
+    "        }")
 
 open(p, "w").write(s)
 print("Applied Zephyr patches to open62541.c")
