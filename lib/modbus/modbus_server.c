@@ -306,6 +306,9 @@ int modbus_server_start(void)
 	char iface_name[] = "RAW_0";
 	int err;
 
+	/* Start the data model / simulation (starts the pump sim's step timer). */
+	data_source_init();
+
 	server_iface = modbus_iface_get_by_name(iface_name);
 	if (server_iface < 0) {
 		LOG_ERR("No raw Modbus iface '%s' (check CONFIG_MODBUS_NUMOF_RAW_ADU)",

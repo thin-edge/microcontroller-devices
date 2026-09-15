@@ -26,23 +26,23 @@
 ## 4. Board bring-up (device side)
 
 - [x] 4.1 Add `apps/modbus-server/boards/esp32_devkitc_esp32_procpu.conf` (Wi-Fi + IPv4/TCP + mDNS + modest net tuning; no open62541 pressure)
-- [ ] 4.2 Build for `esp32_devkitc/esp32/procpu`, flash an ESP32-WROOM; confirm Wi-Fi join + listening on 502
+- [x] 4.2 Build for `esp32_devkitc/esp32/procpu`, flash an ESP32-WROOM; confirm Wi-Fi join + listening on 502
 - [x] 4.3 Add `apps/modbus-server/boards/adafruit_qt_py_esp32s3_esp32s3_procpu.conf` (+ &wifi overlay); build for the S3
 
 ## 5. Client/master verification (collector side)
 
-- [ ] 5.1 Read Input Registers with a client (pymodbus/`mbpoll`): IR0..4 scaled ints match live flow/pressure/motor-temp/rpm/vibration and change over time
-- [ ] 5.2 Read IR20..25 as IEEE-754 float pairs (big-endian) and confirm they equal the measurements
-- [ ] 5.3 Read IR10..11 as a 32-bit counter; confirm run_hours is non-decreasing across reads
-- [ ] 5.4 Read Discrete Inputs DI0..2 (running mirror, fault sim, network connected)
-- [ ] 5.5 Write Holding Register HR0 (speed_setpoint) in range and above 100; confirm clamp on read-back; write HR1 (mode) and confirm 0–2 clamp
-- [ ] 5.6 Toggle Coil0 (FC05); confirm running + DI0 mirror update
-- [ ] 5.7 Read an unmapped address; confirm illegal-data-address exception (not a crash)
-- [ ] 5.8 Disconnect and reconnect the client; confirm the server keeps serving without a reboot
-- [ ] 5.9 Simulation coupling over Modbus: set Coil0=on + HR0 to a high speed (manual mode) and observe IR3/IR0/IR1 (rpm/flow/pressure) rise and motor_temp warm; set Coil0=off and observe them fall toward zero and run_hours (IR10..11) stop advancing
+- [x] 5.1 Read Input Registers with a client (pymodbus/`mbpoll`): IR0..4 scaled ints match live flow/pressure/motor-temp/rpm/vibration and change over time
+- [x] 5.2 Read IR20..25 as IEEE-754 float pairs (big-endian) and confirm they equal the measurements
+- [x] 5.3 Read IR10..11 as a 32-bit counter; confirm run_hours is non-decreasing across reads
+- [x] 5.4 Read Discrete Inputs DI0..2 (running mirror, fault sim, network connected)
+- [x] 5.5 Write Holding Register HR0 (speed_setpoint) in range and above 100; confirm clamp on read-back; write HR1 (mode) and confirm 0–2 clamp
+- [x] 5.6 Toggle Coil0 (FC05); confirm running + DI0 mirror update
+- [x] 5.7 Read an unmapped address; confirm illegal-data-address exception (not a crash)
+- [x] 5.8 Disconnect and reconnect the client; confirm the server keeps serving without a reboot
+- [x] 5.9 Simulation coupling over Modbus: set Coil0=on + HR0 to a high speed (manual mode) and observe IR3/IR0/IR1 (rpm/flow/pressure) rise and motor_temp warm; set Coil0=off and observe them fall toward zero and run_hours (IR10..11) stop advancing
 
 ## 6. Documentation
 
-- [ ] 6.1 Add modbus-server to README targets + build/flash section + the register map table
-- [ ] 6.2 Add a client test recipe (pymodbus snippet / `mbpoll` commands) for each object type
-- [ ] 6.3 Update README/SCOPE for the pluggable simulation layer (how to select a sim per app; environment vs pump) and the second protocol frontend (OPC-UA unchanged); commit
+- [x] 6.1 Add modbus-server to README targets + build/flash section + the register map table
+- [x] 6.2 Add a client test recipe (pymodbus snippet / `mbpoll` commands) for each object type
+- [x] 6.3 Update README/SCOPE for the pluggable simulation layer (how to select a sim per app; environment vs pump) and the second protocol frontend (OPC-UA unchanged); commit
