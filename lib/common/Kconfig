@@ -119,6 +119,30 @@ config APP_WIFI
 	  Join a Wi-Fi network on boot. On native_sim this is not used; the
 	  host network backend provides connectivity instead.
 
+config APP_NET_RECONNECT_REBOOT
+	bool "Self-reboot after a prolonged network outage (last resort)"
+	default y
+	depends on APP_WIFI
+	select REBOOT
+	help
+	  If the device stays offline for APP_NET_REBOOT_TIMEOUT_S despite reconnect
+	  attempts, reboot so it recovers autonomously instead of needing a manual
+	  power-cycle. Disable on benches where a reboot would hide a problem.
+
+config APP_NET_REBOOT_TIMEOUT_S
+	int "Offline seconds before the last-resort reboot"
+	default 300
+	range 30 86400
+	depends on APP_NET_RECONNECT_REBOOT
+
+config APP_STATUS_LED
+	bool "Show connectivity on a status LED (led0 alias)"
+	default y
+	help
+	  Blink an LED (board 'led0' alias) while not connected and hold it steady
+	  once connected, so an operator can tell at a glance whether the device is
+	  on the network. No-op on boards without a led0 alias and on native_sim.
+
 config APP_PING_TARGET
 	string "On-device ping target for the data-path diagnostic"
 	default "192.168.68.1"

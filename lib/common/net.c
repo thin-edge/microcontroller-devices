@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "display.h"
+#include "status_led.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -262,10 +263,16 @@ void app_net_show_status(enum display_stage stage)
 	render_status(stage);
 }
 
+/* Event-independent connectivity watchdog (real logic in the Wi-Fi branch,
+ * no-op elsewhere). Runs each status_work tick so recovery does not depend on a
+ * management event being delivered. */
+static void connectivity_watchdog(void);
+
 static void status_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	status_ticks++;
+	connectivity_watchdog();
 #if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
 	ping_gateway_once(); /* one echo request per cycle to the gateway */
 #endif
@@ -276,6 +283,7 @@ static void status_work_handler(struct k_work *work)
 static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
+	status_led_set_connected(up);
 	if (up) {
 		update_identity(); /* MAC (and unique hostname) are set by now */
 		current_ipv4 = read_iface_ipv4();
@@ -297,6 +305,9 @@ int app_net_init(void)
 	mark_connected(true);
 	return 0;
 }
+
+/* Host provides connectivity on native_sim; nothing to watchdog. */
+static void connectivity_watchdog(void) { }
 
 #elif defined(CONFIG_APP_WIFI)
 
@@ -408,12 +419,73 @@ static int wifi_connect(void)
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 }
 
+#if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
+#include <zephyr/sys/reboot.h>
+#endif
+
+/* Force a fresh reconnect. If a plain connect fails (e.g. the driver still
+ * considers itself associated so the request is a no-op / -EALREADY), clear the
+ * association and retry shortly — never give up silently. */
 static void reconnect_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
-	if (!app_net_is_connected()) {
-		(void)wifi_connect();
+	if (app_net_is_connected()) {
+		return;
 	}
+
+	int rc = wifi_connect();
+
+	if (rc) {
+		struct net_if *iface = net_if_get_first_wifi();
+
+		LOG_WRN("wifi_connect() failed (%d) — clearing association, retrying", rc);
+		if (iface != NULL) {
+			(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+		}
+		k_work_reschedule(&reconnect_work, K_SECONDS(2));
+	}
+}
+
+/* Event-independent recovery: runs every status_work tick (~3 s). Reconnection
+ * on management events alone can dead-end (associated-but-no-IP, a no-op connect,
+ * or a silent lease loss), leaving the device offline until a manual reboot. This
+ * watchdog treats "not connected OR no IPv4 address" as bad, forces reconnects,
+ * and — as a last resort — reboots after a prolonged outage. */
+#define WD_TRIGGER_TICKS 2 /* ~6 s of bad before forcing a reconnect */
+
+static void connectivity_watchdog(void)
+{
+	static uint32_t bad_ticks;
+
+	bool has_ip = read_iface_ipv4() != 0;
+
+	if (app_net_is_connected() && has_ip) {
+		bad_ticks = 0;
+		return;
+	}
+
+	/* Connected flag set but the IPv4 address is gone (e.g. lease lost without a
+	 * clean disconnect): treat as disconnected so recovery proceeds. */
+	if (app_net_is_connected() && !has_ip) {
+		LOG_WRN("IPv4 address lost while connected — recovering");
+		mark_connected(false);
+	}
+
+	bad_ticks++;
+
+	/* Force a reconnect periodically while offline (event-independent). */
+	if ((bad_ticks % WD_TRIGGER_TICKS) == 0) {
+		k_work_reschedule(&reconnect_work, K_NO_WAIT);
+	}
+
+#if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
+	/* status_work ticks every 3 s, so offline seconds ~= bad_ticks * 3. */
+	if (bad_ticks * 3u >= (uint32_t)CONFIG_APP_NET_REBOOT_TIMEOUT_S) {
+		LOG_ERR("Offline > %d s despite reconnects — rebooting to recover",
+			CONFIG_APP_NET_REBOOT_TIMEOUT_S);
+		sys_reboot(SYS_REBOOT_COLD);
+	}
+#endif
 }
 
 static void l4_event_handler(struct net_mgmt_event_callback *cb,
@@ -487,6 +559,9 @@ int app_net_init(void)
 #else /* hardware with a wired/other interface and no explicit Wi-Fi */
 
 static struct net_mgmt_event_callback l4_cb;
+
+/* No Wi-Fi reconnect state machine on a wired link. */
+static void connectivity_watchdog(void) { }
 
 static void l4_event_handler(struct net_mgmt_event_callback *cb,
 			     uint64_t event, struct net_if *iface)

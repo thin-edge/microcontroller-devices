@@ -18,6 +18,10 @@ zephyr_library_sources_ifdef(CONFIG_NET_SOCKETS_OFFLOAD nsos_compat.c)
 # Optional TFT status display (no-op when CONFIG_APP_DISPLAY_STATUS is off).
 zephyr_library_sources(display.c)
 
+# Optional connectivity status LED (self-guards on CONFIG_APP_STATUS_LED + a
+# board `led0` alias; compiles to a no-op otherwise).
+zephyr_library_sources(status_led.c)
+
 # Device data model: writable control points and device/firmware identity.
 zephyr_library_sources(controls.c identity.c)
 
