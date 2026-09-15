@@ -6,6 +6,7 @@
 
 static int32_t g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
 static bool g_running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
+static int g_mode = CONFIG_APP_MODE_DEFAULT;
 
 int32_t app_control_setpoint(void)
 {
@@ -34,4 +35,21 @@ bool app_control_running(void)
 void app_control_set_running(bool value)
 {
 	g_running = value;
+}
+
+int app_control_mode(void)
+{
+	return g_mode;
+}
+
+int app_control_set_mode(int value)
+{
+	if (value < 0) {
+		value = 0;
+	}
+	if (value > 2) {
+		value = 2;
+	}
+	g_mode = value;
+	return g_mode;
 }

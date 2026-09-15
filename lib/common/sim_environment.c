@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * Simulated data source: produces changing, in-range synthetic values so the
- * OPC-UA server has something meaningful to serve before real sensors are
- * wired in. Values vary smoothly over time (deterministically, from the system
- * uptime) so a client polling the same node sees it change.
+ * Environment simulation (CONFIG_APP_SIM_ENVIRONMENT): temperature / humidity /
+ * pressure that vary smoothly over time (deterministically, from the system
+ * uptime) so a polling client sees them change. This is the original demo model,
+ * selected by default; it has no fault concept and does not use the mode control.
  */
 
 #include "data_source.h"
@@ -59,4 +59,9 @@ double data_source_sample(size_t index)
 	double phase = 2.0 * 3.14159265358979323846 * t / s->period_s;
 
 	return s->base + s->amplitude * sin(phase);
+}
+
+bool app_sim_fault(void)
+{
+	return false; /* the environment simulation has no fault concept */
 }

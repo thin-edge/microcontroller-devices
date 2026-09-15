@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Modbus TCP server application. Shared options come from the lib/common module
+# and Modbus options from the lib/modbus module (both auto-sourced as Zephyr
+# modules via Kconfig.zephyr below).
+
+mainmenu "Modbus TCP Server Firmware"
+
+source "Kconfig.zephyr"

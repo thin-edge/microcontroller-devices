@@ -315,16 +315,67 @@ Firmware is organised as a shared core plus per-protocol libraries and apps
 
 ```
 lib/common/            shared core: connectivity, display, data model, identity
+                       + selectable simulations (sim_environment, sim_pump)
 lib/opcua/             OPC-UA frontend (open62541) + address-space adapter
-lib/frontend-template/ copy-me skeleton for a new protocol (SNMP/Modbus/CAN)
-apps/opcua-server/     the OPC-UA firmware: composes lib/common + lib/opcua
-  ├── prj.conf  Kconfig  VERSION
+lib/modbus/            Modbus TCP frontend (Zephyr modbus subsystem, port 502)
+lib/frontend-template/ copy-me skeleton for a new protocol (SNMP/CAN/...)
+apps/opcua-server/     OPC-UA firmware: lib/common (env sim) + lib/opcua
+apps/modbus-server/    Modbus TCP firmware: lib/common (pump sim) + lib/modbus
   └── boards/<board>.conf   per-app board overlays (RAM/Wi-Fi tuning)
 ```
 
 Each firmware is built by targeting its app directory, e.g.
-`west build -b <board> apps/opcua-server`. A new protocol becomes a new
+`west build -b <board> apps/modbus-server`. A new protocol becomes a new
 `lib/<protocol>` + `apps/<protocol>` pair; nothing else needs to change.
+
+### Simulations (per-firmware, selectable)
+
+The shared data model is driven by a **simulation** chosen with a Kconfig
+`choice` (in each app's `prj.conf`):
+
+- `CONFIG_APP_SIM_ENVIRONMENT` (default) — temperature/humidity/pressure +
+  `Setpoint`/`Running`. Used by `apps/opcua-server`.
+- `CONFIG_APP_SIM_PUMP` — a control-driven pump/motor: measurements react to the
+  `speed_setpoint`/`running`/`mode` controls via pump affinity laws (flow ∝ speed,
+  pressure ∝ speed²), a motor-thermal lag, `run_hours` that accrue only while
+  running, and an over-temp fault. Used by `apps/modbus-server`.
+
+Frontends are simulation-agnostic, so any simulation can back any protocol.
+
+## Modbus TCP server firmware
+
+Build and flash exactly like the others, targeting `apps/modbus-server` (Wi-Fi
+board; no serial/RS-485 — this is Modbus **TCP** on port 502):
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b esp32_devkitc/esp32/procpu apps/modbus-server --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
+# flash as for the WROOM/S3 above; advertises _modbus._tcp on port 502
+```
+
+**Register map** (unit id 1, zero-based; pump simulation):
+
+| Object | Addr | Meaning |
+|--------|------|---------|
+| Input Reg (RO) | 0 / 1 / 2 / 3 / 4 | flow ×10 / pressure ×100 / motor_temp ×10 (signed) / rpm / vibration ×100 |
+| Input Reg (RO) | 10–11 | run time, seconds — uint32, big-endian pair |
+| Input Reg (RO) | 20–21 / 22–23 / 24–25 | flow / pressure / motor_temp as IEEE-754 float (BE pairs) |
+| Holding Reg (RW) | 0 / 1 | speed_setpoint (0–100) / mode (0=off,1=auto,2=manual) |
+| Coil (RW) | 0 | running |
+| Discrete In (RO) | 0 / 1 / 2 | running mirror / fault (over-temp) / network connected |
+
+**Client test recipe** (`pymodbus`; `pip install pymodbus`):
+
+```python
+from pymodbus.client import ModbusTcpClient
+c = ModbusTcpClient("<device-ip>", port=502); c.connect()
+c.write_coil(0, True, device_id=1)          # start
+c.write_register(1, 2, device_id=1)         # mode = manual
+c.write_register(0, 80, device_id=1)        # speed 80 %  (write 150 -> clamps to 100)
+print(c.read_input_registers(0, count=5, device_id=1).registers)  # flow,pressure,temp,rpm,vib
+print(c.read_discrete_inputs(0, count=3, device_id=1).bits)       # running,fault,net
+```
 
 ## Adding another Wi-Fi board
 

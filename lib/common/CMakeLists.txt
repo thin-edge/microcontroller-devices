@@ -18,9 +18,13 @@ zephyr_library_sources_ifdef(CONFIG_NET_SOCKETS_OFFLOAD nsos_compat.c)
 # Optional TFT status display (no-op when CONFIG_APP_DISPLAY_STATUS is off).
 zephyr_library_sources(display.c)
 
-# Device data model: measurements (data source), writable control points, and
-# device/firmware identity.
-zephyr_library_sources(data_source.c controls.c identity.c)
+# Device data model: writable control points and device/firmware identity.
+zephyr_library_sources(controls.c identity.c)
+
+# Selected simulation implementation (exactly one, chosen by the Kconfig choice).
+# Both implement the data_source.h interface + app_sim_fault().
+zephyr_library_sources_ifdef(CONFIG_APP_SIM_ENVIRONMENT sim_environment.c)
+zephyr_library_sources_ifdef(CONFIG_APP_SIM_PUMP        sim_pump.c)
 
 # Export the public headers (net.h, display.h, data_source.h, controls.h,
 # identity.h) to every consumer of this module.

@@ -11,6 +11,7 @@
 #define APP_DATA_SOURCE_H_
 
 #include <stddef.h>
+#include <stdbool.h>
 
 /** A measurement descriptor. */
 struct data_measurement {
@@ -37,5 +38,12 @@ const struct data_measurement *data_source_descriptor(size_t index);
  * @return current value; 0.0 if index is out of range.
  */
 double data_source_sample(size_t index);
+
+/**
+ * @return true if the active simulation is reporting a fault condition (e.g. the
+ *         pump simulation's over-temperature trip). Simulations without a fault
+ *         concept return false.
+ */
+bool app_sim_fault(void);
 
 #endif /* APP_DATA_SOURCE_H_ */
