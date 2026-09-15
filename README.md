@@ -21,6 +21,7 @@ reads live, updating measurements (temperature/humidity/pressure).
 | Board | Zephyr board target | Role | Status |
 |-------|---------------------|------|--------|
 | ESP32-WROOM-32 | `esp32_devkitc/esp32/procpu` | co-primary | **verified on hardware** |
+| Adafruit QT Py ESP32-S3 | `adafruit_qt_py_esp32s3/esp32s3/procpu` | co-primary | **verified on hardware** |
 | Feather ESP32-S2 TFT | `adafruit_feather_esp32s2_tft/esp32s2` | co-primary | builds & flashes; **Wi-Fi data path broken upstream — see note** |
 | Raspberry Pi Pico W | `rpi_pico/rp2040/w` | stretch | config authored, not yet built |
 | Host simulation | `native_sim/native/64` | dev / CI | builds & runs (see NSOS note) |
@@ -133,6 +134,32 @@ docker exec -w /ws/app zephyr-dev ./build/zephyr/zephyr.exe   # boots, starts se
 
 Raspberry Pi Pico W flashes via UF2: hold BOOTSEL, plug in, copy
 `build/zephyr/zephyr.uf2` to the `RPI-RP2` volume (same on macOS/Linux).
+
+## Build & flash the Adafruit QT Py ESP32-S3
+
+Dual-core ESP32-S3 — Wi-Fi works end-to-end (unlike the S2). The `&wifi` node is
+disabled by default in the S3 SoC devicetree, so the app supplies a board overlay
+(`apps/opcua-server/boards/adafruit_qt_py_esp32s3_esp32s3_procpu.overlay`) to
+enable it.
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b adafruit_qt_py_esp32s3/esp32s3/procpu apps/opcua-server --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
+```
+
+The S3 uses **native USB (USB-Serial-JTAG)**, so flash from the host at offset
+**`0x0`** (not `0x1000`) and use `--before usb_reset` (plain `default_reset`
+drops the CDC port with "Device not configured"):
+
+```sh
+P=$(ls /dev/cu.usbmodem* | head -1)
+~/flashenv/bin/python -m esptool --chip esp32s3 --port "$P" --baud 460800 \
+  --before usb_reset --after hard_reset write_flash 0x0 build/zephyr/zephyr.bin
+```
+
+The console (and DHCP IP) is on the same native-USB port at 115200; open it
+**without toggling DTR/RTS** so you don't reset the board.
 
 ## Build & flash the ESP32-S2 Feather TFT
 
