@@ -209,6 +209,29 @@ cp overlay-wifi-credentials.conf.example overlay-wifi-credentials.conf
 (shared across apps). Pass it by absolute path on the hardware build:
 `-- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf`.
 
+## Connectivity resilience & status LED
+
+The connectivity layer (`lib/common/net.c`) recovers autonomously from network
+disruptions — you should not need to power-cycle a device to get it back online:
+
+- A watchdog on the 3 s status tick treats "not connected **or** no IPv4 address"
+  as offline (independent of Wi-Fi events), forces reconnects, and detects a
+  silently-lost DHCP lease.
+- Reconnect is robust: a stale association is cleared before retrying, and a
+  failed connect is retried rather than abandoned.
+- **Last-resort self-reboot** — if a device stays offline past
+  `CONFIG_APP_NET_REBOOT_TIMEOUT_S` (default 300 s) despite retries, it reboots to
+  recover. Disable with `CONFIG_APP_NET_RECONNECT_REBOOT=n` (e.g. on the bench).
+
+**Status LED** (`CONFIG_APP_STATUS_LED`, on by default): tells you at a glance
+whether the *device* is on the network — **blinking = not connected**
+(booting/associating/reconnecting), **steady = connected and serving**. So if the
+LED is steady but a collector can't read the device, the problem is the
+collector/network path, not the device. It uses the board's `led0` alias
+(WROOM: on-board LED on GPIO2, see the board `.overlay`); it's a no-op on boards
+without an LED (the S2 TFT shows the same state on-screen; the S3 NeoPixel is not
+yet wired up).
+
 ## Finding the device (mDNS / DNS-SD)
 
 The firmware advertises over mDNS, so no IP is needed. On macOS (Bonjour):

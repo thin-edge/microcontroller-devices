@@ -27,4 +27,4 @@
 
 ## 5. Documentation
 
-- [ ] 5.1 README: connectivity resilience (watchdog, self-reboot Kconfig) and the status LED (meaning of blink vs steady, `led0` alias, per-board notes); commit
+- [x] 5.1 README: connectivity resilience (watchdog, self-reboot Kconfig) and the status LED (meaning of blink vs steady, `led0` alias, per-board notes); commit
