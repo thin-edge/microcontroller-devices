@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "display.h"
+#include "status_led.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -262,10 +263,16 @@ void app_net_show_status(enum display_stage stage)
 	render_status(stage);
 }
 
+/* Event-independent connectivity watchdog (real logic in the Wi-Fi branch,
+ * no-op elsewhere). Runs each status_work tick so recovery does not depend on a
+ * management event being delivered. */
+static void connectivity_watchdog(void);
+
 static void status_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	status_ticks++;
+	connectivity_watchdog();
 #if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
 	ping_gateway_once(); /* one echo request per cycle to the gateway */
 #endif
@@ -276,6 +283,7 @@ static void status_work_handler(struct k_work *work)
 static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
+	status_led_set_connected(up);
 	if (up) {
 		update_identity(); /* MAC (and unique hostname) are set by now */
 		current_ipv4 = read_iface_ipv4();
@@ -297,6 +305,9 @@ int app_net_init(void)
 	mark_connected(true);
 	return 0;
 }
+
+/* Host provides connectivity on native_sim; nothing to watchdog. */
+static void connectivity_watchdog(void) { }
 
 #elif defined(CONFIG_APP_WIFI)
 
@@ -408,12 +419,104 @@ static int wifi_connect(void)
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 }
 
+#if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
+#include <zephyr/sys/reboot.h>
+#endif
+
+/* Attempt a reconnect. Keep it gentle: if the request errors (commonly
+ * -EALREADY — the driver is already associating), just retry later rather than
+ * interrupting the in-progress attempt. Breaking a genuinely stale association is
+ * handled by the watchdog only after a prolonged stall (see below). */
 static void reconnect_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
-	if (!app_net_is_connected()) {
-		(void)wifi_connect();
+	if (app_net_is_connected()) {
+		return;
 	}
+
+	if (wifi_connect() != 0) {
+		k_work_reschedule(&reconnect_work, K_SECONDS(2));
+	}
+}
+
+/* Event-independent recovery: runs every status_work tick (~3 s). Reconnection
+ * on management events alone can dead-end (associated-but-no-IP, a no-op connect,
+ * a silent lease loss, or a router L3 block that fires no event). The watchdog
+ * judges health by actual reachability — not just association + IP — and drives
+ * the connected state (both ways) plus the last-resort reboot. */
+#define WD_TRIGGER_TICKS  2  /* ~6 s of bad before nudging a reconnect */
+#define WD_PING_STALL_MAX 5  /* ~15 s with no ping replies = data path down */
+
+static void connectivity_watchdog(void)
+{
+	static uint32_t bad_ticks;
+
+	bool healthy = read_iface_ipv4() != 0; /* an IP is the minimum */
+
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	/* Reachability gate: once the gateway has answered at least once, a sustained
+	 * loss of ping replies means the data path is down (e.g. a router L3 block)
+	 * even while we remain associated with a valid IP. The `proven` guard avoids
+	 * false-offline loops on networks that never answer ICMP to the target. */
+	static uint32_t last_ping_ok;
+	static uint32_t ping_stall;
+	static bool ping_proven;
+	uint32_t now_ok = (uint32_t)atomic_get(&ping_ok);
+
+	if (now_ok != last_ping_ok) {
+		ping_proven = true;
+		ping_stall = 0;
+		last_ping_ok = now_ok;
+	} else {
+		ping_stall++;
+	}
+	if (ping_proven && ping_stall >= WD_PING_STALL_MAX) {
+		healthy = false;
+	}
+#endif
+
+	if (healthy) {
+		/* Recovered (DHCP bound, or an L3 block lifted — no L4 event fires for a
+		 * block, so restore the connected state here). */
+		if (!app_net_is_connected()) {
+			LOG_INF("Connectivity restored");
+			mark_connected(true);
+		}
+		bad_ticks = 0;
+		return;
+	}
+
+	if (app_net_is_connected()) {
+		LOG_WRN("Connectivity lost (no reachable data path) — recovering");
+		mark_connected(false);
+	}
+
+	bad_ticks++;
+
+	/* Escalate gently. ~every 6 s nudge a reconnect (does not interrupt an
+	 * in-progress association). After a prolonged stall (~30 s), clear any stale
+	 * association once so a wedged connect can restart cleanly; its disconnect
+	 * event then drives a fresh reconnect. */
+	if ((bad_ticks % WD_TRIGGER_TICKS) == 0) {
+		if (bad_ticks == 10) {
+			struct net_if *iface = net_if_get_first_wifi();
+
+			if (iface != NULL) {
+				LOG_WRN("Offline ~30 s — clearing association to restart connect");
+				(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+			}
+		}
+		k_work_reschedule(&reconnect_work, K_NO_WAIT);
+	}
+
+#if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
+	/* status_work ticks every 3 s, so offline seconds ~= bad_ticks * 3. */
+	if (bad_ticks * 3u >= (uint32_t)CONFIG_APP_NET_REBOOT_TIMEOUT_S) {
+		LOG_ERR("Offline > %d s despite reconnects — rebooting to recover",
+			CONFIG_APP_NET_REBOOT_TIMEOUT_S);
+		sys_reboot(SYS_REBOOT_COLD);
+	}
+#endif
 }
 
 static void l4_event_handler(struct net_mgmt_event_callback *cb,
@@ -448,7 +551,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		g_last_reason = status->disconn_reason;
 		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
 			status->disconn_reason);
-		render_status(DISPLAY_STAGE_WIFI_CONNECTING);
+		mark_connected(false); /* update state + LED now, not only on L4 */
 		k_work_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
@@ -487,6 +590,9 @@ int app_net_init(void)
 #else /* hardware with a wired/other interface and no explicit Wi-Fi */
 
 static struct net_mgmt_event_callback l4_cb;
+
+/* No Wi-Fi reconnect state machine on a wired link. */
+static void connectivity_watchdog(void) { }
 
 static void l4_event_handler(struct net_mgmt_event_callback *cb,
 			     uint64_t event, struct net_if *iface)
