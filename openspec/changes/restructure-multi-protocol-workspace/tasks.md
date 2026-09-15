@@ -23,13 +23,13 @@
 - [x] 3.5 Remove the root `src/`, root `CMakeLists.txt`, and root `Kconfig`
 - [x] 3.6 Build `apps/opcua-server` for `native_sim/native/64` AND `esp32_devkitc/esp32/procpu` in the container (both OK)
 
-## 4. Hardware re-verification (regression gate — must match pre-restructure)  [BLOCKED: needs an ESP32 plugged in]
+## 4. Hardware re-verification (regression gate — matched pre-restructure ✓)
 
-- [ ] 4.1 Build `apps/opcua-server` for `esp32_devkitc/esp32/procpu` and flash an ESP32-WROOM/D0WD
-- [ ] 4.2 Verify browse/read of `Device`, `DeviceId`, `FirmwareName`, `FirmwareVersion` (=`0.2.0`), `BuildTimestamp`, and the three measurements
-- [ ] 4.3 Verify writable `Setpoint` (in-range write, out-of-range clamp)
-- [ ] 4.4 Re-run the 300-cycle connection-churn stress; confirm 300/300 with zero `Failed to allocate net buffer` and zero `closing the server socket`
-- [ ] 4.5 Confirm mDNS/DNS-SD (`<hostname>.local` + `_opcua-tcp._tcp`) still advertises
+- [x] 4.1 Built `apps/opcua-server` for `esp32_devkitc/esp32/procpu`; flashed ESP32-WROOM (D0WDQ6 rev v1.0, MAC 30:ae:a4:e8:7e:e0) → DHCP 192.168.68.76
+- [x] 4.2 Verified browse/read: `DeviceId`, `FirmwareName`=zephyr-opcua-server, `FirmwareVersion`=`0.2.0`, `BuildTimestamp`, temperature/humidity/pressure
+- [x] 4.3 Verified writable `Setpoint`: 250→250, 999999→clamped 1000, reset→0 (via relocated common controls API)
+- [x] 4.4 Re-ran the 300-cycle churn: 300/300, zero `Failed to allocate net buffer`, zero `closing the server socket`, zero select errors
+- [x] 4.5 Confirmed mDNS (`tedge-opcua30aea4e87ee0.local` resolves) + DNS-SD (`_opcua-tcp._tcp` advertised)
 
 ## 5. Frontend-contract seam (step 3 — docs/stubs only, no new protocol)
 
@@ -40,4 +40,4 @@
 
 - [x] 6.1 Update README build/flash commands to `west build -b <board> apps/opcua-server` (WROOM, native_sim, S2-blocked note retained); note the root Wi-Fi overlay passed by absolute path
 - [x] 6.2 Add a repository-layout section to README + SCOPE.md (lib/common, lib/<protocol>, apps/<protocol>) and the per-app `FirmwareName` convention
-- [ ] 6.3 Commit; leave a follow-up note that SNMP/Modbus/CAN are separate Phase-2 changes riding on this structure
+- [x] 6.3 Committed; SNMP/Modbus/CAN are separate Phase-2 changes riding on this structure (see `lib/frontend-template/README.md`)
