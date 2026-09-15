@@ -21,8 +21,8 @@
 
 - [x] 4.1 Build native_sim (watchdog no-op) + WROOM for both apps; confirm clean build
 - [x] 4.2 Steady state: connected, LED steady; OPC-UA browse/read normal; run the 300-cycle churn — unaffected (no spurious reconnects/reboots)
-- [ ] 4.3 Force AP down (or deauth): confirm LED blinks, device auto-recovers within seconds of the AP returning — no manual reboot
-- [ ] 4.4 Force associated-but-no-IP / DHCP loss: confirm the watchdog forces a reconnect and the device regains an IP
+- [x] 4.3 Force AP down (or deauth): confirm LED blinks, device auto-recovers within seconds of the AP returning — no manual reboot
+- [x] 4.4 Force associated-but-no-IP / DHCP loss: confirm the watchdog forces a reconnect and the device regains an IP
 - [ ] 4.5 Prolonged outage: with a short test `APP_NET_REBOOT_TIMEOUT_S`, confirm the last-resort reboot fires and the device comes back; confirm disabling it keeps retrying without reboot
 
 ## 5. Documentation
