@@ -2,11 +2,11 @@
 
 #include "address_space.h"
 #include "data_source.h"
-#include "net.h"
+#include "identity.h"
+#include "controls.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <app_version.h> /* APP_VERSION_STRING, generated from the VERSION file */
 
 #include <open62541.h>
 
@@ -23,28 +23,16 @@ static UA_NodeId device_node_id;
 static UA_NodeId measurement_ids[MAX_MEASUREMENTS];
 static size_t measurement_count;
 
-/* Writable control points (in-RAM, not persisted), exposed in the application
- * namespace (ns=1) alongside the device identity and measurements. */
-static int32_t g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
-static bool g_running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
-static bool writing_back; /* guards value-callback recursion on clamp write-back */
-
-int32_t address_space_setpoint(void)
-{
-	return g_setpoint;
-}
-
-bool address_space_running(void)
-{
-	return g_running;
-}
+/* Guards value-callback recursion when writing a clamped value back to the node.
+ * The control-point state itself lives in lib/common (controls.[ch]). */
+static bool writing_back;
 
 static UA_StatusCode add_device_object(UA_Server *server)
 {
 	UA_ObjectAttributes oAttr = UA_ObjectAttributes_default;
 	/* Display the unique per-device hostname so devices are distinguishable
 	 * when browsing; keep the browse name stable for predictable navigation. */
-	oAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)app_net_hostname());
+	oAttr.displayName = UA_LOCALIZEDTEXT("en-US", (char *)app_identity_device_id());
 	oAttr.description = UA_LOCALIZEDTEXT("en-US",
 					    "Zephyr OPC-UA device (Phase 1)");
 
@@ -113,22 +101,22 @@ static UA_StatusCode add_readonly_string(UA_Server *server, const char *id,
 
 /* Read-only identity/build nodes: which physical device this is, and which
  * firmware it is running (so an operator/collector can tell at a glance whether
- * a device needs reflashing). The hostname buffer and the version/build-time
- * literals all have static lifetime, so add_readonly_string may reference them. */
+ * a device needs reflashing). The identity strings are owned by lib/common and
+ * have static lifetime, so add_readonly_string may reference them directly. */
 static void add_info_nodes(UA_Server *server)
 {
 	(void)add_readonly_string(server, "DeviceId",
 		"Unique device id (hostname incl. MAC suffix)",
-		app_net_hostname());
+		app_identity_device_id());
 	(void)add_readonly_string(server, "FirmwareName",
 		"Firmware image/application name",
-		CONFIG_APP_FIRMWARE_NAME);
+		app_identity_firmware_name());
 	(void)add_readonly_string(server, "FirmwareVersion",
 		"Application firmware version (from the VERSION file)",
-		APP_VERSION_STRING);
+		app_identity_firmware_version());
 	(void)add_readonly_string(server, "BuildTimestamp",
 		"Firmware build date/time (compiler __DATE__ __TIME__)",
-		__DATE__ " " __TIME__);
+		app_identity_build_timestamp());
 }
 
 /* Value-callback invoked after a client writes the setpoint node. Clamp to the
@@ -146,15 +134,8 @@ static void on_setpoint_write(UA_Server *server, const UA_NodeId *sid,
 	}
 
 	int32_t v = *(UA_Int32 *)data->value.data;
-	int32_t clamped = v;
+	int32_t clamped = app_control_set_setpoint(v); /* common owns state + clamp */
 
-	if (clamped < CONFIG_APP_SETPOINT_MIN) {
-		clamped = CONFIG_APP_SETPOINT_MIN;
-	}
-	if (clamped > CONFIG_APP_SETPOINT_MAX) {
-		clamped = CONFIG_APP_SETPOINT_MAX;
-	}
-	g_setpoint = clamped;
 	LOG_INF("Setpoint written: %d (raw %d)", clamped, v);
 
 	if (clamped != v) {
@@ -179,8 +160,10 @@ static void on_running_write(UA_Server *server, const UA_NodeId *sid,
 	    !UA_Variant_hasScalarType(&data->value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
 		return;
 	}
-	g_running = *(UA_Boolean *)data->value.data;
-	LOG_INF("Running written: %s", g_running ? "true" : "false");
+	bool running = *(UA_Boolean *)data->value.data;
+
+	app_control_set_running(running);
+	LOG_INF("Running written: %s", running ? "true" : "false");
 }
 
 /* Add a writable scalar node under Device (in the application namespace) and
@@ -215,8 +198,8 @@ static UA_StatusCode add_writable(UA_Server *server, const char *id,
 
 static void add_control_nodes(UA_Server *server)
 {
-	UA_Int32 sp = g_setpoint;
-	UA_Boolean run = g_running;
+	UA_Int32 sp = app_control_setpoint();
+	UA_Boolean run = app_control_running();
 	UA_ValueCallback sp_cb = { .onRead = NULL, .onWrite = on_setpoint_write };
 	UA_ValueCallback run_cb = { .onRead = NULL, .onWrite = on_running_write };
 

@@ -19,7 +19,8 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-out="${here}/third_party/open62541"
+# The OPC-UA frontend vendors the amalgamation under lib/opcua/third_party/.
+out="${here}/lib/opcua/third_party"
 
 src="${1:-}"
 loglevel="${2:-300}"

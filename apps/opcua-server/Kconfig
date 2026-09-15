@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# OPC-UA server application. Shared options come from the lib/common module and
+# OPC-UA options from the lib/opcua module; both are auto-sourced as Zephyr
+# modules via Kconfig.zephyr below, so this app defines no symbols of its own.
+
+mainmenu "OPC-UA Server Firmware"
+
+source "Kconfig.zephyr"

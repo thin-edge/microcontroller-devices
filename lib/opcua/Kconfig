@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# OPC-UA protocol frontend options. Present only when an application composes
+# the lib/opcua module (e.g. apps/opcua-server).
+
+menu "OPC-UA frontend"
+
+config APP_OPCUA_SERVER
+	bool "Enable the OPC-UA server (compiles the vendored open62541 stack)"
+	default y
+	help
+	  When enabled, the OPC-UA server, address space and data-source
+	  adapter are compiled and started. Disable to build the bare
+	  connectivity skeleton (useful for bring-up).
+
+config APP_OPCUA_PORT
+	int "OPC-UA server TCP port (opc.tcp)"
+	default 4840
+	range 1 65535
+	depends on APP_OPCUA_SERVER
+	help
+	  TCP port the OPC-UA server listens on.
+
+config APP_OPCUA_MAX_SUBSCRIPTIONS
+	int "Max concurrent OPC-UA subscriptions"
+	default 2
+	range 0 16
+	depends on APP_OPCUA_SERVER
+	help
+	  Cap on concurrent subscriptions, to bound RAM on constrained boards.
+
+config APP_OPCUA_MAX_MONITORED_ITEMS
+	int "Max monitored items per subscription"
+	default 8
+	range 0 64
+	depends on APP_OPCUA_SERVER
+	help
+	  Cap on monitored items per subscription.
+
+endmenu # OPC-UA frontend

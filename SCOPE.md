@@ -71,6 +71,23 @@ Development is done on **macOS**, so build/flash instructions must work on macOS
 All targets are Wi-Fi-only (no Ethernet). A `native_sim` build is used for
 hardware-free development and CI.
 
+## Repository layout (multi-protocol workspace)
+
+The repo is a single west manifest repo organised as a shared core plus
+per-protocol libraries and applications, so it can build a fleet of
+single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
+
+- `lib/common/` — protocol-agnostic Zephyr module: connectivity, status display,
+  the device **data model** (measurements + writable control points) and device
+  identity (`FirmwareName`/`FirmwareVersion`/`BuildTimestamp`).
+- `lib/<protocol>/` — one protocol frontend per library (`lib/opcua/` today),
+  mapping the shared data model onto its wire protocol. See
+  `lib/common/README.md` for the frontend contract.
+- `apps/<protocol>/` — one application per firmware, composing `lib/common` with
+  one protocol frontend; owns its `prj.conf`, `Kconfig`, `VERSION`, `boards/`
+  overlays, and `CONFIG_APP_FIRMWARE_NAME`. Build with
+  `west build -b <board> apps/<protocol>`.
+
 ## Open questions
 
 - Chosen OPC-UA stack: open62541 (reduced/nano profile). Confirm it fits each
