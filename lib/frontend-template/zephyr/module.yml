@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Protocol-frontend TEMPLATE module (copy to lib/<protocol> to start a new one).
+name: app-frontend-template
+build:
+  cmake: .
+  kconfig: Kconfig

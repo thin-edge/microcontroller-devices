@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# OPC-UA protocol frontend (open62541-based). Depends on the app-common module.
+name: app-opcua
+build:
+  cmake: .
+  kconfig: Kconfig

@@ -26,10 +26,4 @@ UA_StatusCode address_space_setup(UA_Server *server);
  */
 void address_space_update(UA_Server *server);
 
-/** @return the current value of the writable `Setpoint` control node. */
-int32_t address_space_setpoint(void);
-
-/** @return the current value of the writable `Running` control node. */
-bool address_space_running(void);
-
 #endif /* APP_ADDRESS_SPACE_H_ */

@@ -96,7 +96,7 @@ docker exec zephyr-dev bash -lc 'cd /ws/modules/crypto/mbedtls && git submodule 
 
 ```sh
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
-  west build -b native_sim/native/64 . --pristine
+  west build -b native_sim/native/64 apps/opcua-server --pristine
 docker exec -w /ws/app zephyr-dev ./build/zephyr/zephyr.exe   # boots, starts server
 ```
 
@@ -106,9 +106,13 @@ docker exec -w /ws/app zephyr-dev ./build/zephyr/zephyr.exe   # boots, starts se
 
    ```sh
    docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
-     west build -b esp32_devkitc/esp32/procpu . --pristine \
-     -- -DEXTRA_CONF_FILE=overlay-wifi-credentials.conf
+     west build -b esp32_devkitc/esp32/procpu apps/opcua-server --pristine \
+     -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
    ```
+
+   > The build targets the application directory `apps/opcua-server`. The Wi-Fi
+   > credentials overlay stays at the repo root and is shared across apps, so
+   > pass it by absolute path (`/ws/app/...`) rather than relative to the app.
 
    The build output lands in `./build/` on the host (the repo is mounted).
 
@@ -134,8 +138,8 @@ Raspberry Pi Pico W flashes via UF2: hold BOOTSEL, plug in, copy
 
 ```sh
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
-  west build -b adafruit_feather_esp32s2_tft/esp32s2 . --pristine \
-  -- -DEXTRA_CONF_FILE=overlay-wifi-credentials.conf
+  west build -b adafruit_feather_esp32s2_tft/esp32s2 apps/opcua-server --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
 ```
 
 The Feather S2 has **native USB only** (no USB-serial bridge), so:
@@ -174,8 +178,9 @@ cp overlay-wifi-credentials.conf.example overlay-wifi-credentials.conf
 # edit → CONFIG_APP_WIFI_SSID / CONFIG_APP_WIFI_PSK  (2.4 GHz network)
 ```
 
-`overlay-wifi-credentials.conf` is git-ignored. Pass it with
-`-- -DEXTRA_CONF_FILE=overlay-wifi-credentials.conf` on the hardware build.
+`overlay-wifi-credentials.conf` is git-ignored and lives at the repo root
+(shared across apps). Pass it by absolute path on the hardware build:
+`-- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf`.
 
 ## Finding the device (mDNS / DNS-SD)
 
@@ -276,10 +281,28 @@ buffer, 8 KB per-connection buffers, and a small `CONFIG_HEAP_MEM_POOL_SIZE`
 (open62541 uses the libc `malloc` arena, sized `-1` = all remaining RAM). The
 ESP32-S2 (2 MB PSRAM) has far more headroom if these limits become tight.
 
+## Repository layout (multi-protocol workspace)
+
+Firmware is organised as a shared core plus per-protocol libraries and apps
+(see `lib/common/README.md` for the protocol-frontend contract):
+
+```
+lib/common/            shared core: connectivity, display, data model, identity
+lib/opcua/             OPC-UA frontend (open62541) + address-space adapter
+lib/frontend-template/ copy-me skeleton for a new protocol (SNMP/Modbus/CAN)
+apps/opcua-server/     the OPC-UA firmware: composes lib/common + lib/opcua
+  ├── prj.conf  Kconfig  VERSION
+  └── boards/<board>.conf   per-app board overlays (RAM/Wi-Fi tuning)
+```
+
+Each firmware is built by targeting its app directory, e.g.
+`west build -b <board> apps/opcua-server`. A new protocol becomes a new
+`lib/<protocol>` + `apps/<protocol>` pair; nothing else needs to change.
+
 ## Adding another Wi-Fi board
 
-1. Add `boards/<fully-qualified-board>.conf` (e.g.
+1. Add `apps/<app>/boards/<fully-qualified-board>.conf` (e.g.
    `esp32s2_saola.conf`) with that board's Wi-Fi driver + IP stack + mDNS +
    `CONFIG_NET_HOSTNAME` — copy an existing ESP32 conf. HWMv2 matches the
    *fully-qualified* filename (board + qualifiers, `/` → `_`).
-2. Build with `-b <board>`; the core app and OPC-UA logic need no changes.
+2. Build with `-b <board> apps/<app>`; the core and OPC-UA logic need no changes.

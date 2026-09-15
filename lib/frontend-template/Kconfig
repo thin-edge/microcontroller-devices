@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# Protocol-frontend TEMPLATE. Disabled by default; no application composes it.
+
+config APP_FRONTEND_TEMPLATE
+	bool "Compile the protocol-frontend template (skeleton only)"
+	default n
+	help
+	  Skeleton frontend used as a copy-me starting point for new protocols.
+	  Not a working protocol; leave disabled.

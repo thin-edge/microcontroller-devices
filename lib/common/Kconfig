@@ -1,28 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Application configuration. Board-independent tunables live here with
-# sensible defaults; board specifics live in boards/<board>.conf and overlays.
+# Shared, protocol-agnostic firmware options: device identity, connectivity
+# (Wi-Fi), status display, the data-model sampling interval, and the writable
+# control points. Protocol frontends (OPC-UA, and later SNMP/Modbus/CAN) build
+# on top of these; protocol-specific options live in each lib/<protocol>/Kconfig.
 
-mainmenu "OPC-UA Server Firmware"
-
-menu "OPC-UA server firmware options"
+menu "Common firmware options"
 
 config APP_DEVICE_NAME
-	string "Device / OPC-UA application name"
+	string "Device / application name"
 	default "tedge-opcua-device"
 	help
-	  Human-readable name advertised as the OPC-UA application/server name
-	  and used to derive the default mDNS hostname.
+	  Human-readable device name advertised by protocol frontends and used
+	  to derive the default mDNS hostname.
 
 config APP_FIRMWARE_NAME
 	string "Firmware name"
 	default "zephyr-opcua-server"
 	help
 	  Identifies the firmware image/application (as opposed to the device).
-	  Exposed as the OPC-UA node ns=1;s=FirmwareName and paired with
-	  FirmwareVersion so a collector can tell which firmware a device runs
-	  (e.g. distinct names for Phase-2 protocol variants). Maps naturally to
-	  a Cumulocity firmware "name".
+	  Exposed by frontends (e.g. the OPC-UA node ns=1;s=FirmwareName) and
+	  paired with FirmwareVersion so a collector can tell which firmware a
+	  device runs. Each apps/<protocol> sets its own default.
 
 config APP_MDNS_HOSTNAME
 	string "mDNS hostname (advertised as <hostname>.local)"
@@ -31,34 +30,13 @@ config APP_MDNS_HOSTNAME
 	  Hostname advertised over mDNS. The device becomes reachable as
 	  "<hostname>.local" on the local network.
 
-config APP_OPCUA_PORT
-	int "OPC-UA server TCP port (opc.tcp)"
-	default 4840
-	range 1 65535
-	help
-	  TCP port the OPC-UA server listens on.
-
 config APP_SAMPLE_INTERVAL_MS
 	int "Data source sampling interval (ms)"
 	default 1000
 	range 50 3600000
 	help
-	  Interval at which the data source is sampled and OPC-UA variable
-	  node values are refreshed.
-
-config APP_OPCUA_MAX_SUBSCRIPTIONS
-	int "Max concurrent OPC-UA subscriptions"
-	default 2
-	range 0 16
-	help
-	  Cap on concurrent subscriptions, to bound RAM on constrained boards.
-
-config APP_OPCUA_MAX_MONITORED_ITEMS
-	int "Max monitored items per subscription"
-	default 8
-	range 0 64
-	help
-	  Cap on monitored items per subscription.
+	  Interval at which the data source is sampled and frontend values are
+	  refreshed.
 
 config APP_SETPOINT_MIN
 	int "Writable Setpoint minimum"
@@ -81,16 +59,8 @@ config APP_DISPLAY_STATUS
 	default n
 	help
 	  On boards with a TFT (e.g. Adafruit Feather ESP32-S2 TFT), show a
-	  colour-coded connectivity stage and the device's IPv4 address as large
-	  digits. Useful to relay status when no serial console is available.
-
-config APP_OPCUA_SERVER
-	bool "Enable the OPC-UA server (compiles the vendored open62541 stack)"
-	default y
-	help
-	  When enabled, the OPC-UA server, address space and data-source
-	  modules are compiled and started. Disable to build the bare
-	  connectivity skeleton (useful for bring-up).
+	  colour-coded connectivity stage and the device's IPv4 address. Useful
+	  to relay status when no serial console is available.
 
 menu "Wi-Fi (station mode) — hardware targets"
 
@@ -139,9 +109,7 @@ config APP_WIFI_MAC
 	depends on APP_WIFI
 	help
 	  If non-empty, set the Wi-Fi station MAC to this address before
-	  connecting (ESP32 only). Use a locally-administered unicast address
-	  (second-least-significant bit of the first octet set, e.g. 02:...).
-	  Useful to test whether the router is blocking the factory MAC.
+	  connecting (ESP32 only). Use a locally-administered unicast address.
 
 config APP_WIFI_SSID
 	string "Wi-Fi SSID"
@@ -161,6 +129,4 @@ config APP_WIFI_PSK
 
 endmenu # Wi-Fi
 
-endmenu # OPC-UA server firmware options
-
-source "Kconfig.zephyr"
+endmenu # Common firmware options
