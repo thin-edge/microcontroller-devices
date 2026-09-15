@@ -1,0 +1,139 @@
+# tedge-dot Modbus point library for the Zephyr pump-simulator firmware.
+#
+# Describes the exact register map served by apps/modbus-server (pump simulation,
+# see lib/modbus/modbus_server.c and lib/common/sim_pump.c). Keep in sync with
+# that register map. Copy/point tedge-dot at this file:
+#   points.d/modbus/zephyr-modbus-pump.toml
+#
+# Device: Modbus TCP, port 502, unit id 1. Zero-based addresses.
+
+[library]
+protocol    = "modbus"
+type        = "zephyr-modbus-pump"
+description = "Zephyr pump/motor simulator (flow/pressure/motor-temp/rpm/vibration/run-hours; writable speed/mode/run)"
+version     = "1"
+
+# --- Measurements: input registers, scaled integers (compact, 1 register each) ---
+
+[[point]]
+id          = "flow_lpm"
+name        = "Flow"
+description = "Pump flow rate"
+datatype    = "uint16"
+unit        = "L/min"
+address     = { table = "input", address = 0, count = 1 }
+transform   = { decimal_shift = 1 }        # raw = value x10
+
+[[point]]
+id          = "pressure_bar"
+name        = "Discharge pressure"
+datatype    = "uint16"
+unit        = "bar"
+address     = { table = "input", address = 1, count = 1 }
+transform   = { decimal_shift = 2 }        # raw = value x100
+
+[[point]]
+id          = "motor_temp_c"
+name        = "Motor temperature"
+datatype    = "uint16"
+unit        = "Cel"
+address     = { table = "input", address = 2, count = 1 }
+transform   = { decimal_shift = 1 }        # raw = value x10
+
+[[point]]
+id          = "rpm"
+name        = "Speed"
+datatype    = "uint16"
+unit        = "rpm"
+address     = { table = "input", address = 3, count = 1 }
+
+[[point]]
+id          = "vibration_mms"
+name        = "Vibration"
+datatype    = "uint16"
+unit        = "mm/s"
+address     = { table = "input", address = 4, count = 1 }
+transform   = { decimal_shift = 2 }        # raw = value x100
+
+[[point]]
+id          = "run_seconds"
+name        = "Run time"
+description = "Accrues only while running"
+datatype    = "uint32"
+unit        = "s"
+address     = { table = "input", address = 10, count = 2 }   # 32-bit, big-endian pair
+
+# --- Same measurements as IEEE-754 floats (alternate representation, IR20..25) ---
+
+[[point]]
+id       = "flow_lpm_f32"
+name     = "Flow (float)"
+datatype = "float32"
+unit     = "L/min"
+address  = { table = "input", address = 20, count = 2 }
+meta     = { parameter = { group = ["float"] } }
+
+[[point]]
+id       = "pressure_bar_f32"
+name     = "Discharge pressure (float)"
+datatype = "float32"
+unit     = "bar"
+address  = { table = "input", address = 22, count = 2 }
+meta     = { parameter = { group = ["float"] } }
+
+[[point]]
+id       = "motor_temp_c_f32"
+name     = "Motor temperature (float)"
+datatype = "float32"
+unit     = "Cel"
+address  = { table = "input", address = 24, count = 2 }
+meta     = { parameter = { group = ["float"] } }
+
+# --- Writable control points: holding registers + coil ---
+
+[[point]]
+id          = "speed_setpoint"
+name        = "Speed setpoint"
+description = "Commanded speed (manual mode)"
+datatype    = "uint16"
+unit        = "%"
+access      = "read_write"
+address     = { table = "holding", address = 0, count = 1 }
+meta        = { parameter = { min = 0, max = 100, group = ["control"] } }
+
+[[point]]
+id          = "mode"
+name        = "Mode"
+description = "0=off, 1=auto, 2=manual"
+datatype    = "uint16"
+access      = "read_write"
+address     = { table = "holding", address = 1, count = 1 }
+meta        = { parameter = { min = 0, max = 2, group = ["control"] } }
+
+[[point]]
+id          = "running"
+name        = "Run/stop"
+datatype    = "bool"
+access      = "read_write"
+address     = { table = "coil", address = 0, count = 1 }
+meta        = { parameter = { group = ["control"] } }
+
+# --- Status: discrete inputs ---
+
+[[point]]
+id       = "running_status"
+name     = "Running"
+datatype = "bool"
+address  = { table = "discrete_input", address = 0, count = 1 }
+
+[[point]]
+id       = "fault"
+name     = "Fault (over-temperature)"
+datatype = "bool"
+address  = { table = "discrete_input", address = 1, count = 1 }
+
+[[point]]
+id       = "network_connected"
+name     = "Network connected"
+datatype = "bool"
+address  = { table = "discrete_input", address = 2, count = 1 }
