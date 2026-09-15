@@ -1,0 +1,70 @@
+[library]
+protocol    = "opcua"
+type        = "zephyr-opcua-device"
+description = "Zephyr OPC-UA device (open62541) server"
+version     = "1"
+
+[[point]]
+id          = "temperature"
+name        = "Temperature"
+description = "Ambient temperature"
+datatype    = "float64"
+unit        = "°C"
+address     = { node_id = "ns=1;s=temperature" }
+
+[[point]]
+id          = "humidity"
+name        = "Humidity"
+description = "Relative humidity"
+datatype    = "float64"
+unit        = "%RH"
+address     = { node_id = "ns=1;s=humidity" }
+
+[[point]]
+id          = "pressure"
+name        = "Pressure"
+description = "Barometric pressure"
+datatype    = "float64"
+unit        = "hPa"
+address     = { node_id = "ns=1;s=pressure" }
+
+[[point]]
+id          = "setpoint"
+name        = "Setpoint"
+description = "Operator-settable target value"
+datatype    = "int32"
+access      = "read_write"
+address     = { node_id = "ns=1;s=Setpoint" }
+meta        = { parameter = { min = -1000, max = 1000 } }
+
+[[point]]
+id          = "running"
+name        = "Running"
+description = "Whether the simulated process is running"
+datatype    = "bool"
+access      = "read_write"
+address     = { node_id = "ns=1;s=Running" }
+
+[[point]]
+id          = "firmwareName"
+name        = "Firmware name"
+description = "Firmware name running on the device"
+datatype    = "string"
+address     = { node_id = "ns=1;s=FirmwareName" }
+meta     = { parameter = { key = "firmware.name" }, measurement = false }
+
+[[point]]
+id          = "firmwareVersion"
+name        = "Firmware version"
+description = "Firmware version running on the device"
+datatype    = "string"
+address     = { node_id = "ns=1;s=FirmwareVersion" }
+meta     = { parameter = { key = "firmware.version" }, measurement = false }
+
+[[point]]
+id          = "buildTimestamp"
+name        = "Build timestamp"
+description = "When the firmware was built"
+datatype    = "string"
+address     = { node_id = "ns=1;s=BuildTimestamp" }
+meta        = { parameter = { key = "firmware.buildTime" },  measurement = false }
