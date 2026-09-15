@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Adafruit QT Py ESP32-S3: the Wi-Fi node is disabled by default in the S3 SoC
+ * devicetree, so enable it for station-mode connectivity.
+ */
+&wifi {
+	status = "okay";
+};

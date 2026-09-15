@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Modbus TCP protocol frontend options. Present only when an application composes
+# the lib/modbus module (e.g. apps/modbus-server).
+
+menu "Modbus TCP frontend"
+
+config APP_MODBUS_SERVER
+	bool "Enable the Modbus TCP server"
+	default y
+	select MODBUS
+	select MODBUS_RAW_ADU
+	help
+	  Serve the shared device data model over Modbus TCP using Zephyr's
+	  in-tree modbus subsystem in raw-ADU server mode plus a TCP listener.
+	  Also set CONFIG_MODBUS_ROLE_SERVER=y in the app (it is a Kconfig choice,
+	  so it cannot be selected here).
+
+config APP_MODBUS_PORT
+	int "Modbus TCP listen port"
+	default 502
+	range 1 65535
+	depends on APP_MODBUS_SERVER
+
+config APP_MODBUS_UNIT_ID
+	int "Modbus unit id"
+	default 1
+	range 1 247
+	depends on APP_MODBUS_SERVER
+
+endmenu # Modbus TCP frontend

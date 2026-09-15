@@ -30,6 +30,22 @@ config APP_MDNS_HOSTNAME
 	  Hostname advertised over mDNS. The device becomes reachable as
 	  "<hostname>.local" on the local network.
 
+config APP_DNSSD_SERVICE_TYPE
+	string "DNS-SD service type advertised by the active frontend"
+	default "_opcua-tcp"
+	help
+	  DNS-SD/mDNS service type the firmware advertises (e.g. "_opcua-tcp" or
+	  "_modbus"). Each app sets this to match its protocol frontend; the default
+	  reproduces the OPC-UA firmware's advertisement.
+
+config APP_DNSSD_PORT
+	int "DNS-SD advertised TCP port"
+	default 4840
+	range 1 65535
+	help
+	  TCP port advertised in the DNS-SD record. Set to the frontend's listen
+	  port (OPC-UA 4840, Modbus 502).
+
 config APP_SAMPLE_INTERVAL_MS
 	int "Data source sampling interval (ms)"
 	default 1000
@@ -53,6 +69,37 @@ config APP_SETPOINT_DEFAULT
 config APP_RUNNING_DEFAULT
 	bool "Writable 'Running' flag initial value"
 	default n
+
+config APP_MODE_DEFAULT
+	int "Initial mode (0=off, 1=auto, 2=manual)"
+	default 0
+	range 0 2
+	help
+	  Initial value of the writable 'mode' control point. Used by simulations
+	  that model an operating mode (e.g. the pump). Ignored by simulations that
+	  don't use it.
+
+choice
+	prompt "Device simulation model"
+	default APP_SIM_ENVIRONMENT
+	help
+	  Selects which simulation drives the shared data model for this firmware.
+	  Frontends are simulation-agnostic; switching this is a config-only change.
+
+config APP_SIM_ENVIRONMENT
+	bool "Environment (temperature / humidity / pressure)"
+	help
+	  Smoothly-varying environmental sensor values with a generic Setpoint and
+	  Running control. The original demo model; default for the OPC-UA firmware.
+
+config APP_SIM_PUMP
+	bool "Pump / motor (control-driven)"
+	help
+	  A pump/motor whose measurements (flow, pressure, motor temperature, rpm,
+	  vibration, run-hours) are produced by a stateful model driven by the
+	  speed_setpoint / running / mode controls. Default for the Modbus firmware.
+
+endchoice
 
 config APP_DISPLAY_STATUS
 	bool "Show connectivity status on a TFT display"

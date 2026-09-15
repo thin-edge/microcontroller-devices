@@ -29,4 +29,15 @@ bool app_control_running(void);
 /** Set the Running flag. */
 void app_control_set_running(bool value);
 
+/** @return the current mode (0=off, 1=auto, 2=manual). */
+int app_control_mode(void);
+
+/**
+ * Set the mode, clamping to [0, 2].
+ *
+ * @param value requested mode.
+ * @return the stored (clamped) mode.
+ */
+int app_control_set_mode(int value);
+
 #endif /* APP_CONTROLS_H_ */

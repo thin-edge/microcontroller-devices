@@ -33,15 +33,17 @@ LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
 #if defined(CONFIG_DNS_SD)
 #include <zephyr/net/dns_sd.h>
 #include <string.h>
-/* Advertise the OPC-UA server as a DNS-SD service (_opcua-tcp._tcp) so it can be
- * discovered on the LAN without a known IP. The instance name lives in a
- * mutable buffer that is filled at runtime with the unique per-device hostname
- * (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC), so multiple devices on the same
- * network advertise distinct instances and do not clash. The mDNS responder
- * separately answers for <unique-hostname>.local. */
-static char opcua_sd_instance[64] = CONFIG_NET_HOSTNAME;
-DNS_SD_REGISTER_TCP_SERVICE(opcua_dns_sd, opcua_sd_instance, "_opcua-tcp",
-			    "local", DNS_SD_EMPTY_TXT, CONFIG_APP_OPCUA_PORT);
+/* Advertise the frontend as a DNS-SD service so it can be discovered on the LAN
+ * without a known IP. The service type and port are per-firmware
+ * (CONFIG_APP_DNSSD_SERVICE_TYPE / CONFIG_APP_DNSSD_PORT; defaults reproduce the
+ * OPC-UA firmware's _opcua-tcp / 4840). The instance name lives in a mutable
+ * buffer filled at runtime with the unique per-device hostname
+ * (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC) so devices don't clash. The mDNS
+ * responder separately answers for <unique-hostname>.local. */
+static char dnssd_instance[64] = CONFIG_NET_HOSTNAME;
+DNS_SD_REGISTER_TCP_SERVICE(app_dns_sd, dnssd_instance,
+			    CONFIG_APP_DNSSD_SERVICE_TYPE, "local",
+			    DNS_SD_EMPTY_TXT, CONFIG_APP_DNSSD_PORT);
 #endif
 
 /* Copy the current (unique) hostname into the DNS-SD instance buffer. */
@@ -50,8 +52,8 @@ static void update_identity(void)
 #if defined(CONFIG_DNS_SD) && defined(CONFIG_NET_HOSTNAME_ENABLE)
 	const char *h = net_hostname_get();
 
-	strncpy(opcua_sd_instance, h, sizeof(opcua_sd_instance) - 1);
-	opcua_sd_instance[sizeof(opcua_sd_instance) - 1] = '\0';
+	strncpy(dnssd_instance, h, sizeof(dnssd_instance) - 1);
+	dnssd_instance[sizeof(dnssd_instance) - 1] = '\0';
 #endif
 }
 
