@@ -90,6 +90,28 @@ driven independently of the 3 s `status_work` so the pattern is visibly fast.
 - *Alternative — an RGB/NeoPixel status (colour = stage):* nicer but needs the
   `led_strip` driver per board; deferred.
 
+### D7: Reachability gate (found during verification)
+
+Verification showed a router "block" is an **L3 traffic drop**: the device stays
+associated with a valid IP (no disconnect/L4 event), so an "associated + has IP"
+health check reports healthy while nothing actually passes — the LED stayed solid
+and recovery never kicked in. Fix: the watchdog judges health by **actual
+reachability** using the existing gateway ICMP probe (`ping_gateway_once` /
+`ping_ok`). Health = `has_ip && reachable`, where `reachable` = pings are still
+being answered. A `proven` guard (the target must answer at least once after
+connecting) avoids false-offline loops on networks that block ICMP to the probe
+target; a stall tolerance (~15 s of no replies) avoids flapping on the odd dropped
+ping. The watchdog also drives the connected state both ways — marking connected
+again when reachability returns (e.g. the block is lifted) without needing a fresh
+L4 event, since an L3 block never re-associates. Also: `WIFI_DISCONNECT_RESULT`
+now calls `mark_connected(false)` so a deauth updates the LED immediately instead
+of waiting for L4.
+
+- *Alternative — trust association + IP only:* the original approach; blind to L3
+  blocks (the observed failure). Rejected.
+- *Alternative — a TCP probe to the collector:* more representative but needs the
+  collector's address; the gateway ping is always available and cheap.
+
 ## Risks / Trade-offs
 
 - [Reboot during a real but recoverable outage] → generous default (5 min of

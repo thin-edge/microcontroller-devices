@@ -64,6 +64,45 @@ disconnect, and initiate recovery.
 - **WHEN** the IPv4 address is lost while `connected` is still true
 - **THEN** the firmware marks itself disconnected and begins reconnecting
 
+### Requirement: Reachability-based connectivity (not just association)
+
+The firmware SHALL judge connectivity by actual data-path reachability, not only
+by Wi-Fi association and IPv4-address presence. When the device is nominally
+connected (associated, with an IP) but can no longer reach the network — e.g. a
+router blocks/pauses it at L3 so it stays associated but its traffic is dropped —
+the firmware SHALL treat it as offline (LED blinks) and drive recovery, and SHALL
+return to connected once reachability is restored. To avoid false positives on
+networks that never answer the reachability probe, the probe SHALL gate
+connectivity only after it has succeeded at least once since connecting.
+
+#### Scenario: Router blocks the device at L3
+
+- **WHEN** the device is associated with a valid IP but the router silently drops
+  its traffic (no disconnect/L4 event), and the reachability probe had previously
+  succeeded
+- **THEN** within a short window the firmware detects the loss (LED blinks) and
+  drives recovery (and the last-resort reboot if it persists)
+- **AND** when the block is lifted and reachability returns, it marks itself
+  connected again (LED steady)
+
+#### Scenario: Probe target never answers
+
+- **WHEN** the probe target never answers (e.g. ICMP is blocked to it)
+- **THEN** connectivity is not judged offline on that basis (it falls back to
+  association + IP), avoiding a false-offline reboot loop
+
+### Requirement: Status reflects Wi-Fi disconnect events promptly
+
+The firmware SHALL update its connected state (and thus the status LED) on a
+Wi-Fi disconnect result, not only on a higher-layer (L4) disconnect, so a dropped
+association is reflected immediately.
+
+#### Scenario: Deauth updates the indicator promptly
+
+- **WHEN** the device receives a Wi-Fi disconnect result
+- **THEN** it marks itself disconnected immediately (LED blinks) and begins
+  reconnecting, without waiting for a delayed L4 event
+
 ### Requirement: Last-resort self-reboot
 
 The firmware SHALL reboot itself if it remains offline for a configurable

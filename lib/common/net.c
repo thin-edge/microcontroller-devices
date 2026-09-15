@@ -441,26 +441,53 @@ static void reconnect_handler(struct k_work *work)
 
 /* Event-independent recovery: runs every status_work tick (~3 s). Reconnection
  * on management events alone can dead-end (associated-but-no-IP, a no-op connect,
- * or a silent lease loss), leaving the device offline until a manual reboot. This
- * watchdog treats "not connected OR no IPv4 address" as bad, forces reconnects,
- * and — as a last resort — reboots after a prolonged outage. */
-#define WD_TRIGGER_TICKS 2 /* ~6 s of bad before forcing a reconnect */
+ * a silent lease loss, or a router L3 block that fires no event). The watchdog
+ * judges health by actual reachability — not just association + IP — and drives
+ * the connected state (both ways) plus the last-resort reboot. */
+#define WD_TRIGGER_TICKS  2  /* ~6 s of bad before nudging a reconnect */
+#define WD_PING_STALL_MAX 5  /* ~15 s with no ping replies = data path down */
 
 static void connectivity_watchdog(void)
 {
 	static uint32_t bad_ticks;
 
-	bool has_ip = read_iface_ipv4() != 0;
+	bool healthy = read_iface_ipv4() != 0; /* an IP is the minimum */
 
-	if (app_net_is_connected() && has_ip) {
+#if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	/* Reachability gate: once the gateway has answered at least once, a sustained
+	 * loss of ping replies means the data path is down (e.g. a router L3 block)
+	 * even while we remain associated with a valid IP. The `proven` guard avoids
+	 * false-offline loops on networks that never answer ICMP to the target. */
+	static uint32_t last_ping_ok;
+	static uint32_t ping_stall;
+	static bool ping_proven;
+	uint32_t now_ok = (uint32_t)atomic_get(&ping_ok);
+
+	if (now_ok != last_ping_ok) {
+		ping_proven = true;
+		ping_stall = 0;
+		last_ping_ok = now_ok;
+	} else {
+		ping_stall++;
+	}
+	if (ping_proven && ping_stall >= WD_PING_STALL_MAX) {
+		healthy = false;
+	}
+#endif
+
+	if (healthy) {
+		/* Recovered (DHCP bound, or an L3 block lifted — no L4 event fires for a
+		 * block, so restore the connected state here). */
+		if (!app_net_is_connected()) {
+			LOG_INF("Connectivity restored");
+			mark_connected(true);
+		}
 		bad_ticks = 0;
 		return;
 	}
 
-	/* Connected flag set but the IPv4 address is gone (e.g. lease lost without a
-	 * clean disconnect): treat as disconnected so recovery proceeds. */
-	if (app_net_is_connected() && !has_ip) {
-		LOG_WRN("IPv4 address lost while connected — recovering");
+	if (app_net_is_connected()) {
+		LOG_WRN("Connectivity lost (no reachable data path) — recovering");
 		mark_connected(false);
 	}
 
@@ -524,7 +551,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		g_last_reason = status->disconn_reason;
 		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
 			status->disconn_reason);
-		render_status(DISPLAY_STAGE_WIFI_CONNECTING);
+		mark_connected(false); /* update state + LED now, not only on L4 */
 		k_work_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
