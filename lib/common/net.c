@@ -423,9 +423,10 @@ static int wifi_connect(void)
 #include <zephyr/sys/reboot.h>
 #endif
 
-/* Force a fresh reconnect. If a plain connect fails (e.g. the driver still
- * considers itself associated so the request is a no-op / -EALREADY), clear the
- * association and retry shortly — never give up silently. */
+/* Attempt a reconnect. Keep it gentle: if the request errors (commonly
+ * -EALREADY — the driver is already associating), just retry later rather than
+ * interrupting the in-progress attempt. Breaking a genuinely stale association is
+ * handled by the watchdog only after a prolonged stall (see below). */
 static void reconnect_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
@@ -433,15 +434,7 @@ static void reconnect_handler(struct k_work *work)
 		return;
 	}
 
-	int rc = wifi_connect();
-
-	if (rc) {
-		struct net_if *iface = net_if_get_first_wifi();
-
-		LOG_WRN("wifi_connect() failed (%d) — clearing association, retrying", rc);
-		if (iface != NULL) {
-			(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
-		}
+	if (wifi_connect() != 0) {
 		k_work_reschedule(&reconnect_work, K_SECONDS(2));
 	}
 }
@@ -473,8 +466,19 @@ static void connectivity_watchdog(void)
 
 	bad_ticks++;
 
-	/* Force a reconnect periodically while offline (event-independent). */
+	/* Escalate gently. ~every 6 s nudge a reconnect (does not interrupt an
+	 * in-progress association). After a prolonged stall (~30 s), clear any stale
+	 * association once so a wedged connect can restart cleanly; its disconnect
+	 * event then drives a fresh reconnect. */
 	if ((bad_ticks % WD_TRIGGER_TICKS) == 0) {
+		if (bad_ticks == 10) {
+			struct net_if *iface = net_if_get_first_wifi();
+
+			if (iface != NULL) {
+				LOG_WRN("Offline ~30 s — clearing association to restart connect");
+				(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+			}
+		}
 		k_work_reschedule(&reconnect_work, K_NO_WAIT);
 	}
 
