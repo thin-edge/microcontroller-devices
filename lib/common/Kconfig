@@ -39,12 +39,21 @@ config APP_DNSSD_SERVICE_TYPE
 	  reproduces the OPC-UA firmware's advertisement.
 
 config APP_DNSSD_PORT
-	int "DNS-SD advertised TCP port"
+	int "DNS-SD advertised port"
 	default 4840
 	range 1 65535
 	help
-	  TCP port advertised in the DNS-SD record. Set to the frontend's listen
-	  port (OPC-UA 4840, Modbus 502).
+	  Port advertised in the DNS-SD record. Set to the frontend's listen port
+	  (OPC-UA 4840, Modbus 502, SNMP 161).
+
+config APP_DNSSD_UDP
+	bool "Advertise the DNS-SD service over UDP (instead of TCP)"
+	default n
+	help
+	  Register the DNS-SD service as _<type>._udp rather than _<type>._tcp.
+	  Set for UDP-based frontends (e.g. SNMP: _snmp._udp) so the transport in
+	  the advertised service type matches reality. TCP-based frontends
+	  (OPC-UA, Modbus) leave this off.
 
 config APP_SAMPLE_INTERVAL_MS
 	int "Data source sampling interval (ms)"
@@ -99,7 +108,41 @@ config APP_SIM_PUMP
 	  vibration, run-hours) are produced by a stateful model driven by the
 	  speed_setpoint / running / mode controls. Default for the Modbus firmware.
 
+config APP_SIM_SWITCH
+	bool "Managed switch / router (network interfaces)"
+	help
+	  A small managed switch/router modelled as a fixed set of Ethernet
+	  interfaces, each with an operational/administrative status, nominal speed
+	  and monotonic traffic counters. One interface flaps its link periodically
+	  so a frontend can report link up/down events. Default for the SNMP firmware.
+
 endchoice
+
+config APP_SIM_SWITCH_IF_COUNT
+	int "Simulated switch: number of network interfaces"
+	default 5
+	range 1 8
+	depends on APP_SIM_SWITCH
+	help
+	  How many interfaces the switch/router simulation exposes (bounded by
+	  SIM_SWITCH_MAX_IF = 8). Each becomes an ifTable row in the SNMP frontend.
+
+config APP_SIM_SWITCH_FLAP_PERIOD_STEPS
+	int "Simulated switch: link flap period (sample steps; 0 = never flap)"
+	default 15
+	range 0 86400
+	depends on APP_SIM_SWITCH
+	help
+	  How often one interface toggles its operational status, counted in
+	  sampling steps of APP_SAMPLE_INTERVAL_MS — so the default 15 flaps a link
+	  every 15 s at the default 1 s interval.
+
+	  Every toggle is a linkUp/linkDown notification in the SNMP frontend and an
+	  alarm raise or clear in a collector, so at the default a device left
+	  running produces on the order of 5,700 events a day. That is what makes a
+	  short demo interesting and a long-running deployment noisy: raise it (900
+	  = 15 minutes at the default interval) for something left running, or set 0
+	  to keep every link stable and exercise only the counters.
 
 config APP_DISPLAY_STATUS
 	bool "Show connectivity status on a TFT display"

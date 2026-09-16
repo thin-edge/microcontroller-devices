@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# SNMP agent application. Shared options come from the lib/common module and SNMP
+# options from the lib/snmp module (both auto-sourced as Zephyr modules via
+# Kconfig.zephyr below).
+
+mainmenu "SNMP Agent Firmware"
+
+source "Kconfig.zephyr"

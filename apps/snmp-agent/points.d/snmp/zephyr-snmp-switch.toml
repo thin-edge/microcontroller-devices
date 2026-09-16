@@ -1,0 +1,549 @@
+# tedge-dot SNMP point library for the Zephyr switch/router firmware (apps/snmp-agent).
+#
+# Describes the exact MIB view the firmware serves — the MIB-II system group and ifTable built
+# in lib/snmp/snmp_mib.c from the switch simulation in lib/common/sim_switch.c — and the
+# notifications lib/snmp/snmp_trap.c sends. Keep it in sync with those three files.
+#
+# Reference it from a tedge-dot SNMP connector configuration (contract §3.4):
+#
+#   [[device]]
+#   name             = "tedge-snmp-device"
+#   protocol_address = { host = "tedge-snmp.local", port = 161, version = "v2c", community = "public" }
+#   points_from      = ["zephyr-snmp-switch"]
+#
+# and, from a checkout rather than an installed package, point the search path at this directory:
+#
+#   export TEDGE_DOT_POINT_LIBRARY_PATH=apps/snmp-agent/points.d
+#
+# Three things about this device shape the list:
+#
+# * The agent is READ-ONLY. It answers SET with notWritable (lib/snmp/snmp_agent.c), so every
+#   point is `access = "read"` (the default) and nothing here is an operator-writable parameter.
+#   The three firmware-identity points below still opt into a parameter set (contract §5.2
+#   allows a read-only point to), because their job is to report device state, not to be set.
+# * Traps are pushed to CONFIG_APP_SNMP_TRAP_MANAGER:CONFIG_APP_SNMP_TRAP_PORT, not subscribed
+#   to. The connector must `listen` on that address, and routes the notification to this device
+#   by its source address — so the manager address configured in the firmware has to be the
+#   gateway running tedge-dot.
+# * The ifTable rows cover CONFIG_APP_SIM_SWITCH_IF_COUNT = 5 (the prj.conf default:
+#   ifIndex 1..5 = GigabitEthernet0/1..GigabitEthernet0/5). A firmware built with a different
+#   count needs rows added by the same pattern, or the surplus ones switched off with
+#   `enabled = false` — polling a row the agent does not serve returns noSuchInstance, which is
+#   a permanently `bad` sample, not a silent omission.
+#
+# Link state is alarmed from the POLLED ifOperStatus column, one alarm type per interface, so
+# an alarm names the port it is about and clears on the next poll that reads it up. The
+# linkUp/linkDown traps are mapped to events instead: they are occurrences (two linkDowns are
+# two notifications), and alarming them as well would raise a second alarm for the same fact.
+# The commented block at the end of this file shows the other arrangement.
+
+[library]
+protocol    = "snmp"
+type        = "zephyr-snmp-switch"
+description = "Zephyr managed switch/router simulator (MIB-II system group + ifTable, linkUp/linkDown/coldStart traps)"
+version     = "1"
+
+# --- system group: 1.3.6.1.2.1.1 ----------------------------------------------------------
+#
+# All but sysUpTime are identity, not telemetry: they are kept out of the measurements with
+# `meta.measurement = false` and polled hourly rather than on the device's poll interval.
+
+[[point]]
+id            = "sys_descr"
+name          = "System description"
+description   = "Firmware name, version and build timestamp"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.1.0" }
+meta          = { measurement = false }
+
+# Answers 1.3.6.1.4.1.99999.1 — a placeholder enterprise number, not a registered one.
+[[point]]
+id            = "sys_object_id"
+name          = "System object ID"
+description   = "Private-enterprise arc identifying this firmware"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.2.0" }
+meta          = { measurement = false }
+
+# sysUpTime.0 is TimeTicks — hundredths of a second.
+[[point]]
+id          = "uptime"
+name        = "Agent uptime"
+description = "Time since the agent built its MIB view (reset by a reboot)"
+datatype    = "float64"
+unit        = "s"
+transform   = { divisor = 100 }
+address     = { oid = "1.3.6.1.2.1.1.3.0" }
+
+[[point]]
+id            = "sys_contact"
+name          = "System contact"
+description   = "CONFIG_APP_SNMP_SYS_CONTACT, set at build time"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.4.0" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "sys_name"
+name          = "System name"
+description   = "The device hostname, which is also its mDNS <hostname>.local name"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.5.0" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "sys_location"
+name          = "System location"
+description   = "CONFIG_APP_SNMP_SYS_LOCATION, set at build time"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.6.0" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "sys_services"
+name          = "System services"
+description   = "MIB-II services bitmask; the firmware answers 6 = datalink (L2) + internet (L3)"
+datatype      = "int32"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.1.7.0" }
+meta          = { measurement = false }
+
+# --- firmware identity: 1.3.6.1.4.1.99999.1.<n>.0 ------------------------------------------
+#
+# The private-enterprise arc sysObjectID.0 points at. The firmware reports its name, version and
+# build timestamp as three separate objects here; sysDescr.0 above packs the same three strings
+# into one sentence, which a collector would have to parse.
+#
+# `meta.parameter.key` files them in the device's `firmware` parameter set (contract §5.2) —
+# read-only points opting in, the same arrangement the OPC-UA library uses for its firmware
+# nodes — so tedge-dot reports them as device state rather than as telemetry.
+
+[[point]]
+id            = "firmware_name"
+name          = "Firmware name"
+description   = "Firmware image name (CONFIG_APP_FIRMWARE_NAME)"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.4.1.99999.1.1.0" }
+meta          = { parameter = { key = "firmware.name" }, measurement = false }
+
+[[point]]
+id            = "firmware_version"
+name          = "Firmware version"
+description   = "Application version, from the app's VERSION file"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.4.1.99999.1.2.0" }
+meta          = { parameter = { key = "firmware.version" }, measurement = false }
+
+[[point]]
+id            = "build_timestamp"
+name          = "Build timestamp"
+description   = "When this firmware image was compiled"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.4.1.99999.1.3.0" }
+meta          = { parameter = { key = "firmware.buildTime" }, measurement = false }
+
+# --- interfaces group: 1.3.6.1.2.1.2 ------------------------------------------------------
+#
+# ifNumber.0, then one block per ifTable row. Columns 1 (ifIndex), 3 (ifType) and 4 (ifMtu) are
+# served but left out here: ifIndex only repeats the last arc of every OID below, and the
+# firmware reports a fixed ifType = 6 (ethernetCsmacd) and ifMtu = 1500 on every port. Add them
+# for a row the same way if a consumer needs them, e.g.
+# `address = { oid = "1.3.6.1.2.1.2.2.1.4.1" }` for ifMtu on ifIndex 1.
+
+[[point]]
+id            = "if_number"
+name          = "Interface count"
+description   = "Number of ifTable rows (CONFIG_APP_SIM_SWITCH_IF_COUNT)"
+datatype      = "int32"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.1.0" }
+meta          = { measurement = false }
+
+# --- ifIndex 1 (GigabitEthernet0/1) ---
+
+[[point]]
+id            = "if1_descr"
+name          = "Gi0/1 description"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.2.1" }
+meta          = { measurement = false }
+
+# ifSpeed is a Gauge32.
+[[point]]
+id            = "if1_speed"
+name          = "Gi0/1 speed"
+description   = "Nominal speed; the firmware reports 1 Gbit/s on every port"
+datatype      = "uint32"
+unit          = "bit/s"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.5.1" }
+meta          = { measurement = false }
+
+[[point]]
+id          = "if1_admin_status"
+name        = "Gi0/1 admin status"
+description = "1 = up, 2 = down; the simulation keeps every port administratively up"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.7.1" }
+meta        = { measurement = false }
+
+# One alarm type per port, so an alarm says which port and two ports can be down at once.
+# `when.equals = 2` matches ifOperStatus down; any other value clears it.
+[[point]]
+id          = "if1_oper_status"
+name        = "Gi0/1 operational status"
+description = "1 = up, 2 = down"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.8.1" }
+meta        = { measurement = false, alarm = { type = "if1_link_down", severity = "major", text = "GigabitEthernet0/1 link is down on {device}", when = { equals = 2 } } }
+
+# The four counters are Counter32: monotonic while the port is up, frozen while it is
+# down, and they wrap at 2^32. A consumer that wants a rate has to difference them and
+# allow for the wrap.
+[[point]]
+id       = "if1_in_octets"
+name     = "Gi0/1 in octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.10.1" }
+
+[[point]]
+id       = "if1_in_ucast_pkts"
+name     = "Gi0/1 in unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.11.1" }
+
+[[point]]
+id       = "if1_out_octets"
+name     = "Gi0/1 out octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.16.1" }
+
+[[point]]
+id       = "if1_out_ucast_pkts"
+name     = "Gi0/1 out unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.17.1" }
+
+# --- ifIndex 2 (GigabitEthernet0/2) ---
+
+[[point]]
+id            = "if2_descr"
+name          = "Gi0/2 description"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.2.2" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "if2_speed"
+name          = "Gi0/2 speed"
+description   = "Nominal speed; the firmware reports 1 Gbit/s on every port"
+datatype      = "uint32"
+unit          = "bit/s"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.5.2" }
+meta          = { measurement = false }
+
+[[point]]
+id          = "if2_admin_status"
+name        = "Gi0/2 admin status"
+description = "1 = up, 2 = down; the simulation keeps every port administratively up"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.7.2" }
+meta        = { measurement = false }
+
+[[point]]
+id          = "if2_oper_status"
+name        = "Gi0/2 operational status"
+description = "1 = up, 2 = down"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.8.2" }
+meta        = { measurement = false, alarm = { type = "if2_link_down", severity = "major", text = "GigabitEthernet0/2 link is down on {device}", when = { equals = 2 } } }
+
+[[point]]
+id       = "if2_in_octets"
+name     = "Gi0/2 in octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.10.2" }
+
+[[point]]
+id       = "if2_in_ucast_pkts"
+name     = "Gi0/2 in unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.11.2" }
+
+[[point]]
+id       = "if2_out_octets"
+name     = "Gi0/2 out octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.16.2" }
+
+[[point]]
+id       = "if2_out_ucast_pkts"
+name     = "Gi0/2 out unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.17.2" }
+
+# --- ifIndex 3 (GigabitEthernet0/3) ---
+
+[[point]]
+id            = "if3_descr"
+name          = "Gi0/3 description"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.2.3" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "if3_speed"
+name          = "Gi0/3 speed"
+description   = "Nominal speed; the firmware reports 1 Gbit/s on every port"
+datatype      = "uint32"
+unit          = "bit/s"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.5.3" }
+meta          = { measurement = false }
+
+[[point]]
+id          = "if3_admin_status"
+name        = "Gi0/3 admin status"
+description = "1 = up, 2 = down; the simulation keeps every port administratively up"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.7.3" }
+meta        = { measurement = false }
+
+[[point]]
+id          = "if3_oper_status"
+name        = "Gi0/3 operational status"
+description = "1 = up, 2 = down"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.8.3" }
+meta        = { measurement = false, alarm = { type = "if3_link_down", severity = "major", text = "GigabitEthernet0/3 link is down on {device}", when = { equals = 2 } } }
+
+[[point]]
+id       = "if3_in_octets"
+name     = "Gi0/3 in octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.10.3" }
+
+[[point]]
+id       = "if3_in_ucast_pkts"
+name     = "Gi0/3 in unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.11.3" }
+
+[[point]]
+id       = "if3_out_octets"
+name     = "Gi0/3 out octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.16.3" }
+
+[[point]]
+id       = "if3_out_ucast_pkts"
+name     = "Gi0/3 out unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.17.3" }
+
+# --- ifIndex 4 (GigabitEthernet0/4) --------------------------------------------------------
+#
+# The port the simulation flaps: sim_switch.c toggles its oper status every
+# CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS sampling steps (15 s with both defaults; 0 = never),
+# so this is the row that exercises the alarm below and produces the linkUp/linkDown traps.
+# At the default that is ~4 notifications a minute, so a device left running is worth building
+# with a longer period.
+
+[[point]]
+id            = "if4_descr"
+name          = "Gi0/4 description"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.2.4" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "if4_speed"
+name          = "Gi0/4 speed"
+description   = "Nominal speed; the firmware reports 1 Gbit/s on every port"
+datatype      = "uint32"
+unit          = "bit/s"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.5.4" }
+meta          = { measurement = false }
+
+[[point]]
+id          = "if4_admin_status"
+name        = "Gi0/4 admin status"
+description = "1 = up, 2 = down; the simulation keeps every port administratively up"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.7.4" }
+meta        = { measurement = false }
+
+[[point]]
+id          = "if4_oper_status"
+name        = "Gi0/4 operational status"
+description = "1 = up, 2 = down"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.8.4" }
+meta        = { measurement = false, alarm = { type = "if4_link_down", severity = "major", text = "GigabitEthernet0/4 link is down on {device}", when = { equals = 2 } } }
+
+[[point]]
+id       = "if4_in_octets"
+name     = "Gi0/4 in octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.10.4" }
+
+[[point]]
+id       = "if4_in_ucast_pkts"
+name     = "Gi0/4 in unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.11.4" }
+
+[[point]]
+id       = "if4_out_octets"
+name     = "Gi0/4 out octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.16.4" }
+
+[[point]]
+id       = "if4_out_ucast_pkts"
+name     = "Gi0/4 out unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.17.4" }
+
+# --- ifIndex 5 (GigabitEthernet0/5) ---
+
+[[point]]
+id            = "if5_descr"
+name          = "Gi0/5 description"
+datatype      = "string"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.2.5" }
+meta          = { measurement = false }
+
+[[point]]
+id            = "if5_speed"
+name          = "Gi0/5 speed"
+description   = "Nominal speed; the firmware reports 1 Gbit/s on every port"
+datatype      = "uint32"
+unit          = "bit/s"
+poll_interval = "1h"
+address       = { oid = "1.3.6.1.2.1.2.2.1.5.5" }
+meta          = { measurement = false }
+
+[[point]]
+id          = "if5_admin_status"
+name        = "Gi0/5 admin status"
+description = "1 = up, 2 = down; the simulation keeps every port administratively up"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.7.5" }
+meta        = { measurement = false }
+
+[[point]]
+id          = "if5_oper_status"
+name        = "Gi0/5 operational status"
+description = "1 = up, 2 = down"
+datatype    = "int32"
+address     = { oid = "1.3.6.1.2.1.2.2.1.8.5" }
+meta        = { measurement = false, alarm = { type = "if5_link_down", severity = "major", text = "GigabitEthernet0/5 link is down on {device}", when = { equals = 2 } } }
+
+[[point]]
+id       = "if5_in_octets"
+name     = "Gi0/5 in octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.10.5" }
+
+[[point]]
+id       = "if5_in_ucast_pkts"
+name     = "Gi0/5 in unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.11.5" }
+
+[[point]]
+id       = "if5_out_octets"
+name     = "Gi0/5 out octets"
+datatype = "uint32"
+unit     = "octets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.16.5" }
+
+[[point]]
+id       = "if5_out_ucast_pkts"
+name     = "Gi0/5 out unicast packets"
+datatype = "uint32"
+unit     = "packets"
+address  = { oid = "1.3.6.1.2.1.2.2.1.17.5" }
+
+# --- notifications ------------------------------------------------------------------------
+#
+# Every trap the firmware sends carries sysUpTime.0 and snmpTrapOID.0; the link traps add
+# ifIndex.<n>. The two link points below are varbind points: they match on the trap OID and take
+# their value from that ifIndex varbind, which is what lets the event text name the port. All
+# three are occurrences, so they use `every = true` — a second identical notification is a
+# second event, not a repeat to be suppressed.
+
+[[point]]
+id          = "link_down_if"
+name        = "Link down"
+description = "ifIndex from a linkDown notification"
+datatype    = "int32"
+address     = { trap = "1.3.6.1.6.3.1.1.5.3", oid = "1.3.6.1.2.1.2.2.1.1" }
+meta        = { measurement = false, event = { type = "link_down", text = "Link down on interface {value}", every = true } }
+
+[[point]]
+id          = "link_up_if"
+name        = "Link up"
+description = "ifIndex from a linkUp notification"
+datatype    = "int32"
+address     = { trap = "1.3.6.1.6.3.1.1.5.4", oid = "1.3.6.1.2.1.2.2.1.1" }
+meta        = { measurement = false, event = { type = "link_up", text = "Link up on interface {value}", every = true } }
+
+# A trap point with no `oid` takes the notification itself as its value; typed `bool` it is
+# simply `true` on arrival.
+[[point]]
+id          = "cold_start"
+name        = "Cold start"
+description = "Sent once after the device first reaches the trap manager"
+datatype    = "bool"
+address     = { trap = "1.3.6.1.6.3.1.1.5.1" }
+meta        = { measurement = false, event = { type = "cold_start", text = "{device} restarted (coldStart)", every = true } }
+
+# --- alternative: alarm on the trap instead of the polled column ---------------------------
+#
+# Useful when the device is polled slowly (or not at all) and the notification should raise the
+# alarm immediately. One alarm for the whole device — the trap OID is the value, so the text
+# cannot name the port; pair it with link_down_if above for that. Drop the `meta.alarm` from the
+# if<n>_oper_status points if you use this, or every down port raises two alarms.
+#
+# [[point]]
+# id          = "link_state"
+# name        = "Link state"
+# description = "The last link notification: linkDown (…5.3) or linkUp (…5.4)"
+# datatype    = "string"
+# address     = { trap = ["1.3.6.1.6.3.1.1.5.3", "1.3.6.1.6.3.1.1.5.4"] }
+# meta        = { measurement = false, alarm = { type = "link_down", severity = "major", text = "Link down on {device}", when = { equals = "1.3.6.1.6.3.1.1.5.3" } } }

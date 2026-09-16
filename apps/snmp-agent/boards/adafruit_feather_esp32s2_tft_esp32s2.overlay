@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * The Adafruit Feather ESP32-S2 board devicetree leaves the Wi-Fi node
+ * disabled. Enable it so CONFIG_WIFI_ESP32 (which depends on
+ * DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED) can be selected.
+ */
+&wifi {
+	status = "okay";
+};
+
+/* Enable the built-in ST7789 TFT (disabled by default on this board) so the
+ * firmware can show connectivity status / the device IP on-screen. */
+&st7789v_tft {
+	status = "okay";
+};
