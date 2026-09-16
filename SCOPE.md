@@ -81,8 +81,9 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
   the device **data model** (measurements + writable control points) and device
   identity (`FirmwareName`/`FirmwareVersion`/`BuildTimestamp`). The data model is
   driven by a **selectable simulation** (Kconfig `choice`): `sim_environment`
-  (temperature/humidity/pressure, default) or `sim_pump` (a control-driven
-  pump/motor). Each app picks one; frontends are simulation-agnostic.
+  (temperature/humidity/pressure, default), `sim_pump` (a control-driven
+  pump/motor) or `sim_switch` (a managed switch/router with per-port link status
+  and traffic counters). Each app picks one; frontends are simulation-agnostic.
 - `lib/<protocol>/` — one protocol frontend per library (`lib/opcua/` today),
   mapping the shared data model onto its wire protocol. See
   `lib/common/README.md` for the frontend contract.
@@ -90,7 +91,8 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
   one protocol frontend; owns its `prj.conf`, `Kconfig`, `VERSION`, `boards/`
   overlays, and `CONFIG_APP_FIRMWARE_NAME`. Build with
   `west build -b <board> apps/<protocol>`. Today: `apps/opcua-server` (OPC-UA,
-  env sim) and `apps/modbus-server` (Modbus TCP on port 502, pump sim).
+  env sim), `apps/modbus-server` (Modbus TCP on port 502, pump sim) and
+  `apps/snmp-agent` (SNMPv2c on UDP 161 + traps on 162, switch sim).
 
 ## Open questions
 

@@ -239,7 +239,13 @@ The firmware advertises over mDNS, so no IP is needed. On macOS (Bonjour):
 ```sh
 ping tedge-opcua.local                 # resolves to the device's DHCP address
 dns-sd -B _opcua-tcp._tcp              # lists the "tedge-opcua" OPC-UA service
+dns-sd -B _modbus._tcp                 # lists the "tedge-modbus" Modbus service
+dns-sd -B _snmp._udp                   # lists the "tedge-snmp<mac>" SNMP agent
 ```
+
+Each firmware advertises its own DNS-SD service type (`_opcua-tcp`/`_modbus`
+over TCP, `_snmp` over UDP) via `CONFIG_APP_DNSSD_*`, and answers to its unique
+`<hostname>.local` name.
 
 Point an OPC-UA client at `opc.tcp://tedge-opcua.local:4840`. Quick check with
 the bundled Python client:
@@ -338,13 +344,17 @@ Firmware is organised as a shared core plus per-protocol libraries and apps
 
 ```
 lib/common/            shared core: connectivity, display, data model, identity
-                       + selectable simulations (sim_environment, sim_pump)
+                       + selectable simulations (sim_environment, sim_pump, sim_switch)
 lib/opcua/             OPC-UA frontend (open62541) + address-space adapter
 lib/modbus/            Modbus TCP frontend (Zephyr modbus subsystem, port 502)
-lib/frontend-template/ copy-me skeleton for a new protocol (SNMP/CAN/...)
+lib/snmp/              SNMPv2c agent frontend (in-repo BER; UDP 161 + traps 162)
+lib/frontend-template/ copy-me skeleton for a new protocol (CAN/...)
 apps/opcua-server/     OPC-UA firmware: lib/common (env sim) + lib/opcua
 apps/modbus-server/    Modbus TCP firmware: lib/common (pump sim) + lib/modbus
-  └── boards/<board>.conf   per-app board overlays (RAM/Wi-Fi tuning)
+apps/snmp-agent/       SNMP agent firmware: lib/common (switch sim) + lib/snmp
+  ├── boards/<board>.conf       per-app board overlays (RAM/Wi-Fi tuning)
+  └── points.d/<proto>/*.toml   point library: the app's address map for a
+                                collector (see "Point libraries" below)
 ```
 
 Each firmware is built by targeting its app directory, e.g.
@@ -362,6 +372,11 @@ The shared data model is driven by a **simulation** chosen with a Kconfig
   `speed_setpoint`/`running`/`mode` controls via pump affinity laws (flow ∝ speed,
   pressure ∝ speed²), a motor-thermal lag, `run_hours` that accrue only while
   running, and an over-temp fault. Used by `apps/modbus-server`.
+- `CONFIG_APP_SIM_SWITCH` — a managed switch/router: a fixed set of Ethernet
+  interfaces (`CONFIG_APP_SIM_SWITCH_IF_COUNT`, ≤ 8) with admin/oper status,
+  1 Gbit/s nominal speed and monotonic traffic counters; one port flaps its link
+  every `CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS` sampling steps (default 15,
+  `0` = never) to drive link up/down events. Used by `apps/snmp-agent`.
 
 Frontends are simulation-agnostic, so any simulation can back any protocol.
 
@@ -399,6 +414,137 @@ c.write_register(0, 80, device_id=1)        # speed 80 %  (write 150 -> clamps t
 print(c.read_input_registers(0, count=5, device_id=1).registers)  # flow,pressure,temp,rpm,vib
 print(c.read_discrete_inputs(0, count=3, device_id=1).bits)       # running,fault,net
 ```
+
+## SNMP agent firmware
+
+`apps/snmp-agent` presents the device as a managed **switch/router**: a
+minimal **SNMPv2c** agent (UDP 161) answering GET/GETNEXT/GETBULK over the
+system group + a MIB-II interfaces table, plus **traps** (UDP 162) on coldStart
+and interface link up/down. It uses an in-repo BER/ASN.1 codec — no external
+SNMP stack — and is UDP-only, so it also runs end-to-end on `native_sim`. On
+hardware it advertises itself over mDNS as `_snmp._udp` and answers to
+`<hostname>.local`.
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b esp32_devkitc/esp32/procpu apps/snmp-agent --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
+# point traps at your manager, e.g. -DCONFIG_APP_SNMP_TRAP_MANAGER=\"192.168.68.10\"
+```
+
+**Discover it (mDNS / DNS-SD):**
+
+```sh
+dns-sd -B _snmp._udp local.                       # lists "tedge-snmp<mac>" instances
+dns-sd -L tedge-snmp<mac> _snmp._udp local.        # -> <hostname>.local:161
+snmpwalk -v2c -c public tedge-snmp<mac>.local 1.3.6.1.2.1   # poll by name, no IP
+```
+
+The hostname is unique (`tedge-snmp` + Wi-Fi MAC, from `CONFIG_NET_HOSTNAME_UNIQUE`),
+so the base `tedge-snmp.local` does not resolve — use the full advertised name.
+
+**Poll it** (net-snmp; `-v2c -c public` — the agent serves v2c only):
+
+```sh
+snmpget    -v2c -c public <device-ip> sysDescr.0 sysName.0 sysUpTime.0
+snmpwalk   -v2c -c public -On <device-ip> 1.3.6.1.2.1        # system + ifTable
+snmpbulkwalk -v2c -c public <device-ip> 1.3.6.1.2.1.2.2      # ifTable via GETBULK
+```
+
+**MIB view** (all read-only; SET is refused with `notWritable`):
+
+| OID | Object | Type | Source |
+|-----|--------|------|--------|
+| `1.3.6.1.2.1.1.1.0` | sysDescr | OCTET STRING | firmware name/version/build |
+| `1.3.6.1.2.1.1.3.0` | sysUpTime | TimeTicks | since agent start |
+| `1.3.6.1.2.1.1.5.0` | sysName | OCTET STRING | device hostname |
+| `1.3.6.1.2.1.2.1.0` | ifNumber | INTEGER | interface count |
+| `…2.2.1.{1,2,3,4,5}.<n>` | ifIndex/ifDescr/ifType/ifMtu/ifSpeed | INTEGER/STRING/Gauge32 | switch sim |
+| `…2.2.1.{7,8}.<n>` | ifAdminStatus/ifOperStatus | INTEGER (up=1,down=2) | switch sim |
+| `…2.2.1.{10,11,16,17}.<n>` | ifIn/OutOctets, ifIn/OutUcastPkts | Counter32 | switch sim |
+| `1.3.6.1.4.1.99999.1.{1,2,3}.0` | firmware name / version / build timestamp | OCTET STRING | `lib/common` identity |
+
+The last three live on the private-enterprise arc `sysObjectID.0` names. They are
+the same strings `sysDescr.0` packs into one sentence, given one object each so a
+collector can report the running firmware without parsing prose:
+
+```sh
+snmpget -v2c -c public -On <device-ip> 1.3.6.1.4.1.99999.1.2.0   # -> "0.1.0"
+snmpwalk -v2c -c public -On <device-ip> 1.3.6.1.4.1.99999        # name, version, build
+```
+
+**Receive traps** (net-snmp `snmptrapd`, on the configured manager host):
+
+```sh
+sudo snmptrapd -f -Lo -c /dev/null      # prints coldStart on boot, then
+                                        # linkDown/linkUp with ifIndex as ports flap
+```
+
+**Trap volume.** One port toggles every `CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS`
+sampling steps — 15 s by default, so ~4 notifications a minute (~5,700 a day),
+each also raising or clearing an alarm in a collector. That is what makes a short
+demo interesting and a long-running device noisy, so raise it for anything left
+running, or switch flapping off and exercise only the counters:
+
+```sh
+-DCONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS=900   # a flap every 15 min
+-DCONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS=0     # links never flap
+```
+
+## Point libraries (for a tedge-dot collector)
+
+Each firmware ships the point list a collector needs to read it, as a **point
+library** — the address map of one device type in its own TOML file, with no
+connection details in it. The firmware owns that map (the register layout, the
+node ids, the OIDs), so the list lives next to the firmware and is versioned with
+it, rather than being copy-pasted into every gateway that polls one of these
+boards. The format is [tedge-dot](https://github.com/thin-edge/tedge-dot)'s
+(OT-connector contract §3.4).
+
+```
+apps/opcua-server/points.d/opcua/zephyr-opcua.toml          ns=1 nodes: measurements + Setpoint/Running
+apps/modbus-server/points.d/modbus/zephyr-modbus-pump.toml  unit 1 register map: pump sim + controls
+apps/snmp-agent/points.d/snmp/zephyr-snmp-switch.toml       system group, ifTable rows, traps
+```
+
+A device instance then declares only where to reach the board, and names the
+library it is an instance of:
+
+```toml
+[[device]]
+name             = "tedge-snmp-device"
+protocol_address = { host = "tedge-snmp<mac>.local", port = 161, version = "v2c", community = "public" }
+points_from      = ["zephyr-snmp-switch"]
+```
+
+A bare name resolves as `<dir>/<protocol>/<name>.toml` along the collector's
+search path, so from a checkout point that path at the app directory (an
+installed package finds its own copies):
+
+```sh
+export TEDGE_DOT_POINT_LIBRARY_PATH=/path/to/apps/snmp-agent/points.d
+tedge-dot read -c snmp.toml -p if4_oper_status
+```
+
+**What the SNMP library declares.** Meaning is attached to each point next to its
+address, so the device shows up usefully with no per-deployment flow parameters:
+
+| | Points | Declared as |
+|---|---|---|
+| Measurements | `uptime`, per-port `if<n>_{in,out}_{octets,ucast_pkts}` | plain points with a `unit` |
+| Alarms | per-port `if<n>_oper_status` | `meta.alarm`, one alarm type per port, raised `when.equals = 2` |
+| Events | `link_down_if`, `link_up_if`, `cold_start` | `meta.event` with `every = true` — traps are occurrences |
+| Device state | `firmware_name`, `firmware_version`, `build_timestamp`, `sys_*` | `meta.measurement = false`; the first three also `meta.parameter.key = "firmware.*"` |
+
+Link state is alarmed from the **polled** `ifOperStatus` column rather than from
+the traps, so an alarm names the port it is about and clears on the next poll
+that reads it up; the traps become events instead. The file documents the other
+arrangement (alarm on the trap) in a commented block at its end.
+
+Two things to keep in sync when the firmware changes: the ifTable rows cover
+`CONFIG_APP_SIM_SWITCH_IF_COUNT = 5`, and polling a row the agent does not serve
+yields a permanently `bad` sample rather than nothing — a build with a different
+interface count needs rows added or switched off with `enabled = false`.
 
 ## Adding another Wi-Fi board
 

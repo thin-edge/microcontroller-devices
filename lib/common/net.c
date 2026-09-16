@@ -35,16 +35,23 @@ LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
 #include <zephyr/net/dns_sd.h>
 #include <string.h>
 /* Advertise the frontend as a DNS-SD service so it can be discovered on the LAN
- * without a known IP. The service type and port are per-firmware
- * (CONFIG_APP_DNSSD_SERVICE_TYPE / CONFIG_APP_DNSSD_PORT; defaults reproduce the
- * OPC-UA firmware's _opcua-tcp / 4840). The instance name lives in a mutable
- * buffer filled at runtime with the unique per-device hostname
- * (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC) so devices don't clash. The mDNS
- * responder separately answers for <unique-hostname>.local. */
+ * without a known IP. The service type, port and transport are per-firmware
+ * (CONFIG_APP_DNSSD_SERVICE_TYPE / CONFIG_APP_DNSSD_PORT / CONFIG_APP_DNSSD_UDP;
+ * defaults reproduce the OPC-UA firmware's _opcua-tcp / 4840). UDP-based
+ * frontends (SNMP) register _<type>._udp so the advertised transport is correct.
+ * The instance name lives in a mutable buffer filled at runtime with the unique
+ * per-device hostname (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC) so devices
+ * don't clash. The mDNS responder separately answers for <unique-hostname>.local. */
 static char dnssd_instance[64] = CONFIG_NET_HOSTNAME;
+#if defined(CONFIG_APP_DNSSD_UDP)
+DNS_SD_REGISTER_UDP_SERVICE(app_dns_sd, dnssd_instance,
+			    CONFIG_APP_DNSSD_SERVICE_TYPE, "local",
+			    DNS_SD_EMPTY_TXT, CONFIG_APP_DNSSD_PORT);
+#else
 DNS_SD_REGISTER_TCP_SERVICE(app_dns_sd, dnssd_instance,
 			    CONFIG_APP_DNSSD_SERVICE_TYPE, "local",
 			    DNS_SD_EMPTY_TXT, CONFIG_APP_DNSSD_PORT);
+#endif
 #endif
 
 /* Copy the current (unique) hostname into the DNS-SD instance buffer. */

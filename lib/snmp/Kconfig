@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# SNMP agent protocol frontend options. Present only when an application composes
+# the lib/snmp module (e.g. apps/snmp-agent). The agent is a minimal SNMPv2c
+# implementation (no external SNMP stack); it needs only UDP sockets, which the
+# app's board config enables.
+
+menu "SNMP agent frontend"
+
+config APP_SNMP_AGENT
+	bool "Enable the SNMPv2c agent"
+	default y
+	help
+	  Serve the shared switch/router data model over SNMPv2c: answer
+	  GET/GETNEXT/GETBULK on the agent UDP port and (optionally) originate
+	  traps. BER/ASN.1 is implemented in-repo; no external SNMP library.
+
+if APP_SNMP_AGENT
+
+config APP_SNMP_PORT
+	int "SNMP agent UDP port"
+	default 161
+	range 1 65535
+	help
+	  UDP port the agent binds for GET/GETNEXT/GETBULK requests.
+
+config APP_SNMP_READ_COMMUNITY
+	string "SNMPv2c read community string"
+	default "public"
+	help
+	  Community string required on incoming requests. Requests with a different
+	  community are silently ignored (per SNMP convention).
+
+config APP_SNMP_SYS_CONTACT
+	string "sysContact.0 value"
+	default "admin@example.com"
+
+config APP_SNMP_SYS_LOCATION
+	string "sysLocation.0 value"
+	default "Lab"
+
+config APP_SNMP_TRAP
+	bool "Originate SNMPv2c traps (coldStart / linkUp / linkDown)"
+	default y
+	help
+	  Send SNMPv2c trap notifications to a configured manager: a coldStart on
+	  boot and linkUp/linkDown as simulated interfaces change operational state.
+
+if APP_SNMP_TRAP
+
+config APP_SNMP_TRAP_MANAGER
+	string "Trap manager IPv4 address or hostname"
+	default "192.168.68.10"
+	help
+	  Destination for trap notifications: either a literal IPv4 address (used
+	  directly, no lookup) or a hostname resolved at runtime via getaddrinfo.
+	  An mDNS ".local" name (e.g. "mymac.local") works when the board enables
+	  CONFIG_MDNS_RESOLVER; a regular DNS name needs CONFIG_DNS_RESOLVER.
+	  Override per site (e.g. via a local overlay), like the Wi-Fi credentials.
+
+config APP_SNMP_TRAP_PORT
+	int "Trap manager UDP port"
+	default 162
+	range 1 65535
+
+config APP_SNMP_TRAP_COMMUNITY
+	string "Community string sent in trap PDUs"
+	default "public"
+
+endif # APP_SNMP_TRAP
+
+endif # APP_SNMP_AGENT
+
+endmenu # SNMP agent frontend
