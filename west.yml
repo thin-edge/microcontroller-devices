@@ -26,6 +26,7 @@ manifest:
         # Trimmed from the full set to keep `west update` smaller/faster.
         name-allowlist:
           - cmsis                 # Cortex-M (Pico W)
+          - cmsis_6               # Cortex-M core headers (cmsis_core.h) since Zephyr 4.x
           - hal_espressif         # ESP32 / ESP32-S2 SoC + Wi-Fi
           - hal_infineon          # CYW43 Wi-Fi (Pico W)
           - hal_rpi_pico          # RP2040
