@@ -17,6 +17,7 @@
  */
 
 #include "data_source.h"
+#include "diag.h"
 #include "sim_switch.h"
 
 #include <string.h>
@@ -127,6 +128,7 @@ void data_source_init(void)
 	}
 
 	k_work_init_delayable(&step_work, sim_step);
+	app_diag_watch_work("sim", &step_work);
 	k_work_reschedule(&step_work, K_MSEC(CONFIG_APP_SAMPLE_INTERVAL_MS));
 }
 

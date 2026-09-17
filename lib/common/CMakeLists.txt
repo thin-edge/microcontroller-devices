@@ -22,6 +22,14 @@ zephyr_library_sources(display.c)
 # board `led0` alias; compiles to a no-op otherwise).
 zephyr_library_sources(status_led.c)
 
+# Liveness watchdog and health diagnostics (both off by default; the progress
+# hook app_alive() in liveness.h compiles to nothing without them).
+zephyr_library_sources_ifdef(CONFIG_APP_DIAG     diag.c)
+zephyr_library_sources_ifdef(CONFIG_APP_LIVENESS liveness.c)
+if(CONFIG_APP_DIAG OR CONFIG_APP_LIVENESS)
+  zephyr_library_sources(progress.c)
+endif()
+
 # Device data model: writable control points and device/firmware identity.
 zephyr_library_sources(controls.c identity.c)
 

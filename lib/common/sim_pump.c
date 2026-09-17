@@ -15,6 +15,7 @@
  */
 
 #include "data_source.h"
+#include "diag.h"
 #include "controls.h"
 
 #include <math.h>
@@ -103,8 +104,10 @@ static void sim_step(struct k_work *work)
 	values[M_RPM] = s * RPM_MAX;
 	values[M_FLOW] = s * FLOW_MAX * (1.0 + 0.01 * j);          /* flow ~ N   */
 	values[M_PRESSURE] = s * s * PRESSURE_MAX * (1.0 + 0.01 * j); /* head ~ N^2 */
-	values[M_VIBRATION] = (s > 0.0 ? VIB_IDLE + s * VIB_GAIN : 0.0)
-			      + 0.05 * j;
+	/* Jitter must not take a stopped pump below zero: the value goes out as
+	 * an unsigned register, where -0.04 would read as 655.32. */
+	values[M_VIBRATION] = MAX(0.0, (s > 0.0 ? VIB_IDLE + s * VIB_GAIN : 0.0)
+				       + 0.05 * j);
 
 	/* First-order thermal model toward an ambient+load target. */
 	const double target = AMBIENT_C + s * TEMP_RISE_C;
@@ -128,6 +131,7 @@ void data_source_init(void)
 	motor_temp_c = AMBIENT_C;
 	values[M_MOTOR_TEMP] = motor_temp_c;
 	k_work_init_delayable(&step_work, sim_step);
+	app_diag_watch_work("sim", &step_work);
 	k_work_reschedule(&step_work, K_NO_WAIT);
 }
 

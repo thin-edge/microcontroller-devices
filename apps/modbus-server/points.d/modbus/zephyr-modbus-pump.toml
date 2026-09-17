@@ -22,7 +22,7 @@ description = "Pump flow rate"
 datatype    = "uint16"
 unit        = "L/min"
 address     = { table = "input", address = 0, count = 1 }
-transform   = { decimal_shift = 1 }        # raw = value x10
+transform   = { decimal_shift = -1 }       # raw = value x10 (tedge-dot: value x 10^shift)
 
 [[point]]
 id          = "pressure_bar"
@@ -30,15 +30,15 @@ name        = "Discharge pressure"
 datatype    = "uint16"
 unit        = "bar"
 address     = { table = "input", address = 1, count = 1 }
-transform   = { decimal_shift = 2 }        # raw = value x100
+transform   = { decimal_shift = -2 }       # raw = value x100
 
 [[point]]
 id          = "motor_temp_c"
 name        = "Motor temperature"
-datatype    = "uint16"
+datatype    = "int16"                      # the firmware encodes it signed
 unit        = "Cel"
 address     = { table = "input", address = 2, count = 1 }
-transform   = { decimal_shift = 1 }        # raw = value x10
+transform   = { decimal_shift = -1 }       # raw = value x10 (tedge-dot: value x 10^shift)
 
 [[point]]
 id          = "rpm"
@@ -53,7 +53,7 @@ name        = "Vibration"
 datatype    = "uint16"
 unit        = "mm/s"
 address     = { table = "input", address = 4, count = 1 }
-transform   = { decimal_shift = 2 }        # raw = value x100
+transform   = { decimal_shift = -2 }       # raw = value x100
 
 [[point]]
 id          = "run_seconds"

@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "display.h"
+#include "liveness.h"
 #include "status_led.h"
 
 #include <zephyr/kernel.h>
@@ -43,14 +44,19 @@ LOG_MODULE_REGISTER(app_net, CONFIG_LOG_DEFAULT_LEVEL);
  * per-device hostname (CONFIG_NET_HOSTNAME_UNIQUE appends the MAC) so devices
  * don't clash. The mDNS responder separately answers for <unique-hostname>.local. */
 static char dnssd_instance[64] = CONFIG_NET_HOSTNAME;
+/* One TXT entry ("txtvers=1"), length-prefixed as DNS-SD requires. Zephyr's
+ * DNS_SD_EMPTY_TXT is sized `sizeof(text) - 1` by the registration macro, so it
+ * goes out as a zero-length TXT record; RFC 6763 6.1 requires at least one
+ * byte, and macOS then ignores the service. */
+static const char dnssd_txt[] = "\x09txtvers=1";
 #if defined(CONFIG_APP_DNSSD_UDP)
 DNS_SD_REGISTER_UDP_SERVICE(app_dns_sd, dnssd_instance,
 			    CONFIG_APP_DNSSD_SERVICE_TYPE, "local",
-			    DNS_SD_EMPTY_TXT, CONFIG_APP_DNSSD_PORT);
+			    dnssd_txt, CONFIG_APP_DNSSD_PORT);
 #else
 DNS_SD_REGISTER_TCP_SERVICE(app_dns_sd, dnssd_instance,
 			    CONFIG_APP_DNSSD_SERVICE_TYPE, "local",
-			    DNS_SD_EMPTY_TXT, CONFIG_APP_DNSSD_PORT);
+			    dnssd_txt, CONFIG_APP_DNSSD_PORT);
 #endif
 #endif
 
@@ -116,6 +122,40 @@ static int g_last_reason = -1; /* last Wi-Fi disconnect/connect reason code */
 static uint32_t status_ticks;  /* status_work cycles executed (diagnostic) */
 static char lb[10][22];
 static struct k_work_delayable status_work;
+
+/* Connectivity work (the status tick and reconnects) runs on its own queue,
+ * not the system workqueue. It renders the status (a Wi-Fi status query plus
+ * formatting), sends the gateway ping (the whole IPv4/ARP/driver transmit path
+ * runs on the caller's stack) and issues blocking Wi-Fi management requests:
+ * that measured ~1.1 KB of stack, more than the ESP32 system workqueue's 1 KB,
+ * and the overflow silently corrupted memory until the firmware stalled. A
+ * dedicated queue sizes the stack for it and keeps a blocked driver call from
+ * freezing every other system-workqueue user. */
+#if defined(CONFIG_APP_WIFI)
+static K_THREAD_STACK_DEFINE(net_wq_stack, CONFIG_APP_NET_WORKQ_STACK_SIZE);
+static struct k_work_q net_wq;
+
+static void net_wq_start(void)
+{
+	const struct k_work_queue_config cfg = { .name = "net_wq" };
+
+	k_work_queue_init(&net_wq);
+	k_work_queue_start(&net_wq, net_wq_stack,
+			   K_THREAD_STACK_SIZEOF(net_wq_stack),
+			   CONFIG_APP_NET_WORKQ_PRIORITY, &cfg);
+}
+
+static void net_wq_reschedule(struct k_work_delayable *work, k_timeout_t delay)
+{
+	(void)k_work_reschedule_for_queue(&net_wq, work, delay);
+}
+#else
+/* No connectivity state machine: nothing is ever scheduled. */
+static void net_wq_reschedule(struct k_work_delayable *work, k_timeout_t delay)
+{
+	(void)k_work_reschedule(work, delay);
+}
+#endif
 
 static void fmt_ip(char *dst, size_t n, uint32_t be)
 {
@@ -196,7 +236,7 @@ static void ping_gateway_once(void)
 static void render_status(enum display_stage stage)
 {
 	struct net_if *iface = net_if_get_default();
-	const char *lines[10];
+	const char *lines[13];
 	int n = 0;
 	char tmp[16];
 
@@ -226,10 +266,14 @@ static void render_status(enum display_stage stage)
 	ARG_UNUSED(iface);
 #endif
 
-#if defined(CONFIG_WIFI)
+/* Only the display needs these, and the query blocks inside the Espressif
+ * driver while an access point disappears or returns — long enough to trip the
+ * liveness watchdog on the connectivity queue (2026-09-17 AP-restart soak). */
+#if defined(CONFIG_WIFI) && defined(CONFIG_APP_DISPLAY_STATUS)
 	struct net_if *wifi = net_if_get_first_wifi();
 	struct wifi_iface_status st = {0};
 
+	app_step(APP_CTX_NETWQ, "wifi-status");
 	if (wifi != NULL &&
 	    net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, wifi, &st, sizeof(st)) == 0) {
 		snprintf(lb[3], sizeof(lb[3]), "RSSI %d CH%u", st.rssi,
@@ -259,6 +303,7 @@ static void render_status(enum display_stage stage)
 		 ping_init_rc, ping_send_rc);
 	lines[n++] = lb[9];
 #endif
+	n += (int)app_liveness_boot_lines(&lines[n], ARRAY_SIZE(lines) - 1 - n);
 	snprintf(lb[6], sizeof(lb[6]), "%s", app_net_hostname());
 	lines[n++] = lb[6];
 
@@ -278,13 +323,20 @@ static void connectivity_watchdog(void);
 static void status_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+	/* The connectivity queue got round to this tick: that is its progress. */
+	app_step(APP_CTX_NETWQ, "tick");
+	app_alive(APP_CTX_NETWQ);
 	status_ticks++;
+	app_step(APP_CTX_NETWQ, "watchdog");
 	connectivity_watchdog();
 #if defined(CONFIG_NET_IPV4) && !defined(CONFIG_NET_SOCKETS_OFFLOAD)
+	app_step(APP_CTX_NETWQ, "ping");
 	ping_gateway_once(); /* one echo request per cycle to the gateway */
 #endif
+	app_step(APP_CTX_NETWQ, "render");
 	render_status(g_stage);
-	k_work_reschedule(&status_work, K_SECONDS(3));
+	app_step(APP_CTX_NETWQ, "idle");
+	net_wq_reschedule(&status_work, K_SECONDS(3));
 }
 
 static void mark_connected(bool up)
@@ -423,7 +475,12 @@ static int wifi_connect(void)
 	}
 
 	LOG_INF("Connecting to Wi-Fi SSID \"%s\"...", CONFIG_APP_WIFI_SSID);
-	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
+	app_step(APP_CTX_NETWQ, "wifi-connect");
+
+	int rc = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
+
+	app_step(APP_CTX_NETWQ, "wifi-connect done");
+	return rc;
 }
 
 #if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
@@ -437,12 +494,14 @@ static int wifi_connect(void)
 static void reconnect_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+	app_step(APP_CTX_NETWQ, "reconnect");
+	app_alive(APP_CTX_NETWQ); /* the queue reached this item: progress */
 	if (app_net_is_connected()) {
 		return;
 	}
 
 	if (wifi_connect() != 0) {
-		k_work_reschedule(&reconnect_work, K_SECONDS(2));
+		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 	}
 }
 
@@ -510,10 +569,12 @@ static void connectivity_watchdog(void)
 
 			if (iface != NULL) {
 				LOG_WRN("Offline ~30 s — clearing association to restart connect");
+				app_step(APP_CTX_NETWQ, "wifi-disconnect");
 				(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+				app_step(APP_CTX_NETWQ, "wifi-disconnect done");
 			}
 		}
-		k_work_reschedule(&reconnect_work, K_NO_WAIT);
+		net_wq_reschedule(&reconnect_work, K_NO_WAIT);
 	}
 
 #if defined(CONFIG_APP_NET_RECONNECT_REBOOT)
@@ -540,7 +601,7 @@ static void l4_event_handler(struct net_mgmt_event_callback *cb,
 	case NET_EVENT_L4_DISCONNECTED:
 		LOG_WRN("Network connectivity lost — scheduling reconnect");
 		mark_connected(false);
-		k_work_reschedule(&reconnect_work, K_SECONDS(2));
+		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 		break;
 	default:
 		break;
@@ -559,7 +620,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
 			status->disconn_reason);
 		mark_connected(false); /* update state + LED now, not only on L4 */
-		k_work_reschedule(&reconnect_work, K_SECONDS(2));
+		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
@@ -568,7 +629,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 			LOG_WRN("Wi-Fi association failed (%d) — retrying",
 				status->status);
 			render_status(DISPLAY_STAGE_ERROR);
-			k_work_reschedule(&reconnect_work, K_SECONDS(2));
+			net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 		} else {
 			LOG_INF("Wi-Fi associated; awaiting IP address");
 #if defined(CONFIG_APP_STATIC_IP)
@@ -580,6 +641,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 
 int app_net_init(void)
 {
+	net_wq_start();
 	k_work_init_delayable(&reconnect_work, reconnect_handler);
 
 	net_mgmt_init_event_callback(&l4_cb, l4_event_handler, L4_EVENTS);
@@ -589,7 +651,9 @@ int app_net_init(void)
 
 	/* Periodically refresh the on-screen diagnostics (RSSI, state, ...). */
 	k_work_init_delayable(&status_work, status_work_handler);
-	k_work_reschedule(&status_work, K_SECONDS(3));
+	net_wq_reschedule(&status_work, K_SECONDS(3));
+	app_diag_watch_work("status", &status_work);
+	app_diag_watch_work("reconn", &reconnect_work);
 
 	return wifi_connect();
 }

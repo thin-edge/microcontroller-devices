@@ -178,6 +178,25 @@ config APP_NET_REBOOT_TIMEOUT_S
 	range 30 86400
 	depends on APP_NET_RECONNECT_REBOOT
 
+config APP_NET_WORKQ_STACK_SIZE
+	int "Connectivity work queue stack size"
+	default 3072
+	depends on APP_WIFI
+	help
+	  Stack for the dedicated work queue that runs the connectivity status
+	  tick (status render, gateway ping, reachability watchdog) and Wi-Fi
+	  reconnects. The ESP32 WROOM needs about 1.1 KB at its peak, more than
+	  the 1 KB system workqueue those items used to run on. Raise it when
+	  logging is in immediate mode (overlay-diag.conf does).
+
+config APP_NET_WORKQ_PRIORITY
+	int "Connectivity work queue thread priority"
+	default 4
+	depends on APP_WIFI
+	help
+	  Preemptible and above the protocol server threads (5..7), so a busy
+	  server cannot starve connectivity recovery.
+
 config APP_STATUS_LED
 	bool "Show connectivity on a status LED (led0 alias)"
 	default y
@@ -242,5 +261,129 @@ config APP_WIFI_PSK
 	  commit real credentials to the repository.
 
 endmenu # Wi-Fi
+
+menu "Liveness and diagnostics"
+
+config APP_DIAG
+	bool "Liveness and resource health diagnostics"
+	default n
+	select THREAD_MONITOR
+	select THREAD_NAME
+	help
+	  Run a small diagnostics thread (not on the system workqueue) that logs
+	  a HEALTH line every APP_DIAG_PERIOD_S: time since each watched context
+	  last made progress, the busy state of the firmware's work items, free
+	  heap, free net packets/buffers and the Wi-Fi state. When a context
+	  stops making progress it also logs every thread's state and the wait
+	  queue it is blocked on. Meant for investigations; overlay-diag.conf
+	  turns it on together with immediate logging. With this off, nothing is
+	  compiled in.
+
+config APP_DIAG_PERIOD_S
+	int "Health line period (s)"
+	default 10
+	range 1 3600
+	depends on APP_DIAG
+
+config APP_DIAG_STACK_SIZE
+	int "Diagnostics thread stack size"
+	default 3072
+	depends on APP_DIAG
+
+config APP_LIVENESS
+	bool "Liveness watchdog: reset the device when it stops making progress"
+	default n
+	select TASK_WDT
+	select WATCHDOG
+	select HWINFO
+	select REBOOT
+	help
+	  Watch the system workqueue and every protocol-serving thread with a
+	  task watchdog channel each, fed only when that context makes progress,
+	  and back it with the SoC hardware watchdog (the `watchdog0` alias). A
+	  context that makes no progress for APP_LIVENESS_TIMEOUT_S resets the
+	  device; a lockup that stops the task watchdog itself is caught by the
+	  hardware watchdog. The next boot logs the reset cause and which context
+	  stalled.
+
+	  This is the recovery for a stalled firmware. APP_NET_RECONNECT_REBOOT is
+	  the recovery for a network outage and cannot help here, because it runs
+	  on the system workqueue. Turn this off on a bench where a reset would
+	  hide a problem under a debugger.
+
+config APP_LIVENESS_TIMEOUT_S
+	int "Seconds without progress before a reset"
+	default 30
+	range 5 3600
+	depends on APP_LIVENESS
+	help
+	  Must sit well above the longest legitimate block of a watched context
+	  (a blocking Wi-Fi management request, a DNS lookup).
+
+config APP_LIVENESS_NETWQ_TIMEOUT_S
+	int "Seconds without progress on the connectivity queue before a reset"
+	default 120
+	range 5 3600
+	depends on APP_LIVENESS
+	help
+	  The connectivity queue's own timeout. It must clear the longest
+	  legitimate block of a Wi-Fi driver call: on ESP32, a management or
+	  status request can hold the queue for well over 30 s while an access
+	  point disappears or comes back, and resetting for that is a false
+	  positive. The status tick runs every 3 s, so this still detects a real
+	  wedge long before the last-resort reboot at
+	  APP_NET_REBOOT_TIMEOUT_S (300 s).
+
+config APP_LIVENESS_SELFTEST
+	bool "Liveness self-test: inject a failure (test builds only)"
+	depends on APP_LIVENESS
+	help
+	  Inject one failure APP_LIVENESS_SELFTEST_DELAY_S after boot, to verify
+	  that the device resets and the next boot names the right cause. Never
+	  enable this in a deployed build.
+
+if APP_LIVENESS_SELFTEST
+
+choice APP_LIVENESS_SELFTEST_MODE
+	prompt "Failure to inject"
+	default APP_LIVENESS_SELFTEST_BLOCK_WQ
+
+config APP_LIVENESS_SELFTEST_BLOCK_WQ
+	bool "Block the system workqueue"
+
+config APP_LIVENESS_SELFTEST_STOP_PROTO
+	bool "Stop the protocol server loop"
+
+config APP_LIVENESS_SELFTEST_IRQ_LOCK
+	bool "Busy-loop at top priority with interrupts masked"
+
+endchoice
+
+config APP_LIVENESS_SELFTEST_DELAY_S
+	int "Seconds after boot to inject the failure"
+	default 60
+	range 1 86400
+
+endif # APP_LIVENESS_SELFTEST
+
+# The task watchdog's timer feeds the hardware watchdog every
+# TASK_WDT_MIN_TIMEOUT, and the hardware timeout is that plus
+# TASK_WDT_HW_FALLBACK_DELAY (on ESP32 each of the two watchdog stages uses it,
+# so the reset comes after twice that). Zephyr's 100 + 20 ms is too tight next
+# to Wi-Fi flash writes; 1 s + 4 s resets a hard lockup after ~10 s.
+configdefault TASK_WDT_MIN_TIMEOUT
+	default 1000 if APP_LIVENESS
+
+configdefault TASK_WDT_HW_FALLBACK_DELAY
+	default 4000 if APP_LIVENESS
+
+# The deferred-log thread peaks at ~900 B of its 1 KB default on ESP32 Wi-Fi
+# builds; an overflow silently corrupts memory. Set here as a default rather
+# than in board confs because the option does not exist with immediate
+# logging (overlay-diag.conf), where an explicit assignment would warn.
+configdefault LOG_PROCESS_THREAD_STACK_SIZE
+	default 2048 if SOC_FAMILY_ESPRESSIF_ESP32 && APP_WIFI
+
+endmenu # Liveness and diagnostics
 
 endmenu # Common firmware options

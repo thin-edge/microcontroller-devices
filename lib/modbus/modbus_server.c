@@ -13,6 +13,7 @@
 #include "data_source.h"
 #include "controls.h"
 #include "net.h"
+#include "liveness.h"
 
 #include <string.h>
 #include <errno.h>
@@ -242,6 +243,18 @@ static int serve_once(int client)
 /* --- listener thread --- */
 #define MODBUS_THREAD_STACK_SIZE 3072
 #define MODBUS_THREAD_PRIORITY   6
+/* Longest socket wait before the loop reports progress again. */
+#define PROTO_WAIT_MS            5000
+
+/* Wait up to PROTO_WAIT_MS for fd to become readable, reporting progress
+ * first. Returns >0 readable, 0 timeout, <0 error. */
+static int wait_readable(int fd)
+{
+	struct zsock_pollfd pfd = { .fd = fd, .events = ZSOCK_POLLIN };
+
+	app_alive(APP_CTX_PROTO);
+	return zsock_poll(&pfd, 1, PROTO_WAIT_MS);
+}
 
 K_THREAD_STACK_DEFINE(modbus_stack, MODBUS_THREAD_STACK_SIZE);
 static struct k_thread modbus_thread;
@@ -281,6 +294,11 @@ static void modbus_listener(void *a, void *b, void *c)
 		while (true) {
 			struct sockaddr_in cli;
 			socklen_t cli_len = sizeof(cli);
+
+			if (wait_readable(serv) == 0) {
+				continue; /* no connection this interval */
+			}
+
 			int client = accept(serv, (struct sockaddr *)&cli, &cli_len);
 
 			if (client < 0) {
@@ -292,8 +310,29 @@ static void modbus_listener(void *a, void *b, void *c)
 			}
 
 			LOG_INF("Modbus client connected");
-			while (serve_once(client) == 0) {
-				/* keep serving this client */
+			/* One client at a time. A client that goes silent (for
+			 * example one whose connection went half-open during a
+			 * Wi-Fi outage) is dropped after the idle timeout, so it
+			 * cannot hold the server forever. */
+			int64_t last_rx = k_uptime_get();
+
+			while (true) {
+				int prc = wait_readable(client);
+
+				if (prc == 0) {
+					if (CONFIG_APP_MODBUS_CLIENT_IDLE_TIMEOUT_S > 0 &&
+					    k_uptime_get() - last_rx >=
+					    CONFIG_APP_MODBUS_CLIENT_IDLE_TIMEOUT_S * 1000LL) {
+						LOG_WRN("Modbus client idle for %d s — dropping",
+							CONFIG_APP_MODBUS_CLIENT_IDLE_TIMEOUT_S);
+						break;
+					}
+					continue;
+				}
+				if (prc < 0 || serve_once(client) != 0) {
+					break;
+				}
+				last_rx = k_uptime_get();
 			}
 			LOG_INF("Modbus client disconnected");
 			close(client);

@@ -28,4 +28,15 @@ config APP_MODBUS_UNIT_ID
 	range 1 247
 	depends on APP_MODBUS_SERVER
 
+config APP_MODBUS_CLIENT_IDLE_TIMEOUT_S
+	int "Drop a client that sends nothing for this long (s; 0 = never)"
+	default 60
+	range 0 86400
+	depends on APP_MODBUS_SERVER
+	help
+	  The server handles one client at a time, so a connection that has gone
+	  half-open (the client vanished during a network outage without a FIN)
+	  would otherwise lock every other client out until reboot. A polling
+	  collector sends a request every few seconds and is not affected.
+
 endmenu # Modbus TCP frontend

@@ -222,6 +222,12 @@ disruptions — you should not need to power-cycle a device to get it back onlin
 - **Last-resort self-reboot** — if a device stays offline past
   `CONFIG_APP_NET_REBOOT_TIMEOUT_S` (default 300 s) despite retries, it reboots to
   recover. Disable with `CONFIG_APP_NET_RECONNECT_REBOOT=n` (e.g. on the bench).
+  This is *network-level* recovery: it runs on the status tick, so it cannot help
+  if the firmware itself has stalled. That case is the liveness watchdog's job
+  (see [Stalls, liveness watchdog & diagnostics](#stalls-liveness-watchdog--diagnostics)).
+- The status tick and reconnects run on a dedicated **connectivity work queue**
+  (`net_wq`, `CONFIG_APP_NET_WORKQ_STACK_SIZE`, default 3072), not the system
+  workqueue, whose 1 KB stack they overflowed on the ESP32.
 
 **Status LED** (`CONFIG_APP_STATUS_LED`, on by default): tells you at a glance
 whether the *device* is on the network — **blinking = not connected**
@@ -231,6 +237,144 @@ collector/network path, not the device. It uses the board's `led0` alias
 (WROOM: on-board LED on GPIO2, see the board `.overlay`); it's a no-op on boards
 without an LED (the S2 TFT shows the same state on-screen; the S3 NeoPixel is not
 yet wired up).
+
+## Stalls, liveness watchdog & diagnostics
+
+A device that stops answering and **never comes back without a power-cycle** has
+a stalled firmware, not just a dropped network. The ESP32 builds had exactly that
+until the system workqueue stack overflow was fixed; the record is in
+`openspec/changes/esp32-network-freeze-investigation/evidence.md`. Three tools
+help with the next one.
+
+### Liveness watchdog (`CONFIG_APP_LIVENESS`)
+
+Each watched context (the system workqueue, the connectivity queue `net_wq`, the
+protocol server thread and, for SNMP, the trap sender) gets a task watchdog
+channel that is fed only when that context makes progress. If one stops for
+`CONFIG_APP_LIVENESS_TIMEOUT_S` (default 30 s), the device resets. The SoC
+watchdog (`watchdog0`) backs this up, so a lockup with interrupts masked also
+resets the device, after about 5 s. The next boot says why:
+
+```
+<err> app_liveness: LIVENESS RESET: context netwq stalled at uptime 1234 s (boot 3)
+<inf> app_liveness: reset cause 0x2 (software) esp_reason 3 boot 3
+```
+
+- `LIVENESS RESET: context <ctx>` means the named context stopped making
+  progress (`wq`, `netwq`, `proto` or `trap`), with the uptime when it did.
+- `hardware watchdog reset` means the task watchdog never got to run: a hard
+  lockup that only the SoC watchdog caught.
+- `boot N` counts resets since the last power-on, so a reset loop shows up.
+
+The watchdog is off by default until the 24 h acceptance soak has passed; it
+will then become the default for Wi-Fi builds. Enable it with
+`CONFIG_APP_LIVENESS=y` (for example, in a `*.local.conf` passed through
+`EXTRA_CONF_FILE`). For bench work under a debugger, leave it off. `CONFIG_APP_LIVENESS_SELFTEST` (test builds only)
+injects a failure after `CONFIG_APP_LIVENESS_SELFTEST_DELAY_S`: a blocked
+system workqueue, a stopped protocol loop, or a busy loop with interrupts
+masked.
+
+A protocol frontend feeds its channel by calling `app_alive(APP_CTX_PROTO)` from
+its own loop. Blocking waits must be bounded so an idle server still feeds it;
+see `lib/common/README.md`.
+
+### Diagnostic overlay (`overlay-diag.conf`)
+
+Add `overlay-diag.conf` to `EXTRA_CONF_FILE` to get `CONFIG_APP_DIAG` with
+immediate logging, net buffer usage, heap statistics and the thread analyzer.
+Every `CONFIG_APP_DIAG_PERIOD_S` (default 10 s) a thread that is not on the
+system workqueue logs:
+
+```
+<inf> app_diag: HEALTH up=120 n=12 beat[wq=1 netwq=2 proto=0 trap=0] work[status=D reconn=- sim=D probe=D] heap=23216/56112 malloc=71324/71324 pkt[rx=8/8 tx=8/8] buf[rx=24/24 tx=24/24] min[rx=19 tx=21] net=up
+<inf> app_diag: WIFI st=9 rssi=-61 ch=11
+```
+
+- `beat[...]`: seconds since each context last made progress (`-` means it has
+  not started).
+- `work[...]`: state of the firmware's work items: `R` running, `Q` queued,
+  `D` delayed, `C` cancelling, `-` idle.
+- `heap` and `malloc`: free and total bytes. `pkt`, `buf` and `min`: free net
+  packets and buffers, and the lowest buffer count seen.
+- A `HEALTH` line with no `WIFI` line after it means the Wi-Fi status query
+  blocked.
+
+When a context has not made progress for three periods, a `STALE` line names its
+thread, state and the wait queue it is blocked on (`pended_on`), followed by a
+dump of every thread. Map the address to a kernel object with
+`nm -n -S build/zephyr/zephyr.elf`, using the ELF of the build that ran.
+
+Immediate logging and the analyzer change timing and use more stack. The overlay
+raises the workqueue stacks to match; don't ship it.
+
+### Soak harness (`scripts/soak/`)
+
+`scripts/soak/run.sh` runs one timed experiment against a device and writes
+comparable records:
+
+```sh
+# build (inside the container) and flash from the host
+scripts/soak/build.sh build_soak snmp-agent esp32_devkitc/esp32/procpu soak-trap.local.conf
+scripts/soak/flash.sh build_soak /dev/cu.usbserial-210
+# one hour, console captured from boot, SNMP polled every 5 s, traps recorded
+scripts/soak/run.sh --board esp32-cam --app snmp --host 192.168.68.74 \
+    --port /dev/cu.usbserial-210 --variant baseline --duration 3600
+```
+
+The run's files go to `scripts/soak/runs/` (git-ignored):
+- `*.console.log`: the console, stamped with host time.
+- `*.polls.log`: one probe and one ping every 5 s.
+- `*.traps.log`: traps received by an unprivileged `snmptrapd` on port 1162.
+- `*.summary.json`: outages (3 failed probes in a row), time to failure,
+  recovery time, whether the device ever answered, and counts of boots and
+  liveness resets from the console.
+
+See [`scripts/soak/README.md`](scripts/soak/README.md) for the options and the
+per-protocol probes.
+
+On the ESP32-CAM, opening the serial port resets the board, so the harness opens
+it once, at the start of the run. When soaking the Modbus server, stop other
+Modbus clients first: the server serves one client at a time.
+
+### Liveness and diagnostics options
+
+| Kconfig | Default | Purpose |
+|---------|---------|---------|
+| `APP_LIVENESS` | `n` | Reset the device when a watched context stalls |
+| `APP_LIVENESS_TIMEOUT_S` | `30` | Seconds without progress before a reset |
+| `APP_LIVENESS_SELFTEST` | `n` | Inject a failure (test builds only) |
+| `APP_DIAG` | `n` | Health lines and stall reports (use `overlay-diag.conf`) |
+| `APP_DIAG_PERIOD_S` | `10` | Health line period |
+| `APP_NET_WORKQ_STACK_SIZE` | `3072` | Connectivity work queue stack |
+| `APP_MODBUS_CLIENT_IDLE_TIMEOUT_S` | `60` | Drop a Modbus client that sends nothing for this long |
+
+### Memory footprint (ESP32-WROOM-32, `esp32_devkitc/esp32/procpu`)
+
+Measured with Zephyr 4.4.2 and SDK 1.0.1 (`FLASH` and `dram0_0_seg` from the
+link map), with only the Wi-Fi credentials overlay unless noted. "Before" is
+the tree before the freeze fix.
+
+| App | Before: flash / DRAM | Release: flash / DRAM | + liveness | + `overlay-diag.conf` + liveness |
+|---|---|---|---|---|
+| `opcua-server` | 735,536 B / 124,088 B (63.1%) | 735,664 B / 124,288 B (63.2%) | 737,840 B / 124,656 B (63.4%) | 739,120 B / 124,176 B (63.2%) |
+| `modbus-server` | 575,984 B / 100,784 B (51.3%) | 576,224 B / 100,984 B (51.4%) | 578,288 B / 101,352 B (51.6%) | 580,032 B / 100,872 B (51.3%) |
+| `snmp-agent` | 564,880 B / 125,416 B (63.8%) | 564,992 B / 125,616 B (63.9%) | 566,960 B / 125,968 B (64.1%) | 568,544 B / 125,504 B (63.8%) |
+
+Flash is out of 4,194,048 B (all builds use 13–18%).
+
+Thread stacks sit in the no-init RAM section, which the DRAM figure above does
+not include. The fix grows that section by 6,112 B:
+- the `net_wq` stack (3,072 B);
+- a larger system workqueue stack (+1,024 B);
+- a larger log thread stack (+1,024 B);
+- a larger socket-service stack (+992 B).
+
+On the WROOM, `opcua-server` takes its libc `malloc` arena from the remaining
+RAM. It reports `libc heap size 70 kB` at boot both before and after the fix (with liveness on), so the larger stacks don't reduce it.
+
+QT Py ESP32-S3 release builds: `opcua-server` 684,500 B / 239,792 B (60.1%),
+`modbus-server` 579,428 B / 196,488 B (49.2%), `snmp-agent` 578,068 B /
+219,232 B (54.9%). All builds above compile with no warnings.
 
 ## Finding the device (mDNS / DNS-SD)
 
@@ -246,6 +390,15 @@ dns-sd -B _snmp._udp                   # lists the "tedge-snmp<mac>" SNMP agent
 Each firmware advertises its own DNS-SD service type (`_opcua-tcp`/`_modbus`
 over TCP, `_snmp` over UDP) via `CONFIG_APP_DNSSD_*`, and answers to its unique
 `<hostname>.local` name.
+
+> **Discovery note.** The devices answer service-discovery queries correctly:
+> a browse from a Linux host (for example Python `zeroconf`, or `avahi-browse`)
+> lists every device with its address, port and TXT record, and
+> `<hostname>.local` lookups work everywhere. On one macOS machine, `dns-sd -B`
+> listed nothing for these service types while browsing `_ssh._tcp` worked;
+> packet captures showed macOS never sent the query, so that is a client-side
+> quirk rather than a device fault. Note also that Zephyr 4.4.2 does not answer
+> direct SRV/TXT queries (only PTR), which is what `dns-sd -L` asks for.
 
 Point an OPC-UA client at `opc.tcp://tedge-opcua.local:4840`. Quick check with
 the bundled Python client:
