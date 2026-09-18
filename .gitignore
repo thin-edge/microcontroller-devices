@@ -18,6 +18,9 @@ overlay-wifi-credentials.conf
 *.local.conf
 credentials.conf
 
+# Soak harness run records (scripts/soak/run.sh)
+scripts/soak/runs/
+
 # Per-app / per-module out-of-tree build directories
 apps/*/build*/
 lib/*/build*/

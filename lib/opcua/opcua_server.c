@@ -3,6 +3,7 @@
 #include "opcua_server.h"
 #include "address_space.h"
 #include "net.h"
+#include "liveness.h"
 #include "display.h"
 
 #include <zephyr/kernel.h>
@@ -113,6 +114,7 @@ static void opcua_thread_fn(void *a, void *b, void *c)
 	 * callbacks, whose POSIX timer clock does not advance under Zephyr. */
 	int64_t last_sample = 0;
 	while (running) {
+		app_alive(APP_CTX_PROTO); /* rate-limited inside */
 		UA_Server_run_iterate(server, false);
 
 		int64_t now = k_uptime_get();

@@ -13,6 +13,8 @@ exactly one protocol frontend from `lib/<protocol>`.
 | Data model — measurements | `data_source.*` | `data_source_count()`, `data_source_descriptor()`, `data_source_sample()` |
 | Data model — writable control points | `controls.*` | `app_control_setpoint()`, `app_control_set_setpoint()` (clamps), `app_control_running()`, `app_control_set_running()` |
 | Device / firmware identity | `identity.*` | `app_identity_device_id()`, `app_identity_firmware_name()`, `app_identity_firmware_version()`, `app_identity_build_timestamp()` |
+| Liveness watchdog + progress hook | `liveness.*`, `sysworkq_probe.c` | `app_alive()`, `app_liveness_feed()` |
+| Health diagnostics | `diag.*` | `app_diag_beat()`, `app_diag_watch_work()`, `app_diag_dump_threads()` |
 
 `lib/common` has **no dependency on any protocol stack** (e.g. no open62541).
 
@@ -42,6 +44,36 @@ A protocol frontend is a Zephyr module under `lib/<protocol>/` that:
    identity via `app_identity_*`. It MUST NOT define a competing data source.
 4. **Provides its protocol-specific options** in its own `lib/<protocol>/Kconfig`
    (port, resource caps, ...). Shared options stay in `lib/common/Kconfig`.
+5. **Reports progress from every thread it owns.** Each serving loop calls
+   `app_alive(APP_CTX_PROTO)` (a second thread such as the SNMP trap sender uses
+   its own context, `APP_CTX_TRAP`) every time round the loop, from that thread
+   and never from a timer. No wait in the loop may block without a bound: wait
+   with `zsock_poll()` (the frontends use 5 s) or sleep, then call `app_alive()`
+   again, so an idle server still shows it is alive.
+   - With `CONFIG_APP_LIVENESS`, the first call registers a task watchdog channel
+     for the context, and a context that stops calling for
+     `CONFIG_APP_LIVENESS_TIMEOUT_S` resets the device.
+   - With `CONFIG_APP_DIAG`, the same call feeds the periodic health line, and a
+     stale context is reported with its thread state.
+   - With both off, `app_alive()` compiles to nothing.
+
+   A new context needs an entry in `enum app_ctx` (`diag.h`) and, with the
+   liveness watchdog on, a free `CONFIG_TASK_WDT_CHANNELS` slot (4 of the 5
+   default slots are in use).
+
+## Work queues and stacks
+
+Connectivity work (the 3 s status tick, the reachability watchdog and Wi-Fi
+reconnects in `net.c`) runs on its own work queue, `net_wq`
+(`CONFIG_APP_NET_WORKQ_STACK_SIZE`), which feeds `APP_CTX_NETWQ`. Its handlers
+make blocking Wi-Fi management calls, and the gateway ping runs the whole
+IPv4/ARP/driver transmit path on the caller's stack. That peaked at about 1.1 KB
+on the ESP32, which overflowed the 1 KB system workqueue it used to share.
+
+Don't put deep or blocking work on the system workqueue. `sysworkq_probe.c`
+schedules a tiny item there every 3 s, which feeds `APP_CTX_SYSWQ`. Work items
+the diagnostics should report (`R`/`Q`/`D` in the health line) are registered
+with `app_diag_watch_work()`.
 
 The `lib/opcua` frontend is the reference implementation: `opcua_server.c` owns
 the lifecycle/event loop and `address_space.c` maps the shared model onto OPC-UA

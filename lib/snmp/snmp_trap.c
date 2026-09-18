@@ -11,6 +11,7 @@
 #include "snmp_ber.h"
 #include "snmp_mib.h"
 #include "sim_switch.h"
+#include "liveness.h"
 
 #include <string.h>
 #include <errno.h>
@@ -186,6 +187,7 @@ static void trap_watcher(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 
 	while (true) {
+		app_alive(APP_CTX_TRAP);
 		k_sleep(K_MSEC(CONFIG_APP_SAMPLE_INTERVAL_MS));
 
 		/* Keep trying to resolve the manager until it succeeds (it may be

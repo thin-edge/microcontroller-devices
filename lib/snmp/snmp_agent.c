@@ -14,6 +14,7 @@
 #include "snmp_ber.h"
 #include "snmp_mib.h"
 #include "data_source.h"
+#include "liveness.h"
 
 #if defined(CONFIG_APP_SNMP_TRAP)
 #include "snmp_trap.h"
@@ -369,6 +370,8 @@ static size_t handle_request(const uint8_t *buf, size_t len)
 
 #define SNMP_THREAD_STACK_SIZE 4096
 #define SNMP_THREAD_PRIORITY   6
+/* Longest wait for a request before the loop reports progress again. */
+#define PROTO_WAIT_MS          5000
 
 K_THREAD_STACK_DEFINE(snmp_stack, SNMP_THREAD_STACK_SIZE);
 static struct k_thread snmp_thread;
@@ -382,6 +385,20 @@ static void snmp_listener(void *a, void *b, void *c)
 	while (true) {
 		struct sockaddr_in src;
 		socklen_t src_len = sizeof(src);
+		struct zsock_pollfd pfd = { .fd = agent_sock, .events = ZSOCK_POLLIN };
+
+		/* Wait with a bound so an idle agent still shows it is alive. */
+		app_alive(APP_CTX_PROTO);
+		int prc = zsock_poll(&pfd, 1, PROTO_WAIT_MS);
+
+		if (prc == 0) {
+			continue; /* no request this interval */
+		}
+		if (prc < 0) {
+			LOG_WRN("poll failed (%d)", errno);
+			k_sleep(K_MSEC(100));
+			continue;
+		}
 
 		ssize_t rc = recvfrom(agent_sock, rx_buf, sizeof(rx_buf), 0,
 				      (struct sockaddr *)&src, &src_len);
