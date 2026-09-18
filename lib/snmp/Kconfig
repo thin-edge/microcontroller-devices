@@ -39,6 +39,20 @@ config APP_SNMP_SYS_LOCATION
 	string "sysLocation.0 value"
 	default "Lab"
 
+config APP_SNMP_MAX_VARBINDS
+	int "Maximum varbinds in one request"
+	default 32
+	range 8 64
+	depends on APP_SNMP_AGENT
+	help
+	  How many varbinds a single GET/GETNEXT/GETBULK may carry. A collector
+	  typically polls every point of a device in one request, so this must
+	  cover the whole MIB view of one device: the switch/router simulation
+	  with 5 interfaces needs about 29. A larger request is answered tooBig.
+
+	  Costs about 136 bytes of RAM per varbind, twice over (the parsed
+	  request and the GETBULK cursors).
+
 config APP_SNMP_TRAP
 	bool "Originate SNMPv2c traps (coldStart / linkUp / linkDown)"
 	default y

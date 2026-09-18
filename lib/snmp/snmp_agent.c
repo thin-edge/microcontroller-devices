@@ -44,8 +44,15 @@ LOG_MODULE_REGISTER(app_snmp, CONFIG_LOG_DEFAULT_LEVEL);
 /* Work-buffer and fan-out limits (bound RAM + response size). */
 #define SNMP_RX_BUF   1500
 #define SNMP_TX_BUF   1500
-#define SNMP_MAX_REQ_VB   16 /* requested varbinds we parse */
-#define SNMP_MAX_RESP_VB  40 /* varbinds we will emit (GETBULK truncates past this) */
+/* Requested varbinds we parse. A collector polls every point of a device in one
+ * request — the tedge-dot SNMP connector sends ~29 for this firmware's MIB — so
+ * this has to cover a whole device, not a handful. A request with more is
+ * answered tooBig (RFC 3416 4.2.1), never with a short list: a silently
+ * truncated response reads as "no value for this OID" at the collector, and any
+ * alarm or threshold on the dropped points stops working. */
+#define SNMP_MAX_REQ_VB   CONFIG_APP_SNMP_MAX_VARBINDS
+/* Varbinds we will emit (GETBULK stops past this). */
+#define SNMP_MAX_RESP_VB  (SNMP_MAX_REQ_VB + 16)
 
 static int agent_sock = -1;
 static uint8_t rx_buf[SNMP_RX_BUF];
@@ -133,6 +140,7 @@ struct parsed_req {
 	int32_t field3; /* error-index   (GET*) or max-repetitions (GETBULK) */
 	struct vbname names[SNMP_MAX_REQ_VB];
 	size_t nvb;
+	bool too_many; /* request carried more varbinds than names[] holds */
 	const uint8_t *community;
 	size_t comm_len;
 };
@@ -190,6 +198,7 @@ static bool parse_request(const uint8_t *buf, size_t len, struct parsed_req *r)
 	}
 
 	r->nvb = 0;
+	r->too_many = false;
 	while (!ber_dec_done(&vbl)) {
 		struct ber_dec vb;
 
@@ -197,7 +206,9 @@ static bool parse_request(const uint8_t *buf, size_t len, struct parsed_req *r)
 			return false;
 		}
 		if (r->nvb >= SNMP_MAX_REQ_VB) {
-			/* Too many varbinds to track; ignore the rest. */
+			/* More than we can answer: the caller replies tooBig
+			 * rather than returning a short, silently wrong list. */
+			r->too_many = true;
 			break;
 		}
 
@@ -319,11 +330,21 @@ static void plan_getbulk(const struct parsed_req *r, struct resp_vb *out, size_t
 /* Build and return the response length in tx_buf, or 0 to send nothing. */
 static size_t handle_request(const uint8_t *buf, size_t len)
 {
-	struct parsed_req r;
+	/* Static, not on the stack: names[] is a few KB at the configured cap,
+	 * and only this thread handles requests. */
+	static struct parsed_req r;
 	struct ber_enc e;
 
 	if (!parse_request(buf, len, &r)) {
 		return 0; /* drop */
+	}
+
+	if (r.too_many) {
+		LOG_WRN("request had more than %d varbinds — tooBig",
+			SNMP_MAX_REQ_VB);
+		ber_enc_init(&e, tx_buf, sizeof(tx_buf));
+		return encode_error(&e, r.request_id, SNMP_ERR_TOO_BIG, 0,
+				    r.community, r.comm_len);
 	}
 
 	/* Read-only agent: refuse SET without touching state. */
