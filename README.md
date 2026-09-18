@@ -685,6 +685,27 @@ export TEDGE_DOT_POINT_LIBRARY_PATH=/path/to/apps/snmp-agent/points.d
 tedge-dot read -c snmp.toml -p if4_oper_status
 ```
 
+**Installing them on a gateway.** Copy the file this repo owns into the
+collector's *site* directory, which is searched before the packaged one and is
+not overwritten by a package upgrade. The file name is what `points_from`
+refers to, so name it accordingly:
+
+```sh
+# on the gateway, from a checkout of this repo
+install -o tedge -g tedge -m 644 apps/modbus-server/points.d/modbus/zephyr-modbus-pump.toml \
+    /etc/tedge/plugins/ot/points.d/modbus/zephyr-pump.toml        # points_from = ["zephyr-pump"]
+install -o tedge -g tedge -m 644 apps/opcua-server/points.d/opcua/zephyr-opcua.toml \
+    /etc/tedge/plugins/ot/points.d/opcua/zephyr-opcua.toml
+sudo systemctl restart tedge-dot
+```
+
+Don't hand-copy them into `/usr/share/tedge-dot/points.d/`: those are the
+package's own, an upgrade replaces them, and a stale copy there silently
+outlives a fix. (One did: a wrong `decimal_shift` sign published pump readings
+up to 10,000x too large until the gateway copy was replaced.) `tedge-dot`
+logs which library each device resolved from, so a restart confirms the copy
+in use.
+
 **What the SNMP library declares.** Meaning is attached to each point next to its
 address, so the device shows up usefully with no per-deployment flow parameters:
 

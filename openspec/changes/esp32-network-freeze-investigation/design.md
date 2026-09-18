@@ -147,10 +147,24 @@ uptime) in `__noinit` RAM and triggers a reset. At boot the module logs that
 record plus the SoC reset reason, which distinguishes a hardware-watchdog reset
 from a brownout or power-on.
 
-Timeouts default well above legitimate worst-case blocking: 30 s per channel,
-with the hardware fallback a little longer. Association and DHCP run
-asynchronously through `net_mgmt` events and do not hold the workqueue for that
-long.
+Timeouts sit above legitimate worst-case blocking, but that case turned out to
+be far larger than assumed for connectivity work. **Measured 2026-09-17:**
+Espressif Wi-Fi management and status calls hold the connectivity queue for
+more than 30 s while an access point disappears or returns — an AP restart
+produced five resets across three boards, all false positives. Association and
+DHCP themselves are asynchronous and do not, but `esp32_wifi_status()`
+(`esp_wifi_get_config()`, `esp_wifi_sta_get_ap_info()`) and the connect and
+disconnect requests wait on the Wi-Fi library's own task.
+
+So the timeouts are per context: 30 s for the system workqueue and the protocol
+threads, and `CONFIG_APP_LIVENESS_NETWQ_TIMEOUT_S` (default 120 s) for the
+connectivity queue. The blocking status query was also removed from the status
+tick where no display needs it, which stopped the stall occurring at all: the
+repeat AP restart produced no reset and no stale context.
+
+The hardware fallback is shorter than the ESP32 driver's nominal figure: it
+programs the millisecond timeout into a 0.5 ms tick, so the two stages expire
+in about 5 s rather than 10 s. That is fine for a lockup detector.
 
 The module lands default-off while it is validated, and becomes **default-on
 for Wi-Fi targets** once the soak passes (task 7.4).
