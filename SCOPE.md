@@ -65,6 +65,12 @@ Development is done on **macOS**, so build/flash instructions must work on macOS
 ## Target devices (on hand)
 
 - ESP32-WROOM-32 (dual-core, 520 KB SRAM, Wi-Fi) — co-primary
+- Adafruit QT Py ESP32-S3 (dual-core Xtensa LX7, 512 KB SRAM, Wi-Fi) — co-primary
+- ESP32-C6-WROOM-1-N4 (single-core **RISC-V**, ~512 KB SRAM, 4 MB flash,
+  **Wi-Fi 6**) — co-primary. The first non-Xtensa target: it validates that the
+  shared core and the protocol frontends are architecture-portable, and all
+  three applications are verified on it.
+- ESP32-S3-DevKitC-1 (dual-core Xtensa LX7, 512 KB SRAM, 8 MB flash) — co-primary
 - Adafruit Feather ESP32-S2 TFT (320 KB SRAM + 2 MB PSRAM, Wi-Fi) — co-primary
 - Raspberry Pi Pico W (RP2040 + CYW43 Wi-Fi) — additional/stretch target
 

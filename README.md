@@ -22,11 +22,25 @@ reads live, updating measurements (temperature/humidity/pressure).
 |-------|---------------------|------|--------|
 | ESP32-WROOM-32 | `esp32_devkitc/esp32/procpu` | co-primary | **verified on hardware** |
 | Adafruit QT Py ESP32-S3 | `adafruit_qt_py_esp32s3/esp32s3/procpu` | co-primary | **verified on hardware** |
+| **ESP32-C6** (WROOM-1-N4) | `esp32c6_devkitc/esp32c6/hpcore` | co-primary | **verified on hardware — all three apps** |
+| **ESP32-S3-DevKitC-1** | `esp32s3_devkitc/esp32s3/procpu` | co-primary | **verified on hardware — all three apps** |
 | Feather ESP32-S2 TFT | `adafruit_feather_esp32s2_tft/esp32s2` | co-primary | builds & flashes; **Wi-Fi data path broken upstream — see note** |
 | Raspberry Pi Pico W | `rpi_pico/rp2040/w` | stretch | config authored, not yet built |
 | Host simulation | `native_sim/native/64` | dev / CI | builds & runs (see NSOS note) |
 
 All hardware targets are Wi-Fi-only (station mode).
+
+> **ESP32-C6 note — the first RISC-V and Wi-Fi 6 target.** Every other board
+> here is Xtensa; the C6 is single-core RISC-V with a Wi-Fi 6 radio, and all
+> three applications built for it **without a single source change** — only the
+> per-app `boards/` files. That is the strongest evidence so far that
+> `lib/common/` and the protocol frontends are genuinely architecture-portable
+> rather than accidentally Xtensa-shaped. All three were then verified on
+> hardware: SNMP (`snmpget`/`snmpwalk` of the ifTable plus a coldStart trap),
+> Modbus TCP (register reads, and a coil+setpoint write spinning the pump sim
+> up), and OPC-UA (browsing the Device object, live updating measurements).
+> Despite the 4 MB part being the smallest flash in the fleet, even the OPC-UA
+> image uses only ~45% of its 1792 KB slot.
 
 > **ESP32-S2 Feather Wi-Fi note:** the same firmware that works end-to-end on
 > the WROOM builds and flashes on the S2, and the S2 *associates* (correct SSID,
@@ -42,6 +56,20 @@ All hardware targets are Wi-Fi-only (station mode).
 > firmware config. Paths forward if the S2 is needed: try a newer Zephyr /
 > `hal_espressif`, or use ESP-IDF for the S2, or track it via a Zephyr issue.
 > **Use the WROOM for real deployments.**
+
+> **The C6 does *not* repeat the S2 failure.** Worth stating explicitly, since
+> the S2 taught us to distrust "associated" as evidence. The C6's Wi-Fi 6 radio
+> associates **and passes IPv4 traffic** under the same Zephyr 4.4.2: it takes a
+> DHCP lease, answers ICMP with 0% loss over sustained pings, resolves over
+> mDNS, and serves SNMP, Modbus TCP and OPC-UA round-trips to external clients.
+> Whatever ails the single-core S2 is specific to it, not a general weakness of
+> Espressif Wi-Fi under this Zephyr.
+>
+> Two harmless log lines on the C6 during bring-up: `net_arp: Gateway not set
+> for iface 1` in the window before the DHCP lease installs a gateway, and
+> `net_dhcpv4: DHCP server provided more DNS servers than can be saved` when the
+> router offers more servers than `DNS_SERVER_COUNT` slots. Neither affects
+> connectivity.
 
 Built and verified with **Zephyr v4.4.2** and **Zephyr SDK 1.0.1** (as shipped
 in the `zephyrprojectrtos/zephyr-build` image).
@@ -61,6 +89,12 @@ container. Flashing runs on the host (Docker on macOS can't reach USB serial).
 brew install --cask docker            # or: brew install colima docker && colima start
 python3 -m venv ~/flashenv && ~/flashenv/bin/pip install esptool pyserial asyncua
 ```
+
+Use **esptool ≥ 4.5**, which is the first release that knows the `esp32c6`
+chip. Note that esptool **5.x renamed its subcommands** to hyphenated forms
+(`write-flash`, `flash-id`, `chip-id`); the underscore spellings in older notes
+still work but are deprecated. `pymodbus` is also handy for exercising the
+Modbus firmware by hand.
 
 ### Linux differences
 
@@ -160,6 +194,87 @@ P=$(ls /dev/cu.usbmodem* | head -1)
 
 The console (and DHCP IP) is on the same native-USB port at 115200; open it
 **without toggling DTR/RTS** so you don't reset the board.
+
+## Build & flash the ESP32-S3-DevKitC-1
+
+Espressif's own S3 reference board, as distinct from the Adafruit QT Py above.
+
+**Use the board's UART port, not its native USB port.** This board has two USB
+sockets, and unlike the QT Py the right one is the UART socket: its bridge wires
+DTR/RTS to EN/BOOT, so esptool resets the board itself. Flashing needs **no
+button press**, and the console survives a reset so you get the boot log from
+the first line. The board devicetree already points `zephyr,console` at `uart0`,
+so nothing has to be overridden — the board `.overlay` only corrects the flash
+size.
+
+**No `&wifi` overlay is needed** either: this board's devicetree already enables
+the Wi-Fi node, unlike the QT Py S3 and the S2 Feather.
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b esp32s3_devkitc/esp32s3/procpu apps/snmp-agent --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
+```
+
+Flash at offset **`0x0`**. The port is the UART bridge — on macOS it may appear
+as `/dev/cu.usbmodem*` rather than `usbserial*`, since newer boards ship a
+CH343-class bridge in CDC mode rather than a CP210x:
+
+```sh
+~/flashenv/bin/python -m esptool --chip esp32s3 --port /dev/cu.usbmodem5CE60429731 \
+  --baud 460800 write-flash 0x0 build/zephyr/zephyr.bin
+```
+
+The console is on that same port at 115200.
+
+> **Flash size.** The board `.overlay` declares `&flash0` as **16 MB**, matching
+> the N16R8 module tested here, where the upstream devicetree's
+> `esp32s3_wroom_n8.dtsi` assumes 8 MB. Check yours with `esptool flash-id` and
+> adjust — the partition table lives in the low 4 MB either way, so this is
+> correctness rather than a layout change. The module's 8 MB of octal PSRAM is
+> not used.
+>
+> **If you do want the native USB port**, the overlay carries the console block
+> to paste in, commented. Be warned that it did not come up on the board tested
+> here, and that a board still running factory firmware on that port refuses
+> every esptool reset strategy until you hold BOOT and tap RESET once.
+
+## Build & flash the ESP32-C6
+
+The first **RISC-V** board here, and the first **Wi-Fi 6** radio. It needs no
+special handling beyond its board files — the toolchain (`riscv64-zephyr-elf`)
+and the C6 Wi-Fi blobs both ship in the standard container.
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build -b esp32c6_devkitc/esp32c6/hpcore apps/snmp-agent --pristine \
+  -- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf
+```
+
+Flash at offset **`0x0`** with `--chip esp32c6`, which needs **esptool ≥ 4.5**:
+
+```sh
+~/flashenv/bin/python -m esptool --chip esp32c6 --port /dev/cu.usbmodem1101 \
+  --baud 460800 --before usb-reset --after hard-reset \
+  write-flash 0x0 build/zephyr/zephyr.bin
+```
+
+The C6 board overlay also **corrects the declared flash size**. The upstream
+board devicetree includes `esp32c6_wroom_n8.dtsi`, which claims an 8 MB part;
+the WROOM-1-**N4** module in hand has 4 MB (confirm with `esptool flash-id`).
+The partition table is 4 MB-based either way, so this is correctness rather
+than a fix for a broken build — but it stops anything reasoning from `flash0`
+believing in 2 MB that is not there. On a genuine N8 board, drop that block.
+
+> **Console caveat (C6, and any native-USB console).** The C6's console rides
+> USB-Serial-JTAG, which re-enumerates when the board resets, so **the earliest
+> boot output is lost** and a console attached after boot can look completely
+> silent even while the firmware is happily serving on the network — that
+> happened repeatedly during bring-up. Attach before resetting, and check the
+> network (`ping`, mDNS) before concluding a board has hung. The S3-DevKitC
+> avoids this entirely by using its UART port, which is why that is the
+> recommended port for it; the C6 board tested here exposes only the one USB
+> socket, so it has no such option.
 
 ## Build & flash the ESP32-S2 Feather TFT
 
@@ -381,6 +496,35 @@ RAM. It reports `libc heap size 70 kB` at boot both before and after the fix (wi
 QT Py ESP32-S3 release builds: `opcua-server` 684,500 B / 239,792 B (60.1%),
 `modbus-server` 579,428 B / 196,488 B (49.2%), `snmp-agent` 578,068 B /
 219,232 B (54.9%). All builds above compile with no warnings.
+
+**ESP32-S3-DevKitC-1** (`esp32s3_devkitc/esp32s3/procpu`), credentials overlay
+only, RAM out of 399,108 B. Flash is the N16R8's 16,776,960 B, so all three sit
+under 5%:
+
+| App | flash | dram0 |
+|---|---|---|
+| `opcua-server` | 750,836 B | 243,296 B (61.0%) |
+| `modbus-server` | 580,244 B | 201,256 B (50.4%) |
+| `snmp-agent` | 578,916 B | 231,472 B (58.0%) |
+
+RAM lands within a point of the QT Py S3, as expected for near-identical
+silicon. The flash numbers are *not* comparable to the QT Py release figures
+above — these are plain debug builds.
+
+**ESP32-C6** (`esp32c6_devkitc/esp32c6/hpcore`), credentials overlay only, RAM
+out of 509,456 B. Flash here is the 4 MB part, of which `slot0_partition` is
+1792 KB (1,835,008 B) — the figure that actually has to fit:
+
+| App | flash | `zephyr.bin` (% of slot0) | sram0 |
+|---|---|---|---|
+| `opcua-server` | 836,036 B | 828,752 B (45.1%) | 259,888 B (51.0%) |
+| `modbus-server` | 729,572 B | 723,536 B (39.4%) | 217,792 B (42.8%) |
+| `snmp-agent` | 662,260 B | 709,904 B (38.6%) | 248,048 B (48.7%) |
+
+RISC-V images run roughly 80 KB larger than their Xtensa equivalents — ordinary
+code-density difference, and easily absorbed. The smallest-flash board in the
+fleet still runs the largest application with over half its slot free, so the
+4 MB part was never the constraint it looked like.
 
 ## Finding the device (mDNS / DNS-SD)
 
@@ -734,3 +878,36 @@ interface count needs rows added or switched off with `enabled = false`.
    `CONFIG_NET_HOSTNAME` — copy an existing ESP32 conf. HWMv2 matches the
    *fully-qualified* filename (board + qualifiers, `/` → `_`).
 2. Build with `-b <board> apps/<app>`; the core and OPC-UA logic need no changes.
+
+A port should stay **board files only** — if it starts wanting changes in
+`lib/` or `apps/*/src`, that is a portability bug worth reporting rather than
+patching around. Four checks, learned from the ports above, save most of the
+time:
+
+- **Does the board devicetree already enable `&wifi`?** Don't add the overlay
+  reflexively. The QT Py S3 and S2 Feather need one; the ESP32-S3-DevKitC and
+  ESP32-C6 already set it to `okay`, and adding a redundant overlay only
+  obscures which boards genuinely need it.
+  ```sh
+  docker exec zephyr-dev grep -n -A2 '&wifi' /ws/zephyr/boards/<vendor>/<board>/<board>.dts
+  ```
+- **Which port should you actually use?** On a board with both a UART socket and
+  a native USB socket, prefer the **UART** one: its bridge drives DTR/RTS, so
+  esptool resets the board itself (no BOOT/RESET press) and the console survives
+  a reset, giving you the boot log from line one. Native USB re-enumerates on
+  reset, loses early boot output, and can need a manual BOOT+RESET if unrelated
+  firmware holds the port. Only re-chose the console onto `&usb_serial` when the
+  board has no UART socket — as on the C6 here. Check the board's
+  `zephyr,console` against the port you will actually plug into before assuming
+  either way.
+- **Does the declared flash match the part you hold?** Board devicetrees assume
+  a module variant (`..._wroom_n8.dtsi` and friends). Read the real part with
+  `esptool flash-id` and correct `&flash0` in the overlay if they disagree.
+- **Is there really a `led0`?** Many modern boards have only a WS2812
+  addressable RGB LED, which the GPIO-based status indicator cannot drive. That
+  is fine — the indicator no-ops — but don't invent a GPIO for it.
+
+Then verify on the **data path**, not on association: a DHCP lease and a Wi-Fi
+"connected" log prove very little on their own, as the S2 demonstrates. Ping the
+board, resolve its mDNS name, and complete one protocol round-trip before
+calling a board verified in the targets table.

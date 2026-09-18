@@ -10,9 +10,10 @@
 #
 # Commands:
 #   setup                       create /opt/soakenv (esptool, pyserial), copy scripts
-#   flash <build-dir> <port> [esp32|esp32s3]
+#   flash <build-dir> <port> [esp32|esp32s3|esp32c6]
 #                               copy <build-dir>/zephyr/zephyr.bin and flash it
-#                               (esp32: 0x1000, auto-reset; esp32s3: 0x0, usb-reset)
+#                               (esp32: 0x1000, auto-reset;
+#                                esp32s3/esp32c6: 0x0, usb-reset)
 #   run <run.sh args...>        start run.sh detached; prints the run stem
 #   status                      running soaks and the last poll line of each
 #   stop <stem>                 stop a running soak
@@ -43,11 +44,17 @@ flash)
     name="$(basename "$dir")"
     ssh "$host" "mkdir -p $rdir/fw/$name"
     scp -q "$repo/$dir/zephyr/zephyr.bin" "$host:$rdir/fw/$name/zephyr.bin"
-    if [[ "$chip" == "esp32s3" ]]; then
-        opts="--chip esp32s3 --before usb-reset --after hard-reset"; off=0x0
-    else
+    case "$chip" in
+    esp32s3|esp32c6)
+        # Native-USB parts (USB-Serial-JTAG): image at 0x0, reset over USB.
+        # Applies to the QT Py S3, the ESP32-S3-DevKitC and the ESP32-C6, whose
+        # board devicetrees all include a partitions_0x0_* layout.
+        opts="--chip $chip --before usb-reset --after hard-reset"; off=0x0
+        ;;
+    *)
         opts="--chip esp32"; off=0x1000
-    fi
+        ;;
+    esac
     ssh "$host" "$renv/bin/python -m esptool -p $port -b 460800 $opts \
         write-flash $off $rdir/fw/$name/zephyr.bin" | tail -2
     ;;

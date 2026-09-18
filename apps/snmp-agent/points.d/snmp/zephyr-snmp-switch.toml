@@ -8,8 +8,16 @@
 #
 #   [[device]]
 #   name             = "tedge-snmp-device"
-#   protocol_address = { host = "tedge-snmp.local", port = 161, version = "v2c", community = "public" }
+#   protocol_address = { host = "tedge-snmp<mac>.local", port = 161, version = "v2c", community = "public" }
 #   points_from      = ["zephyr-snmp-switch"]
+#
+# One instance per board. The firmware builds with CONFIG_NET_HOSTNAME_UNIQUE=y, so the mDNS
+# name is CONFIG_NET_HOSTNAME with the MAC appended and **no separator** — e.g. an ESP32-C6
+# with MAC e8:f6:0a:fc:32:0c answers to `tedge-snmpe8f60afc320c.local`, not `tedge-snmp.local`
+# and not `tedge-snmp-e8f60afc320c.local`. That is what lets several boards run this same
+# firmware on one LAN without colliding, and it means each board needs its own [[device]]
+# entry naming its own host. Read a board's actual name from sysName.0 (point `sys_name`
+# below) or from its boot log.
 #
 # and, from a checkout rather than an installed package, point the search path at this directory:
 #
