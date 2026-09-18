@@ -266,10 +266,15 @@ resets the device, after about 5 s. The next boot says why:
   lockup that only the SoC watchdog caught.
 - `boot N` counts resets since the last power-on, so a reset loop shows up.
 
-The watchdog is off by default until the 24 h acceptance soak has passed; it
-will then become the default for Wi-Fi builds. Enable it with
-`CONFIG_APP_LIVENESS=y` (for example, in a `*.local.conf` passed through
-`EXTRA_CONF_FILE`). For bench work under a debugger, leave it off. `CONFIG_APP_LIVENESS_SELFTEST` (test builds only)
+The watchdog is **on by default for Wi-Fi builds**, since the acceptance soaks
+(24 h and 10 h on four boards, plus an access-point restart) produced no false
+reset. For bench work under a debugger, where a reset would hide the problem,
+set `CONFIG_APP_LIVENESS=n`.
+
+The connectivity queue has its own, longer timeout
+(`CONFIG_APP_LIVENESS_NETWQ_TIMEOUT_S`, default 120 s): Espressif Wi-Fi driver
+calls block it for well over 30 s while an access point disappears or returns,
+and resetting for that is a false positive. `CONFIG_APP_LIVENESS_SELFTEST` (test builds only)
 injects a failure after `CONFIG_APP_LIVENESS_SELFTEST_DELAY_S`: a blocked
 system workqueue, a stopped protocol loop, or a busy loop with interrupts
 masked.
@@ -340,7 +345,8 @@ Modbus clients first: the server serves one client at a time.
 
 | Kconfig | Default | Purpose |
 |---------|---------|---------|
-| `APP_LIVENESS` | `n` | Reset the device when a watched context stalls |
+| `APP_LIVENESS` | `y` on Wi-Fi builds | Reset the device when a watched context stalls |
+| `APP_LIVENESS_NETWQ_TIMEOUT_S` | `120` | Same, for the connectivity queue |
 | `APP_LIVENESS_TIMEOUT_S` | `30` | Seconds without progress before a reset |
 | `APP_LIVENESS_SELFTEST` | `n` | Inject a failure (test builds only) |
 | `APP_DIAG` | `n` | Health lines and stall reports (use `overlay-diag.conf`) |

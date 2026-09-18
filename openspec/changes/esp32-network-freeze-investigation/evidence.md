@@ -402,6 +402,38 @@ Verified on hardware before the reflash (BLOCK_WQ self-test, deferred logging):
 in step 'probe' - resetting`, the full 15-line thread dump, and on the next
 boot `LIVENESS RESET: context wq stalled in step 'probe' at uptime 72 s`.
 
+### Final-image soak, 2026-09-17 22:02 -> 2026-09-18 07:58 CEST (9.93 h)
+
+The build that also passed the AP-restart test, on all four boards
+(`20260917T2102*-*-final-live*`). Shortened from 24 h at the user's request.
+
+| Board | App | Probes OK | Outages | Boots | Liveness resets | STALE lines | Crashes / hw-wdt |
+|---|---|---|---|---|---|---|---|
+| ESP32-CAM | `snmp-agent` | 7,088 / 7,148 | 1 (15 s, recovered) | 1 | 0 | 0 | 0 / 0 |
+| WROOM "3c71" | `opcua-server` | 7,145 / 7,148 | 0 | 1 | 0 | 0 | 0 / 0 |
+| WROOM "30ae" | `modbus-server` | 7,138 / 7,148 | 0 | 1 | 0 | 0 | 0 / 0 |
+| QT Py S3 | `modbus-server` (via tedge-dot) | 7,143 / 7,148 | 0 | 1 | 0 | 0 | 0 / 0 |
+
+- **No board rebooted**: one power-on each, from the flash, and ~9.93 h of
+  unbroken uptime.
+- **Zero `STALE` lines**, against 196 on the OPC-UA board in the previous soak:
+  the age-wrap fix (9.10) works.
+- **The CAM's single 15 s outage** (02:01:29) left uptime unbroken: another
+  radio blip on its weak link (9.12).
+- **Memory flat**: system heap 23,120 -> 23,012 bytes free on the CAM, malloc
+  arenas identical at both ends on all four.
+- **Net buffers**: the 24-buffer builds dipped to `min[rx=4]` (previous soak:
+  0), the 40-buffer OPC-UA build to 20. Still the tightest resource (9.11).
+- **Tightest stack** remains `conn_mgr_monitor` at 192 of 512 bytes free (9.7).
+- **Pump readings are correct** with the clamp and the corrected point library
+  (9.1): a running pump reports `vibration_mms: 3` and `motor_temp_c: 76.5`,
+  matching the float copy 76.07. No wrapped values.
+- **No traps were received** (previous soak: 5,712). The firmware sent 2,381
+  linkUp/linkDown events to `192.168.68.65:1162`, the Pi's Wi-Fi address when
+  the image was built; after the AP restart the Pi moved to `eth0`
+  (192.168.68.70). A harness address issue, not a firmware fault: rebuild with
+  the current manager IP before the next trap-carrying run.
+
 ### Access-point restart #2, after the fixes (2026-09-17 21:25:50 CEST): PASSED
 
 Decos restarted again, 7 minutes into the `fixed2-live` soaks. Times below are

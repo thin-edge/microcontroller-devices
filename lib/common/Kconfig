@@ -292,6 +292,7 @@ config APP_DIAG_STACK_SIZE
 
 config APP_LIVENESS
 	bool "Liveness watchdog: reset the device when it stops making progress"
+	default y if APP_WIFI
 	default n
 	select TASK_WDT
 	select WATCHDOG
@@ -308,8 +309,12 @@ config APP_LIVENESS
 
 	  This is the recovery for a stalled firmware. APP_NET_RECONNECT_REBOOT is
 	  the recovery for a network outage and cannot help here, because it runs
-	  on the system workqueue. Turn this off on a bench where a reset would
-	  hide a problem under a debugger.
+	  on the connectivity work queue. On a bench, where a reset would hide a
+	  problem under a debugger, set CONFIG_APP_LIVENESS=n.
+
+	  On by default for Wi-Fi targets since the 2026-09 acceptance soaks:
+	  24 h and 10 h runs on four boards with no false reset, and an
+	  access-point restart that every board rode out without one.
 
 config APP_LIVENESS_TIMEOUT_S
 	int "Seconds without progress before a reset"
@@ -383,6 +388,12 @@ configdefault TASK_WDT_HW_FALLBACK_DELAY
 # logging (overlay-diag.conf), where an explicit assignment would warn.
 configdefault LOG_PROCESS_THREAD_STACK_SIZE
 	default 2048 if SOC_FAMILY_ESPRESSIF_ESP32 && APP_WIFI
+
+# The connection manager's monitor thread uses ~320 of its 512-byte default on
+# these builds (measured over the 2026-09-17 soaks): the least headroom of any
+# thread. Set here rather than per board, for the same reason as the log thread.
+configdefault NET_CONNECTION_MANAGER_MONITOR_STACK_SIZE
+	default 1024 if SOC_FAMILY_ESPRESSIF_ESP32 && APP_WIFI
 
 endmenu # Liveness and diagnostics
 
