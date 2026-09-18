@@ -1,4 +1,10 @@
-## ADDED Requirements
+# board-support Specification
+
+## Purpose
+
+The contract a board port must satisfy to be a supported target: adding a board is additive per-application configuration only — a `.conf` and, where needed, a devicetree `.overlay` — never a change to shared or application code. A supported board builds every application, enables Wi-Fi station mode, exposes a console on the port it is actually connected through, declares the flash size physically fitted, is verified end-to-end on the data path rather than by association alone, and is documented with the verification state it has genuinely reached.
+
+## Requirements
 
 ### Requirement: Board ports are additive configuration only
 
@@ -69,31 +75,45 @@ with the application's transport needs.
 
 ### Requirement: A console is reachable on the board's connected port
 
-A board port SHALL provide a console on the USB port the board is actually
-connected through. When the board's devicetree routes the console to a peripheral
-that is not exposed on that port, the port SHALL supply an overlay re-chosing the
-console, and the documentation SHALL state which physical port carries it.
+A board port SHALL provide a console on the port the board is actually connected
+through, and the documentation SHALL state which physical port carries it. Where
+a board offers a choice of ports, the port SHALL prefer the one whose bridge
+drives DTR/RTS — normally a dedicated UART socket — because that port lets the
+flashing tool reset the board itself and keeps the console alive across a reset.
+An overlay re-chosing the console onto native USB SHALL be used only where no
+such port exists.
 
-#### Scenario: Board connected over native USB with a UART-routed console
+#### Scenario: Board exposes both a UART socket and a native-USB socket
 
-- **WHEN** a board whose devicetree chooses `uart0` for the console is connected
-  through its native USB-Serial-JTAG port
+- **WHEN** a board offers both, and its devicetree already chooses `uart0`
+- **THEN** the port keeps that console and the board is used through its UART
+  socket
+- **AND** no console overlay is added, flashing needs no BOOT/RESET button
+  press, and the boot log is captured from its first line
+
+#### Scenario: Board exposes only a native-USB port
+
+- **WHEN** the board has no UART socket, so the console must ride
+  USB-Serial-JTAG
 - **THEN** the port supplies an overlay enabling `&usb_serial` and setting
   `zephyr,console` and `zephyr,shell-uart` to it
-- **AND** boot and connectivity logs are readable on the connected port without
-  a second cable
+- **AND** the documentation records that this console re-enumerates on reset, so
+  the earliest boot output is lost
 
-#### Scenario: Early boot output is needed
+#### Scenario: A console attached after boot shows nothing
 
-- **WHEN** a developer needs output from before USB re-enumeration completes
-- **THEN** the documentation directs them to the board's UART console as the
-  fallback, noting that a USB-Serial-JTAG console drops the earliest boot output
+- **WHEN** a native-USB console is attached after the board has already booted
+  and no output appears
+- **THEN** that alone SHALL NOT be treated as evidence the board has hung —
+  reachability is confirmed on the network before drawing any conclusion
 
 ### Requirement: Declared flash size matches the physical part
 
 A board port SHALL ensure the `flash0` size seen by the build matches the flash
-actually fitted to the board in hand. When the upstream board devicetree assumes
-a different memory variant, the port SHALL correct the size in its overlay.
+actually fitted to the board in hand, as read from the part itself. When the
+upstream board devicetree assumes a different module variant, the port SHALL
+correct the size in its overlay, in **either** direction — a devicetree may
+overstate or understate the fitted part.
 
 #### Scenario: Board devicetree overstates the fitted flash
 
@@ -101,6 +121,14 @@ a different memory variant, the port SHALL correct the size in its overlay.
   hand is a 4 MB N4 part
 - **THEN** the port's overlay sets `&flash0` to the real 4 MB size
 - **AND** the partition table still fits entirely within the corrected size
+
+#### Scenario: Board devicetree understates the fitted flash
+
+- **WHEN** a board's devicetree declares 8 MB but the module in hand is a 16 MB
+  N16R8 part
+- **THEN** the port's overlay sets `&flash0` to the real 16 MB size
+- **AND** the partition layout is left unchanged, since it occupies only the low
+  region of flash either way
 
 #### Scenario: Corrected size conflicts with the board's partition table
 

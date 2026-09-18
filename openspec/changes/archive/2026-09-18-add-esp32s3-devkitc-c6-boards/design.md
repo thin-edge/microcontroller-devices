@@ -220,6 +220,26 @@ nothing to migrate and rollback is deleting the new files. The README's targets
 table gains two rows whose status must state what was actually verified rather
 than what was intended.
 
+## Spec corrections after bring-up
+
+Two `board-support` requirements were written before any hardware ran and were
+corrected at archive time, so the durable spec records what was verified rather
+than what was assumed:
+
+- **Console.** The original requirement prescribed re-chosing the console onto
+  `&usb_serial` whenever a board's devicetree pointed elsewhere. Bring-up
+  inverted that: where a board has a UART socket, that socket is *better* — its
+  bridge drives DTR/RTS, so esptool resets the board itself (no BOOT/RESET
+  press) and the console survives a reset, giving boot output from the first
+  line. On the S3-DevKitC the native-USB variant additionally produced neither
+  console nor network. The requirement now prefers the DTR/RTS-capable port and
+  reserves the `&usb_serial` overlay for boards without one, with a third
+  scenario recording that a silent late-attached console is not evidence of a
+  hang.
+- **Flash size.** The original covered only a devicetree *overstating* the part
+  (C6: 8 MB declared, 4 MB fitted). The S3-DevKitC supplied the mirror case
+  (8 MB declared, 16 MB fitted), so the requirement now spans both directions.
+
 ## Open Questions
 
 - Does the C6's Wi-Fi 6 radio associate and pass IPv4 traffic under Zephyr
