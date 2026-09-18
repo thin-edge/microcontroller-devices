@@ -368,7 +368,7 @@ address  = { oid = "1.3.6.1.2.1.2.2.1.17.3" }
 # --- ifIndex 4 (GigabitEthernet0/4) --------------------------------------------------------
 #
 # The port the simulation flaps: sim_switch.c toggles its oper status every
-# CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS sampling steps (15 s with both defaults; 0 = never),
+# CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS sampling steps (15 min as the firmware ships; 0 = never),
 # so this is the row that exercises the alarm below and produces the linkUp/linkDown traps.
 # At the default that is ~4 notifications a minute, so a device left running is worth building
 # with a longer period.

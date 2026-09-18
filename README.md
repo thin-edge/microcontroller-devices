@@ -534,8 +534,9 @@ The shared data model is driven by a **simulation** chosen with a Kconfig
 - `CONFIG_APP_SIM_SWITCH` — a managed switch/router: a fixed set of Ethernet
   interfaces (`CONFIG_APP_SIM_SWITCH_IF_COUNT`, ≤ 8) with admin/oper status,
   1 Gbit/s nominal speed and monotonic traffic counters; one port flaps its link
-  every `CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS` sampling steps (default 15,
-  `0` = never) to drive link up/down events. Used by `apps/snmp-agent`.
+  every `CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS` sampling steps (`0` = never)
+  to drive link up/down events. Used by `apps/snmp-agent`, which sets 900 (a
+  flap every 15 minutes).
 
 Frontends are simulation-agnostic, so any simulation can back any protocol.
 
@@ -640,13 +641,13 @@ sudo snmptrapd -f -Lo -c /dev/null      # prints coldStart on boot, then
 ```
 
 **Trap volume.** One port toggles every `CONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS`
-sampling steps — 15 s by default, so ~4 notifications a minute (~5,700 a day),
-each also raising or clearing an alarm in a collector. That is what makes a short
-demo interesting and a long-running device noisy, so raise it for anything left
-running, or switch flapping off and exercise only the counters:
+sampling steps. The firmware sets 900 — a flap every 15 minutes, so ~8
+notifications an hour, each also raising or clearing an alarm in a collector.
+The Kconfig default of 15 steps (15 s, ~5,700 notifications a day) makes a short
+demo lively but a device left running noisy. Override per build:
 
 ```sh
--DCONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS=900   # a flap every 15 min
+-DCONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS=15    # a flap every 15 s (demo)
 -DCONFIG_APP_SIM_SWITCH_FLAP_PERIOD_STEPS=0     # links never flap
 ```
 
