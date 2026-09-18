@@ -227,12 +227,15 @@ CH343-class bridge in CDC mode rather than a CP210x:
 
 The console is on that same port at 115200.
 
-> **Flash size.** The board `.overlay` declares `&flash0` as **16 MB**, matching
-> the N16R8 module tested here, where the upstream devicetree's
-> `esp32s3_wroom_n8.dtsi` assumes 8 MB. Check yours with `esptool flash-id` and
-> adjust — the partition table lives in the low 4 MB either way, so this is
-> correctness rather than a layout change. The module's 8 MB of octal PSRAM is
-> not used.
+> **Flash size and layout.** The board `.overlay` includes
+> `lib/common/dts/layout-esp32s3-16M.dtsi`, which declares `&flash0` as
+> **16 MB** (the N16R8 module tested here; the upstream devicetree's
+> `esp32s3_wroom_n8.dtsi` assumes 8 MB) and replaces the partition table with
+> the MCUboot + Wi-Fi provisioner layout. A plain build like the one above
+> ignores the slots and boots from `0x0`; for BLE provisioning build with
+> `--sysbuild` instead (see "Provisioning Wi-Fi over BLE"). The layout needs a
+> 16 MB part: check yours with `esptool flash-id`. The module's 8 MB of octal
+> PSRAM is not used.
 >
 > **If you do want the native USB port**, the overlay carries the console block
 > to paste in, commented. Be warned that it did not come up on the board tested
@@ -262,9 +265,11 @@ Flash at offset **`0x0`** with `--chip esp32c6`, which needs **esptool ≥ 4.5**
 The C6 board overlay also **corrects the declared flash size**. The upstream
 board devicetree includes `esp32c6_wroom_n8.dtsi`, which claims an 8 MB part;
 the WROOM-1-**N4** module in hand has 4 MB (confirm with `esptool flash-id`).
-The partition table is 4 MB-based either way, so this is correctness rather
-than a fix for a broken build — but it stops anything reasoning from `flash0`
-believing in 2 MB that is not there. On a genuine N8 board, drop that block.
+The overlay includes `lib/common/dts/layout-esp32c6-4M.dtsi`, which declares
+the 4 MB and replaces the partition table with the MCUboot + Wi-Fi provisioner
+layout. A plain build like the one above ignores the slots and boots from
+`0x0`; for BLE provisioning build with `--sysbuild` instead (see
+"Provisioning Wi-Fi over BLE").
 
 > **Console caveat (C6, and any native-USB console).** The C6's console rides
 > USB-Serial-JTAG, which re-enumerates when the board resets, so **the earliest
@@ -323,6 +328,245 @@ cp overlay-wifi-credentials.conf.example overlay-wifi-credentials.conf
 `overlay-wifi-credentials.conf` is git-ignored and lives at the repo root
 (shared across apps). Pass it by absolute path on the hardware build:
 `-- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf`.
+
+If you'd rather not bake credentials into the image, see the next section: on
+the ESP32-C6, the ESP32-S3 boards and the ESP32-WROOM-32 a device can be given
+its network over BLE after flashing.
+
+## Provisioning Wi-Fi over BLE
+
+On boards with a BLE radio the device can join any network without a rebuild.
+A device with no credentials boots into the **Wi-Fi provisioner**: it advertises
+the [Improv Wi-Fi](https://www.improv-wifi.com/ble/) BLE service, a phone or
+laptop sends it an SSID and password, and the device checks them by actually
+joining the network, stores them, and reboots into the application.
+
+The provisioner is **its own firmware image** (`apps/wifi-provisioner`), not
+part of the application. The applications (OPC-UA, Modbus, SNMP) carry no
+Bluetooth code and no Bluetooth RAM at all; switching between the two is a
+reboot through **MCUboot**, which picks the image:
+
+```text
+ flash:  mcuboot | sys | slot0: application | slot1: (OTA) | prov: provisioner | bootreq | storage | scratch
+                          ▲                                     ▲
+ MCUboot ─ boot request? ─┴── no ──────────────── yes ──────────┘
+            (bootreq)      application: no credentials, or the  provisioner: stores the credentials,
+                           button pattern → set request, reboot  clears the request, reboots
+```
+
+- The application reads its credentials from the store in `storage`, falling
+  back to the compile-time `CONFIG_APP_WIFI_SSID`/`PSK`. With neither, it sets
+  the **boot request** (a 16-byte record in its own flash sector) and reboots.
+- MCUboot sees the request, **verifies the provisioner's signature**, and
+  launches it from `prov` (hooks in `lib/mcuboot-hooks/`). Without a request it
+  boots the application from `slot0` through its normal A/B logic, so the
+  `slot1` swap-and-revert that OTA will use works as usual.
+- The provisioner stores the credentials only after joining with them, clears
+  the request and reboots into the application. A reset or power cut inside the
+  provisioner comes back into the provisioner (the request is still set).
+
+### Build and flash (ESP32-C6, ESP32-S3-DevKitC-1, QT Py ESP32-S3, ESP32-WROOM-32)
+
+One `--sysbuild` build produces all three images — MCUboot, the signed
+application and the signed provisioner — with a shared partition layout
+(`lib/common/dts/layout-*.dtsi`):
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build --sysbuild -b esp32c6_devkitc/esp32c6/hpcore apps/modbus-server \
+  -d build_modbus_c6 --pristine
+```
+
+No credentials overlay is needed. You can still pass one
+(`-- -DEXTRA_CONF_FILE=/ws/app/overlay-wifi-credentials.conf`): it then acts as
+a default network, and provisioned credentials take precedence over it.
+
+Flash from the host with `scripts/flash.sh`, which writes each image at the
+offset it was linked for:
+
+```sh
+scripts/flash.sh build_modbus_c6 --port /dev/cu.usbmodem1101 --erase-all  # first time
+scripts/flash.sh build_modbus_c6 --port /dev/cu.usbmodem1101 --app-only   # app updates
+```
+
+| Option | Effect |
+|---|---|
+| (none) | MCUboot, the application into `slot0`, the provisioner into `prov` |
+| `--erase-all` | erase the whole chip first — use it the first time a board moves from a plain build to MCUboot |
+| `--erase-storage` | also erase `storage` (credentials, identity) and `bootreq`: back to factory state |
+| `--app-only` | only the application; credentials and the provisioner are kept |
+| `--before usb-reset` | for native-USB boards that refuse the default reset |
+| `--dry-run` | print the esptool commands |
+
+`flash.sh` runs `esptool` from `PATH`; set `ESPTOOL=/path/to/esptool` to use
+another (e.g. a venv).
+
+> **Development signing key.** The images are signed with MCUboot's
+> **public** development key (`bootloader/mcuboot/root-ec-p256.pem`), so anyone
+> can sign an image that these bootloaders accept. That is fine on the bench and
+> **not acceptable for production devices**; key management belongs to the OTA
+> work.
+
+A plain build without `--sysbuild` still works on these boards, flashed at
+`0x0` (`0x1000` on the WROOM) as before: it runs without MCUboot and without
+the provisioner, reads stored credentials if any, and otherwise uses the
+compile-time ones. The S2 Feather (no BLE radio) has no provisioner layout and
+builds as before; `--sysbuild` stops with a message for it.
+
+The **QT Py S3** needs `--before usb-reset` on `flash.sh` (native USB). On the
+**WROOM** MCUboot goes at `0x1000` (the classic ESP32 ROM's bootloader offset);
+`flash.sh` handles that.
+
+The Espressif bootloader's own log says `Loading image 0 - slot 1` when it
+launches the provisioner; the hook redirects that load to `prov`, and the
+`I (prov-hook): launching provisioner` line just above it is the one to trust.
+
+### Provisioning a device
+
+Any unmodified Improv client works:
+
+- The Improv web page, <https://www.improv-wifi.com/>, in Chrome or Edge
+  (desktop or Android — Web Bluetooth; not Safari/iOS).
+- Home Assistant, which discovers Improv BLE devices on its own.
+- `scripts/improv_provision.py` (needs `pip install bleak`) for the bench and
+  tests, on macOS or Linux:
+
+  ```sh
+  scripts/improv_provision.py scan
+  IMPROV_PSK='my-password' scripts/improv_provision.py --name tedge-modbus \
+    provision --ssid my-network
+  # → device URL: modbus://tedge-modbuse8f60afc320c.local:502
+  ```
+
+  The password is read from the environment so it stays out of shell history
+  and `ps`.
+
+The provisioner advertises under the **application's** unique hostname (e.g.
+`tedge-modbuse8f60afc320c`, the name it answers to at `.local`) and reports the
+application's service URL (`opc.tcp://…:4840`, `modbus://…:502`,
+`snmp://…:161`) once it has joined. It learns both from a small identity record
+the application writes into `storage` when it is online. On a device whose
+application has never been online it advertises as `tedge-prov<mac>` and
+returns no URL. A wrong password is reported as "unable to connect" and nothing
+is stored; the client can simply try again.
+
+**Which credentials win:** stored (provisioned) credentials, then the
+compile-time `CONFIG_APP_WIFI_SSID`/`PSK`, then the provisioner. A device whose
+stored network stops working (moved, AP password changed) **never** goes to the
+provisioner by itself: it keeps reconnecting and doing its last-resort reboots.
+Re-provision it with the button.
+
+**Button (`sw0`, the BOOT button)** — read while the application is running,
+never at reset (on every target it is the SoC's boot-strapping pin, and holding
+it through reset enters the ROM serial bootloader instead):
+
+| Gesture | Effect |
+|---|---|
+| **3 quick presses** within 2 s | Reboot into the provisioner. The stored network is kept until new credentials are verified, so an abandoned attempt returns to it when the window expires. |
+| **Hold ≥ 10 s**, then release | Erase the stored credentials and reboot into the provisioner. The LED flickers once the erase is armed, so you know before letting go. |
+| anything else | Nothing (1, 2 or 4+ presses, presses too slow, a shorter hold). |
+| a press in the provisioner | Restarts an expired window; authorizes provisioning when `CONFIG_APP_WIFI_PROV_REQUIRE_AUTH=y`. |
+
+**Provisioning window:** the provisioner advertises for
+`CONFIG_APP_WIFI_PROV_WINDOW_S` (default 900 s). If it was entered with the
+button pattern, the window's end returns to the application on its old network.
+With no credentials it stops advertising and waits for a button press, so an
+unattended fresh device does not advertise forever.
+
+**Status LED** (boards with `led0`):
+
+| Pattern | Meaning |
+|---|---|
+| steady on | connected and serving |
+| even blink, 250 ms on / 250 ms off | not connected (associating, reconnecting) |
+| **two short blinks, then a pause** (100 ms on, 150 off, 100 on, ~1.5 s off) | provisioner, waiting for credentials |
+| fast 5 Hz blink | identify request from a client, or the button pattern was recognized (just before the reboot) |
+| very fast flicker | erase hold armed — release to erase |
+| off | provisioning window expired; press the button to advertise again |
+
+Neither the C6 clone nor the S3-DevKitC-1 has a plain-GPIO `led0` (both carry
+an addressable RGB LED that `status_led.c` does not drive), so on them the
+console is the indicator.
+
+**Options.** Application (`lib/common/Kconfig`): `APP_PROV_HANDOFF` (on by
+default in an MCUboot build with the provisioner layout),
+`APP_WIFI_PROV_PRESS_COUNT` (3), `APP_WIFI_PROV_PRESS_WINDOW_MS` (2000),
+`APP_WIFI_PROV_ERASE_HOLD_S` (10). Provisioner (`apps/wifi-provisioner/Kconfig`):
+`APP_WIFI_PROV_WINDOW_S` (900), `APP_WIFI_PROV_CONNECT_TIMEOUT_S` (30),
+`APP_WIFI_PROV_REQUIRE_AUTH` (off); set them for the provisioner image with a
+sysbuild image prefix, e.g. `-Dwifi-provisioner_CONFIG_APP_WIFI_PROV_REQUIRE_AUTH=y`.
+
+**Security — read before deploying:**
+
+- Improv sends the password **in the clear** over the BLE link. Anyone in radio
+  range during an active provisioning session can capture it. The window is
+  bounded and the provisioner is only entered with no credentials or by a
+  deliberate button pattern; `CONFIG_APP_WIFI_PROV_REQUIRE_AUTH=y` additionally
+  requires a button press on the device before settings are accepted.
+- Stored credentials sit **unencrypted in flash** (`storage_partition`) and can
+  be read out with esptool by anyone with physical access — no worse than a
+  baked-in overlay, but not protected either.
+- Images are signed with the public development key (above).
+
+Credentials survive reboots, application updates (`--app-only`, and a
+`slot1` swap) and a reflash of the provisioner. To wipe them without the
+button, use `scripts/flash.sh <build> --erase-storage`.
+
+### Flash layouts
+
+| | 4 MB: ESP32-C6, QT Py S3, WROOM-32 | 16 MB: ESP32-S3-DevKitC-1 |
+|---|---|---|
+| `mcuboot` | 0x000000, 64 KB (WROOM: 0x001000, 60 KB) | 0x000000, 64 KB |
+| `slot0` / `slot1` | 0x020000 / 0x160000, 1280 KB each | 0x020000 / 0x320000, 3 MB each |
+| `prov` | 0x2a0000, 1 MB | 0x620000, 2 MB |
+| `bootreq` | 0x3a0000, 4 KB | 0x820000, 4 KB |
+| `storage` | 0x3b0000, 192 KB | 0x830000, 192 KB |
+| `scratch` | 0x3e0000, 124 KB | 0x860000, 128 KB |
+
+Layout files: `lib/common/dts/layout-esp32c6-4M.dtsi`, `layout-esp32s3-4M.dtsi`,
+`layout-esp32-4M.dtsi`, `layout-esp32s3-16M.dtsi`.
+
+### BLE provisioning support by board
+
+| Board | Status |
+|---|---|
+| ESP32-C6 | **verified on hardware**: Modbus and OPC-UA provisioned from `improv_provision.py` and served; SNMP builds and fits |
+| ESP32-S3-DevKitC-1 (N16R8) | **verified on hardware**: Modbus provisioned and served; OPC-UA and SNMP build and fit |
+| QT Py ESP32-S3 (N4R2) | **verified on hardware**: Modbus provisioned from a Raspberry Pi 5 (BlueZ, `improv_provision.py`) and served |
+| ESP32-WROOM-32 | **verified on hardware**: OPC-UA (two boards) and SNMP (an ESP32-D0WD-V3 board) provisioned from the Pi and served; OPC-UA read and `snmpget` on the data path |
+| Feather ESP32-S2 TFT | **unsupported**: no BLE radio |
+
+Image sizes with the provisioner split out (`zephyr.signed.bin`; the libc heap
+is what the application's frontend allocates from, "before" is the same app
+before BLE provisioning existed; `scripts/measure_prov.sh` regenerates it):
+
+| Board | Image | Size | Partition | libc heap (before) |
+|---|---|---|---|---|
+| ESP32-C6 | Modbus | 732 KB | 1280 KB | 298,528 B (291,664 B) |
+| ESP32-C6 | OPC-UA | 839 KB | 1280 KB | 256,384 B (249,568 B) |
+| ESP32-C6 | SNMP | 731 KB | 1280 KB | 268,224 B (261,408 B) |
+| ESP32-C6 | provisioner | 943 KB | 1024 KB | — |
+| ESP32-S3-DevKitC-1 | Modbus | 582 KB | 3072 KB | 200,588 B (197,852 B) |
+| ESP32-S3-DevKitC-1 | SNMP | 581 KB | 3072 KB | 170,372 B (167,636 B) |
+| ESP32-S3-DevKitC-1 | provisioner | 662 KB | 2048 KB | — |
+| QT Py ESP32-S3 | Modbus | 583 KB | 1280 KB | — |
+| QT Py ESP32-S3 | provisioner | 662 KB | 1024 KB | — |
+| ESP32-WROOM-32 | OPC-UA | 750 KB | 1280 KB | 73,488 B (71,696 B) |
+| ESP32-WROOM-32 | provisioner | 749 KB | 1024 KB | — |
+
+The applications keep all of their heap: Bluetooth only costs the provisioner.
+
+**Classic ESP32 (WROOM) RAM.** Under simple boot the ESP32 linker puts `.noinit`
+(thread stacks and network buffers, ~68 KB for OPC-UA) in the SRAM1 region a
+second-stage bootloader would otherwise use; Zephyr turns that off for MCUboot
+builds, which cost the OPC-UA app its heap (71 KB → 3 KB). The WROOM board
+`.conf` files set `CONFIG_ESP32_REGION_1_NOINIT=y` again: `.noinit` is never
+loaded, so MCUboot has finished with that RAM by the time the application uses
+it. The same setting is what lets the provisioner link there at all, despite
+the 55 KB the Bluetooth controller reserves at link time.
+The C6 provisioner uses 92 % of its partition: that is the one to watch. It can
+be trimmed (logging, the unused simulation code it links from `lib/common`) if a
+Zephyr update grows it.
 
 ## Connectivity resilience & status LED
 

@@ -260,6 +260,80 @@ config APP_WIFI_PSK
 	  Wi-Fi pre-shared key. Provide via a git-ignored local overlay; do not
 	  commit real credentials to the repository.
 
+config APP_WIFI_CRED_STORE
+	bool "Keep Wi-Fi credentials in flash (wifi_credentials)"
+	default y if $(dt_nodelabel_exists,bootreq_partition)
+	depends on APP_WIFI
+	select FLASH
+	select FLASH_MAP
+	select NVS
+	select SETTINGS
+	select WIFI_CREDENTIALS
+	help
+	  Read the Wi-Fi credentials from Zephyr's wifi_credentials store (settings
+	  on NVS in storage_partition), where the Wi-Fi provisioner saves them.
+	  Stored credentials take precedence over APP_WIFI_SSID/APP_WIFI_PSK, so a
+	  device built with a baked-in network can still be moved in the field.
+	  On by default on boards whose layout has a provisioner (a
+	  bootreq_partition).
+
+# net.c owns connecting and reconnecting: no second connect path, one entry.
+configdefault WIFI_CREDENTIALS_CONNECT_STORED
+	default n if APP_WIFI_CRED_STORE
+configdefault WIFI_CREDENTIALS_SHELL
+	default n if APP_WIFI_CRED_STORE
+configdefault WIFI_CREDENTIALS_MAX_ENTRIES
+	default 1 if APP_WIFI_CRED_STORE
+
+config APP_BOOT_REQUEST
+	bool
+	default y if $(dt_nodelabel_exists,bootreq_partition)
+	select FLASH
+	select FLASH_MAP
+	help
+	  The boot request record in bootreq_partition (boot_request.h).
+
+config APP_PROV_HANDOFF
+	bool "Hand over to the Wi-Fi provisioner image"
+	default y if BOOTLOADER_MCUBOOT && $(dt_nodelabel_exists,prov_partition)
+	depends on APP_WIFI_CRED_STORE && APP_BOOT_REQUEST && !APP_WIFI_PROVISIONER
+	select REBOOT
+	select GPIO
+	help
+	  Application side of BLE Wi-Fi provisioning. The application carries no
+	  Bluetooth: with no credentials, or after the sw0 provisioning pattern,
+	  it sets the boot request and reboots, and MCUboot launches the Wi-Fi
+	  provisioner (apps/wifi-provisioner) from prov_partition. A 10 s hold of
+	  sw0 erases the stored credentials first. Needs an MCUboot build with the
+	  provisioner layout (west build --sysbuild; see the README).
+
+if APP_PROV_HANDOFF
+
+config APP_WIFI_PROV_PRESS_COUNT
+	int "Short sw0 presses in the provisioning pattern"
+	default 3
+	range 2 6
+
+config APP_WIFI_PROV_PRESS_WINDOW_MS
+	int "Time to complete the provisioning pattern (ms)"
+	default 2000
+	range 500 10000
+
+config APP_WIFI_PROV_ERASE_HOLD_S
+	int "Hold sw0 this long (s) to erase stored credentials"
+	default 10
+	range 3 60
+
+endif # APP_PROV_HANDOFF
+
+config APP_WIFI_PROVISIONER
+	bool "This image is the Wi-Fi provisioner"
+	depends on APP_WIFI_CRED_STORE && APP_BOOT_REQUEST
+	help
+	  Set by apps/wifi-provisioner: this image is the provisioner. net.c
+	  does not connect on its own and suspends connectivity recovery; the
+	  provisioner joins only to test candidate credentials.
+
 endmenu # Wi-Fi
 
 menu "Liveness and diagnostics"

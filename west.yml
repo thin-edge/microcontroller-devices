@@ -30,6 +30,7 @@ manifest:
           - hal_espressif         # ESP32 / ESP32-S2 SoC + Wi-Fi
           - hal_infineon          # CYW43 Wi-Fi (Pico W)
           - hal_rpi_pico          # RP2040
+          - mcuboot               # bootloader: A/B OTA slots + provisioning partition
           - mbedtls               # crypto (pulled in by ESP32 Wi-Fi; future TLS)
           - tf-psa-crypto         # mbedtls 4.x PSA crypto backend
           - picolibc              # default C library

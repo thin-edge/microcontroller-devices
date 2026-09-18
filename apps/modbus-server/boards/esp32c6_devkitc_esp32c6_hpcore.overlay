@@ -11,16 +11,17 @@
  *    output is lost. For early-boot debugging, drop this block and use the
  *    board's UART port with the stock `uart0` console.
  *
- * 2. Flash size. The board devicetree includes `esp32c6_wroom_n8.dtsi`, which
- *    declares an 8 MB part. The module in hand is an **N4**: `esptool flash-id`
+ * 2. Flash size and layout. The board devicetree includes
+ *    `esp32c6_wroom_n8.dtsi`, which declares an 8 MB part. The module in hand is an **N4**: `esptool flash-id`
  *    reports 4 MB (manufacturer 0x68, device 0x4016) on the ESP32-C6 rev v0.2
  *    with MAC e8:f6:0a:fc:32:0c. Correct the declaration so nothing reasons
  *    from 2 MB of flash that does not exist.
  *
- *    This is safe rather than merely smaller: the board pulls in
- *    `partitions_0x0_default_4M.dtsi`, whose partitions already end exactly at
- *    0x3FFFFF (4 MB). The corrected size matches the partition table precisely,
- *    so there is nothing to shrink or relocate.
+ *    The shared layout (lib/common/dts/layout-esp32c6-4M.dtsi) declares the
+ *    4 MB part and replaces the upstream partitions with the MCUboot +
+ *    Wi-Fi provisioner layout, which MCUboot and the provisioner are built
+ *    with too. A plain build (no --sysbuild) still boots from 0x0 and only
+ *    uses its storage partition.
  *
  * No `&wifi` node is enabled here: the ESP32-C6 board devicetree already sets
  * the Wi-Fi node to "okay".
@@ -37,6 +38,4 @@
 	};
 };
 
-&flash0 {
-	reg = <0x0 DT_SIZE_M(4)>;
-};
+#include "../../../lib/common/dts/layout-esp32c6-4M.dtsi"

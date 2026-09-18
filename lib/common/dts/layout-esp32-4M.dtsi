@@ -1,0 +1,77 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * MCUboot + Wi-Fi provisioner layout for 4 MB classic ESP32 boards (the ROM
+ * loads the bootloader from 0x1000), e.g. the ESP32-WROOM-32 DevKitC. Included by the board overlays
+ * of every app, of the provisioner, and of MCUboot
+ * (sysbuild/provisioning.cmake), so all images agree on it.
+ *
+ *   0x001000  mcuboot     60 KB  MCUboot
+ *   0x010000  sys         64 KB
+ *   0x020000  image-0   1280 KB  application, primary slot
+ *   0x160000  image-1   1280 KB  application, secondary slot (OTA)
+ *   0x2a0000  prov      1024 KB  Wi-Fi provisioner
+ *   0x3a0000  bootreq      4 KB  boot request (lib/common/boot_request.h)
+ *   0x3b0000  storage    192 KB  settings/NVS: credentials, identity record
+ *   0x3e0000  scratch    124 KB  MCUboot swap scratch
+ *   0x3ff000  coredump     4 KB
+ *
+ * Same offsets as the 4 MB ESP32-C6 layout apart from the bootloader; storage
+ * keeps its upstream offset.
+ * Replaces the upstream AMP layout: the APP-CPU and LP-core slots are unused.
+ * A plain build without MCUboot ignores the slots and boots from 0x1000.
+ */
+
+/delete-node/ &boot_partition;
+/delete-node/ &sys_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &slot0_appcpu_partition;
+/delete-node/ &slot1_appcpu_partition;
+/delete-node/ &slot0_lpcore_partition;
+/delete-node/ &slot1_lpcore_partition;
+/delete-node/ &storage_partition;
+/delete-node/ &scratch_partition;
+/delete-node/ &coredump_partition;
+
+&flash0 {
+	reg = <0x0 DT_SIZE_M(4)>;
+
+	partitions {
+		boot_partition: partition@1000 {
+			label = "mcuboot";
+			reg = <0x1000 DT_SIZE_K(60)>;
+		};
+		sys_partition: partition@10000 {
+			label = "sys";
+			reg = <0x10000 DT_SIZE_K(64)>;
+		};
+		slot0_partition: partition@20000 {
+			label = "image-0";
+			reg = <0x20000 DT_SIZE_K(1280)>;
+		};
+		slot1_partition: partition@160000 {
+			label = "image-1";
+			reg = <0x160000 DT_SIZE_K(1280)>;
+		};
+		prov_partition: partition@2a0000 {
+			label = "prov";
+			reg = <0x2a0000 DT_SIZE_K(1024)>;
+		};
+		bootreq_partition: partition@3a0000 {
+			label = "bootreq";
+			reg = <0x3a0000 DT_SIZE_K(4)>;
+		};
+		storage_partition: partition@3b0000 {
+			label = "storage";
+			reg = <0x3b0000 DT_SIZE_K(192)>;
+		};
+		scratch_partition: partition@3e0000 {
+			label = "image-scratch";
+			reg = <0x3e0000 DT_SIZE_K(124)>;
+		};
+		coredump_partition: partition@3ff000 {
+			label = "coredump";
+			reg = <0x3ff000 DT_SIZE_K(4)>;
+		};
+	};
+};

@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Adafruit QT Py ESP32-S3 (N4R2): the provisioner layout, linked for and
+ * launched from prov_partition. The board devicetree leaves Wi-Fi disabled and
+ * already puts the console on USB-Serial-JTAG.
+ */
+#include "../../../lib/common/dts/layout-esp32s3-4M.dtsi"
+
+&wifi {
+	status = "okay";
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &prov_partition;
+	};
+};
