@@ -496,6 +496,17 @@ S3 (Modbus) provisioned, then re-provisioned twice, back serving in 4–6 s.
 The first QT Py provisioning after a fresh flash was not serving within 40 s
 (pingable); not reproduced since, cause unknown.
 
+**WROOM OPC-UA churn (task 7.7): not a clean pass.** 300 connect → session →
+browse → disconnect cycles (asyncua, 8 s timeout, from a Mac over Wi-Fi):
+277 succeeded and 23 timed out, spread across the run; the device kept
+serving afterwards (no wedge). The console covered only the first ~88 cycles:
+no `Failed to allocate net buffer`, no `closing the server socket`, one
+recovered `TCP failed to allocate buffer in retransmission`. No simple-boot
+baseline was run under the same conditions, and the Pi's collectors polled
+the device during the run, so it is unknown whether the timeouts are new.
+To do: rerun with the console captured for the whole run, against simple-boot
+and MCUboot images.
+
 ## Risks / Trade-offs
 
 - **The MCUboot hooks may not be enough to launch a third partition on the
