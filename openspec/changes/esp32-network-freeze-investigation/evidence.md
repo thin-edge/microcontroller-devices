@@ -494,6 +494,9 @@ both the Pi's browser and, in one window, by macOS. The TXT fix
 (`txtvers=1`) is kept because RFC 6763 6.1 requires at least one byte, but it
 did not change discoverability.
 
+**Not reported upstream:** neither the zero-length TXT nor the unanswered
+SRV/TXT queries is proven to break a real client, so nothing was filed.
+
 **Still true of Zephyr 4.4.2:** direct SRV and TXT queries are unanswered
 (`TODO` in `subsys/net/lib/dns/dns_sd.c`), so `dns-sd -L`-style lookups that
 ask for those records directly get nothing; browsers that read SRV/TXT from
