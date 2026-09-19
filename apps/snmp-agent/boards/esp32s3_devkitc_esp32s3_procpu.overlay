@@ -37,3 +37,6 @@
  */
 
 #include "../../../lib/common/dts/layout-esp32s3-16M.dtsi"
+
+/* Status LED: the WS2812 RGB LED. */
+#include "../../../lib/common/dts/rgb-led-esp32s3-devkitc.dtsi"
