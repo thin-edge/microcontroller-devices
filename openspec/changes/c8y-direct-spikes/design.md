@@ -431,7 +431,7 @@ archived.
 | P1 | **Reconnect after losing the network is unmeasured** (task 3.8 deferred). Nobody has measured how long the device takes to get back to "connected" after the Wi-Fi or the path drops silently, or whether TLS heap and TCP contexts return to baseline. | The real client must recover on its own, without leaking memory or connection contexts. The context exhaustion seen in the cycle test hints at the risk. | Deferred 2026-09-19: dropping Wi-Fi at the access point needs someone at the AP. | Run with the AP switched off, or the C6's MAC (`e8:f6:0a:fc:32:0c`) blocked, three times for about 60 s, with `tools/console.py`. Or build a repeatable test into the real client's test plan (for example a Wi-Fi disconnect triggered from the shell, plus a real AP drop). |
 | P2 | **The C6 hangs in MCUboot after a CPU reset** (`sys_reboot()`) with Wi-Fi running, even without Bluetooth. Both recovery paths in the apps use it: `lib/common/net.c`'s last-resort reboot, and **`lib/common/liveness.c`'s watchdog reset**, whose full-system reset is compiled in only `#if defined(CONFIG_BT)` (the provisioner). Confirmed in Spike B: a stalled test image was reset by the liveness watchdog (`SW_CPU`) and MCUboot hung instead of reverting it. | On the C6 the stall safety net (liveness) and the connectivity safety net (net.c) leave the device hung until a power cycle, and an unconfirmed OTA image that stalls is not rolled back. It affects the OPC-UA/Modbus/SNMP apps today. tedge-zephyr's restart needs its own full-system reset on Espressif parts. | Spike A (3.3), Spike B (4.3). | Drop the `CONFIG_BT` condition in `liveness.c` and use `esp_rom_software_reset_system()` in `net.c`, as a separate small change touching production code; give tedge-zephyr a platform reset hook. |
 | P3 | **8 KB TLS buffers leave about 2 KB of margin** over today's 5.9 KB server certificate chain on 9883. | A longer chain after a server certificate rotation would break 8 KB builds in the field. | Spike A, task 3.6. | Default to 16 KB; document 8 KB as an opt-in saving for the MQTT Service; consider failing over to a 16 KB session if the handshake fails with `-0x87`. |
-| P4 | **Free-form telemetry is published but not yet seen in the cloud.** | Telemetry over the MQTT Service needs a cloud-side consumer (for example the Dynamic Mapper). | Section 1 and Spike A. | Task 7.4. |
+| P4 | ~~Free-form telemetry is published but not yet seen in the cloud.~~ **Resolved (7.4):** a Cumulocity Smart Function maps it to measurements. Remaining: the device should send a `time` so buffered messages keep their sample time. | | Section 1, Spike A, section 7. | Add `time` to the telemetry payload in tedge-zephyr. |
 | P5 | **Zephyr's HTTP client reports chunked bodies wrongly** in its response callback (first segment's start, last segment's length). | Any user of `http_client` downloading from Cumulocity gets corrupt data. The spike works around it via `on_body`. | Spike B (4.5). | Report upstream with a reproduction; tedge-zephyr uses the `on_body` path. |
 | P6 | **Public-key crypto is slow in software:** Cumulocity handshake ~2.7 s (C6) / ~1.9 s (S3); ECDSA P-384 ~11 s for github.com's chain on the C6. Zephyr's mbedTLS doesn't use the ESP32 RSA/ECC accelerators. | Long handshakes cost battery and connect time. P-384 hosts need a longer TLS connect timeout than Zephyr's 10 s default. | Spike A, Spike B (4.6). | Evaluate the Espressif hardware crypto drivers under Zephyr (PSA driver); until then set `NET_SOCKETS_TLS_CONNECT_TIMEOUT` generously and prefer RSA/P-256 servers. |
 | P7 | **A firmware update takes the C6 offline for ~40 s** (MCUboot swap-scratch of ~900 KB). | The update window, and what Cumulocity shows meanwhile. The device is dark during the swap. | Spike B. | Measure swap-using-move and overwrite-only (which gives up rollback) as alternatives; report the expected downtime in the operation. |
@@ -444,6 +444,29 @@ archived.
 
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
+
+### Section 7: cloud-side verification (2026-09-19)
+
+- **7.1** `tedge-e8f60afc320c` (managed object 60211263): external ID of
+  type `c8y_Serial`, owner `device_tedge-e8f60afc320c`, supported operations
+  `c8y_Restart`, `c8y_Firmware`, `c8y_RemoteAccessConnect`, firmware
+  `zephyr-c8y-spike` 0.0.1, required interval 60 s. The certificate's CN is
+  the external ID.
+- **7.2** Restart of the enrolled device from Cumulocity: SUCCESSFUL in 17 s.
+- **7.3** Remote access to the Pi and to the device shell, with
+  opened/closed events on the device (Spike F). The browser terminal can use
+  the TELNET endpoint `device-shell-ui` (the device's own address).
+- **7.4 Free-form telemetry arrives.** A **Cumulocity Smart Function**
+  (created by the tenant owner) maps
+  `te/device/<id>///m/environment` → `c8y_Environment` measurements
+  (`c8y_Temperature.T` C, `c8y_Humidity.H` %RH,
+  `c8y_AtmosphericPressure.P` hPa), one every 10.0 s as sent.
+  - The payload carries no timestamp, so the measurement time is the
+    processing time. Once the client buffers telemetry while offline, each
+    message must carry its own `time` (thin-edge.io's measurement shape
+    already allows it).
+  - The thin-edge.io topic/payload shape lets one mapping serve devices on
+    either transport.
 
 ### Spike F: remote access through the device (section 6, 2026-09-19)
 

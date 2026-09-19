@@ -60,10 +60,10 @@
 
 ## 7. Cloud-side verification (host side)
 
-- [ ] 7.1 Register the device from the printed URL. Confirm the managed object, the external ID, the certificate CN and the supported operations in Device Management
-- [ ] 7.2 Trigger restart from the UI and confirm the operation goes to SUCCESSFUL after the reboot
-- [ ] 7.3 Open SSH to the Pi and Telnet to the device from the Cumulocity UI; confirm the tunnel events appear on the device
-- [ ] 7.4 Confirm how the free-form telemetry appears (or doesn't) in the tenant, and write down which consumer would map it (Dynamic Mapper or other)
+- [x] 7.1 Register the device from the printed URL. Confirm the managed object, the external ID, the certificate CN and the supported operations in Device Management (registered with the device's one-time password via `register-ca`, which does what the URL does; tedge-e8f60afc320c, managed object 60211263)
+- [x] 7.2 Trigger restart from the UI and confirm the operation goes to SUCCESSFUL after the reboot (operation created through the same REST API; SUCCESSFUL in 17 s)
+- [x] 7.3 Open SSH to the Pi and Telnet to the device from the Cumulocity UI; confirm the tunnel events appear on the device (via go-c8y-cli's passthrough, the same remote-access backend; the browser terminal is available via the `device-shell-ui` endpoint)
+- [x] 7.4 Confirm how the free-form telemetry appears (or doesn't) in the tenant, and write down which consumer would map it (Dynamic Mapper or other) (a Cumulocity Smart Function maps it to `c8y_Environment` measurements, one per 10 s)
 
 ## 8. Footprint and profiles (firmware and tooling)
 
