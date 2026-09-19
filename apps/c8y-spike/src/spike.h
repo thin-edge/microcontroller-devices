@@ -64,6 +64,13 @@ struct spike_ra_event {
  */
 int spike_ra_request(const char *msg, char *reason, size_t rlen);
 
+/**
+ * Task 6.9: the tedge_RemoteAccess twin value (session limit, active and free
+ * sessions, target policy, and with CONFIG_SPIKE_RA_TWIN_SESSIONS the open
+ * session's target and start time) as JSON.
+ */
+int spike_ra_twin(char *buf, size_t len);
+
 /** Next result from the bridge thread; 0 if @p ev was filled. */
 int spike_ra_poll_event(struct spike_ra_event *ev);
 

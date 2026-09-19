@@ -528,6 +528,34 @@ static void subscribe_one(const char *topic)
 	pump(300, NULL);
 }
 
+#if defined(CONFIG_SPIKE_REMOTE_ACCESS)
+/* Task 6.9 / D10: remote-access capacity as twin data. MQTT Service: a
+ * free-form te/ topic, mapped by a Smart Function. Core MQTT has no free-form
+ * topics: a direct inventory update, as thin-edge.io's mapper does. */
+static void publish_ra_twin(void)
+{
+	char json[224], topic[96];
+
+	if (spike_ra_twin(json, sizeof(json))) {
+		LOG_WRN("tedge_RemoteAccess: twin too long");
+		return;
+	}
+#if defined(CONFIG_SPIKE_ENDPOINT_MQTT_SERVICE)
+	snprintk(topic, sizeof(topic), "te/device/%s///twin/tedge_RemoteAccess",
+		 DEVICE_ID);
+	publish(topic, json, MQTT_QOS_1_AT_LEAST_ONCE);
+#else
+	char body[256];
+
+	snprintk(topic, sizeof(topic), "inventory/managedObjects/update/%s",
+		 DEVICE_ID);
+	snprintk(body, sizeof(body), "{\"tedge_RemoteAccess\":%s}", json);
+	publish(topic, body, MQTT_QOS_1_AT_LEAST_ONCE);
+#endif
+	LOG_INF("tedge_RemoteAccess: %s", json);
+}
+#endif
+
 static void on_connected(void)
 {
 	char line[96];
@@ -556,6 +584,11 @@ static void on_connected(void)
 	publish("s/us", "114,c8y_Restart", MQTT_QOS_1_AT_LEAST_ONCE);
 #endif
 	publish("s/us", "117,60", MQTT_QOS_1_AT_LEAST_ONCE);
+#if defined(CONFIG_SPIKE_REMOTE_ACCESS)
+	/* State, not an event: republish on every connect so a reboot or a
+	 * dropped session never leaves a stale count (D10). */
+	publish_ra_twin();
+#endif
 
 	if (restart_pending_after_boot) {
 		uint8_t zero = 0;
@@ -863,6 +896,7 @@ static void spike_mqtt_main(void *a, void *b, void *c)
 			{
 				struct spike_ra_event ev;
 				char line[200];
+				static int64_t twin_due;
 
 				while (spike_ra_poll_event(&ev) == 0) {
 					if (ev.type == SPIKE_RA_UP) {
@@ -881,6 +915,13 @@ static void spike_mqtt_main(void *a, void *b, void *c)
 							 ev.text);
 					}
 					publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
+					/* The bridge frees its seat just after it
+					 * posts, so publish on the next pass. */
+					twin_due = k_uptime_get() + 1000;
+				}
+				if (twin_due && k_uptime_get() >= twin_due) {
+					twin_due = 0;
+					publish_ra_twin();
 				}
 			}
 #endif

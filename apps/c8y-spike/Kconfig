@@ -205,6 +205,13 @@ config SPIKE_RA_MAX_SESSIONS
 	default 1
 	range 1 1
 
+config SPIKE_RA_TWIN_SESSIONS
+	bool "List the open session's target in the tedge_RemoteAccess twin"
+	default y
+	help
+	  Task 6.9 / D10. The session count, limit and policy are always sent;
+	  the target (an internal address) and start time only with this.
+
 endif # SPIKE_REMOTE_ACCESS
 
 endmenu

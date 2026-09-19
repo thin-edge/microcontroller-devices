@@ -32,6 +32,7 @@
 #include <zephyr/net/tls_credentials.h>
 #include <zephyr/net/websocket.h>
 #include <zephyr/sys/atomic.h>
+#include <time.h>
 
 #include <mbedtls/memory_buffer_alloc.h>
 
@@ -45,6 +46,8 @@ static atomic_t busy;
 static char target_host[64];
 static uint16_t target_port;
 static char conn_key[64];
+/* Wall-clock start of the established tunnel, 0 while none is up (task 6.9). */
+static volatile time_t up_since;
 
 /* Results for the MQTT thread. */
 K_MSGQ_DEFINE(ra_events, sizeof(struct spike_ra_event), 4, 4);
@@ -315,6 +318,12 @@ static void bridge(void *a, void *b, void *c)
 		t_tcp - t0, t_up - t_tcp,
 		IS_ENABLED(CONFIG_SPIKE_RA_AUTH_MTLS) ? "client cert" : "Bearer JWT",
 		cur, peak);
+	{
+		struct timespec ts;
+
+		clock_gettime(CLOCK_REALTIME, &ts);
+		up_since = ts.tv_sec;
+	}
 	post(SPIKE_RA_UP, "tunnel to %s:%u opened", target_host, target_port);
 
 #if defined(CONFIG_SPIKE_RA_TELNET_NEGOTIATE)
@@ -420,6 +429,7 @@ static void bridge(void *a, void *b, void *c)
 	{
 		int64_t secs = MAX((k_uptime_get() - t_up) / 1000, 1);
 
+		up_since = 0;
 		LOG_INF("MEAS ra: tunnel closed (%s) after %lld s: %llu B up, %llu B "
 			"down (%llu KB/s down)", why, secs, up, down,
 			down / 1024 / secs);
@@ -437,6 +447,42 @@ out:
 		zsock_close(tcp);
 	}
 	atomic_clear(&busy);
+}
+
+int spike_ra_twin(char *buf, size_t len)
+{
+	const int max = CONFIG_SPIKE_RA_MAX_SESSIONS;
+	/* A seat is taken from the accepted 530 until the bridge has cleaned
+	 * up; "active" counts established tunnels only. */
+	int taken = atomic_get(&busy) ? 1 : 0;
+	time_t since = up_since;
+	int active = since ? 1 : 0;
+	const char *policy = IS_ENABLED(CONFIG_SPIKE_RA_POLICY_LOCAL)  ? "local"
+			     : IS_ENABLED(CONFIG_SPIKE_RA_POLICY_LIST) ? "list"
+								       : "lan";
+	int n = snprintk(buf, len,
+			 "{\"maxSessions\":%d,\"activeSessions\":%d,"
+			 "\"freeSessions\":%d,\"policy\":\"%s\"",
+			 max, active, max - taken, policy);
+
+#if defined(CONFIG_SPIKE_RA_TWIN_SESSIONS)
+	if (active && n < (int)len) {
+		struct tm tm;
+		char iso[24];
+
+		gmtime_r(&since, &tm);
+		strftime(iso, sizeof(iso), "%Y-%m-%dT%H:%M:%SZ", &tm);
+		n += snprintk(buf + n, len - n,
+			      ",\"sessions\":[{\"target\":\"%s:%u\",\"since\":\"%s\"}]",
+			      target_host, target_port, iso);
+	} else if (n < (int)len) {
+		n += snprintk(buf + n, len - n, ",\"sessions\":[]");
+	}
+#endif
+	if (n < (int)len) {
+		n += snprintk(buf + n, len - n, "}");
+	}
+	return n < (int)len ? 0 : -ENOSPC;
 }
 
 int spike_ra_request(const char *msg, char *reason, size_t rlen)
