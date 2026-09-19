@@ -57,7 +57,7 @@
 - [ ] 7.4 C6 (someone at the board): triple press → provisioner → abandoned → back on the old network; 1, 2, 4 presses and a short hold do nothing; 10 s hold erases; `REQUIRE_AUTH=y` refuses settings until a press — needs someone at the board (implemented in lib/common/prov_handoff.c)
 - [x] 7.5 C6: an OTA-style test-swap of a second app build through `slot1` swaps and reverts with credentials intact
 - [ ] 7.6 Improv web page (Chrome/Edge) and Home Assistant provision a device; record versions — needs a Chrome/Edge or Home Assistant session
-- [ ] 7.7 WROOM-32 (OPC-UA, including the connection-churn stress test), S3-DevKitC-1 and QT Py S3: provision and serve — S3-DevKitC-1, QT Py S3 (Modbus), two WROOMs (OPC-UA) and an ESP32 SNMP board provisioned and served; WROOM churn test: see design.md
+- [x] 7.7 WROOM-32 (OPC-UA, including the connection-churn stress test), S3-DevKitC-1 and QT Py S3: provision and serve — S3-DevKitC-1, QT Py S3 (Modbus), two WROOMs (OPC-UA) and an ESP32 SNMP board provisioned and served; WROOM churn test passed on both WROOMs (design.md)
 - [ ] 7.8 LED patterns on a board with a plain `led0` (WROOM), or record that no BLE board can show them yet — the WROOM has led0 (GPIO2) in the provisioner too; needs someone to look at it
 
 ## 8. Documentation and wrap-up
