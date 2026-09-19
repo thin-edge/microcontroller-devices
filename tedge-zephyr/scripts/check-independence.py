@@ -30,9 +30,11 @@ CODE_SUFFIXES = {
 CODE_NAMES = {"CMakeLists.txt", "Kconfig"}
 
 RELATIVE = re.compile(r"(?:\.\./)+[^\s\"'()<>;]*|(?<![\w.])\.\.(?=[\s\"')]|$)")
+# "apps/" only counts as a repository path, not inside a URL such as
+# Cumulocity's .../apps/devicemanagement/... registration link.
 HOST_PATHS = re.compile(
     r"\blib/(?:common|opcua|modbus|snmp|mcuboot-hooks|frontend-template)\b"
-    r"|(?<![\w-])apps/"
+    r"|(?<![\w/-])apps/"
 )
 HOST_HEADERS = re.compile(
     r"#\s*include\s*[<\"](?:net|identity|data_source|controls|status_led"

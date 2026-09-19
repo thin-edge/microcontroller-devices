@@ -17,16 +17,21 @@ if(CONFIG_TEDGE)
     src/tedge_platform.c
     src/tedge_time.c
   )
-  zephyr_library_sources_ifdef(CONFIG_TEDGE_TRANSPORT_C8Y src/tedge_c8y.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_TRANSPORT_C8Y
+    src/tedge_c8y.c
+    src/tedge_smartrest.c
+  )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA src/tedge_enroll.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_BOOTSTRAP src/tedge_bootstrap.c)
   zephyr_library_compile_definitions(TEDGE_VERSION_STRING="${TEDGE_VERSION}")
 
   zephyr_include_directories(include)
 
-  # Trust anchors: each PEM in CONFIG_TEDGE_C8Y_CA_FILES is embedded as an
-  # .inc that src/tedge_c8y.c includes (CA_INC_FILES).
+  # Trust anchors: every PEM in CONFIG_TEDGE_C8Y_CA_FILES is concatenated
+  # into one bundle and embedded as tedge_ca_bundle.inc.
   if(CONFIG_TEDGE_TRANSPORT_C8Y)
-    set(_ca_incs "")
     separate_arguments(_ca_files UNIX_COMMAND "${CONFIG_TEDGE_C8Y_CA_FILES}")
+    set(_bundle "")
     foreach(_pem ${_ca_files})
       if(NOT IS_ABSOLUTE ${_pem})
         set(_pem ${CMAKE_CURRENT_LIST_DIR}/${_pem})
@@ -34,12 +39,12 @@ if(CONFIG_TEDGE)
       if(NOT EXISTS ${_pem})
         message(FATAL_ERROR "CONFIG_TEDGE_C8Y_CA_FILES: no such file: ${_pem}")
       endif()
-      get_filename_component(_name ${_pem} NAME_WE)
-      generate_inc_file_for_target(tedge ${_pem}
-        ${ZEPHYR_BINARY_DIR}/include/generated/tedge_ca_${_name}.inc)
-      list(APPEND _ca_incs "\"tedge_ca_${_name}.inc\"")
+      file(READ ${_pem} _content)
+      string(APPEND _bundle "${_content}")
     endforeach()
-    string(REPLACE ";" "," _ca_incs_list "${_ca_incs}")
-    zephyr_library_compile_definitions(TEDGE_CA_INC_FILES=${_ca_incs_list})
+    set(_bundle_pem ${ZEPHYR_BINARY_DIR}/misc/generated/tedge_ca_bundle.pem)
+    file(WRITE ${_bundle_pem} "${_bundle}")
+    generate_inc_file_for_target(tedge ${_bundle_pem}
+      ${ZEPHYR_BINARY_DIR}/include/generated/tedge_ca_bundle.inc)
   endif()
 endif()

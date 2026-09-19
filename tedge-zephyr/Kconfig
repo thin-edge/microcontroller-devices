@@ -107,6 +107,8 @@ config TEDGE_C8Y_SELECTS
 	select NET_UDP if TEDGE_SNTP
 	select DNS_RESOLVER
 	select MQTT_LIB
+	select MQTT_LIB_TLS
+	select MBEDTLS
 	select NET_SOCKETS
 	select NET_SOCKETS_SOCKOPT_TLS
 	select TLS_CREDENTIALS
@@ -204,6 +206,23 @@ config TEDGE_AUTH_BOOTSTRAP
 endchoice
 
 if TEDGE_AUTH_C8Y_CA
+
+# Enrollment needs a key in PSA storage, a CSR writer and an HTTPS client.
+config TEDGE_ENROLL_SELECTS
+	bool
+	default y
+	select SECURE_STORAGE
+	select HTTP_CLIENT
+	select MBEDTLS_X509_CSR_WRITE_C
+	select MBEDTLS_PEM_WRITE_C
+	select MBEDTLS_PK_WRITE_C
+	select MBEDTLS_BASE64_C
+	select MBEDTLS_ASN1_PARSE_C
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_EXPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_IMPORT
+	select PSA_WANT_ALG_ECDSA
+	select PSA_WANT_ALG_SHA_256
 
 config TEDGE_PSA_KEY_ID
 	hex "PSA key ID of the device key"

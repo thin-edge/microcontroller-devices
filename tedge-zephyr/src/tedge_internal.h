@@ -74,6 +74,37 @@ bool tedge_time_is_valid(void);
 /** Set the clock with SNTP unless it is already valid. */
 int tedge_time_sync(void);
 
+/* --- SmartREST helpers (tedge_smartrest.c) ------------------------------- */
+
+/** Copy field @p index of a SmartREST line into @p out. Length, or -ENOENT. */
+int tedge_sr_field(const char *line, int index, char *out, size_t len);
+/** The template number (first field), or a negative errno. */
+int tedge_sr_template(const char *line);
+/** Quote @p in for use as a SmartREST field (adds the surrounding quotes). */
+int tedge_sr_quote(const char *in, char *out, size_t len);
+
+/* --- Transport internals ------------------------------------------------- */
+
+/** Publish one SmartREST line on s/us (QoS 1). */
+int tedge_c8y_publish_sr(const char *line);
+/** The latest JWT from s/dat, or an empty string. */
+const char *tedge_c8y_jwt(void);
+
+/* --- Onboarding (tedge_enroll.c / tedge_bootstrap.c) --------------------- */
+
+/**
+ * Make sure the device can authenticate: enroll with the Cumulocity CA and
+ * register the TLS credentials, or fetch bootstrap credentials. Called from
+ * the client thread before every connect; cheap once it has succeeded.
+ *
+ * Writes the external ID (which enrollment may decide) to @p id_out.
+ */
+int tedge_auth_prepare(char *id_out, size_t id_len);
+
+/** Basic-auth user and password for the MQTT client, or NULL for mutual TLS. */
+const char *tedge_auth_username(void);
+const char *tedge_auth_password(void);
+
 /* --- Settings keys (all under the module's "tedge/" subtree) ------------- */
 
 #define TEDGE_SETTINGS_ROOT      "tedge"

@@ -8,26 +8,26 @@
 
 ## 2. Connection (firmware)
 
-- [ ] 2.1 Network wait on connection-manager L4 events (falling back to IPv4 address events), never touching the interface
-- [ ] 2.2 Time: skip SNTP when the realtime clock is after the build date, otherwise query `TEDGE_SNTP_SERVER` with retries
-- [ ] 2.3 MQTT session to 9883 (CA) or 8883 (basic auth / Core MQTT) with the trust anchors and device credentials; keepalive 60 s; one filter per SUBSCRIBE
-- [ ] 2.4 Session start order (D6): `100`, subscriptions with 0x80 retry, `114` from compiled features and registered operations, `117`, `s/uat`, twin and health
-- [ ] 2.5 Reconnect back-off (3 s floor, doubling to the maximum, ±20% jitter, reset after 60 s connected) and the duplicate-client-ID warning (three broker closes within 10 s of CONNACK)
-- [ ] 2.6 JWT: request after connect and 50 min after each token, CA builds only; `tedge_c8y_jwt()` internal accessor
-- [ ] 2.7 SmartREST dispatcher: parse `s/ds` lines, route `510` and registered operations, answer unknown or not-built-in operations with `502` and a reason naming the feature
+- [x] 2.1 Network wait on connection-manager L4 events (falling back to IPv4 address events), never touching the interface
+- [x] 2.2 Time: skip SNTP when the realtime clock is after the build date, otherwise query `TEDGE_SNTP_SERVER` with retries
+- [x] 2.3 MQTT session to 9883 (CA) or 8883 (basic auth / Core MQTT) with the trust anchors and device credentials; keepalive 60 s; one filter per SUBSCRIBE
+- [x] 2.4 Session start order (D6): `100`, subscriptions with 0x80 retry, `114` from compiled features and registered operations, `117`, `s/uat`, twin and health
+- [x] 2.5 Reconnect back-off (3 s floor, doubling to the maximum, ±20% jitter, reset after 60 s connected) and the duplicate-client-ID warning (three broker closes within 10 s of CONNACK)
+- [x] 2.6 JWT: request after connect and 50 min after each token, CA builds only; `tedge_c8y_jwt()` internal accessor
+- [x] 2.7 SmartREST dispatcher: parse `s/ds` lines, route `510` and registered operations, answer unknown or not-built-in operations with `502` and a reason naming the feature
 
 ## 3. Onboarding (firmware)
 
-- [ ] 3.1 CA enrollment (D4): PSA key, OTP, registration URL, PSA-signed CSR, `simpleenroll` polling with back-off, PKCS#7 unwrap, storage under `tedge/enroll/`, credential registration; `TEDGE_STATE_AWAITING_REGISTRATION`; `tedge_registration_url()` (OTP only at debug level)
-- [ ] 3.2 Tenant host from `TEDGE_C8Y_URL`, overridable by `tedge_set_c8y_url()` and persisted at `tedge/c8y/url`
-- [ ] 3.3 Bootstrap onboarding: 8883 as the bootstrap user, `s/dcr` + `s/ucr` polling, store `70` credentials under `tedge/bootstrap/`, reconnect as the device; `tedge_set_bootstrap_credentials()`; passwords never logged
+- [x] 3.1 CA enrollment (D4): PSA key, OTP, registration URL, PSA-signed CSR, `simpleenroll` polling with back-off, PKCS#7 unwrap, storage under `tedge/enroll/`, credential registration; `TEDGE_STATE_AWAITING_REGISTRATION`; `tedge_registration_url()` (OTP only at debug level)
+- [x] 3.2 Tenant host from `TEDGE_C8Y_URL`, overridable by `tedge_set_c8y_url()` and persisted at `tedge/c8y/url`
+- [x] 3.3 Bootstrap onboarding: 8883 as the bootstrap user, `s/dcr` + `s/ucr` polling, store `70` credentials under `tedge/bootstrap/`, reconnect as the device; `tedge_set_bootstrap_credentials()`; passwords never logged
 
 ## 4. Device state (firmware)
 
-- [ ] 4.1 Restart (D8): `restart_request` veto → `502`; else `501`, marker, clean disconnect, reset via the `reset` hook or `tedge_platform_reset()` (full-system reset on Espressif SoCs); `503` after the next CONNACK
-- [ ] 4.2 Twin publishing (D9): `tedge_Agent` on every connect; `tedge_publish_twin()` stores application fragments and republishes them after every reconnect; `te/` topics on the MQTT Service, inventory updates on Core MQTT
-- [ ] 4.3 Health: `te/device/<id>/service/tedge-zephyr/status/health` `{"status":"up"}` on connect (MQTT Service only)
-- [ ] 4.4 Custom operations: `tedge_register_operation()` and `tedge_operation_payload/succeed/fail`, routed from the dispatcher (the handler sees the operation already EXECUTING)
+- [x] 4.1 Restart (D8): `restart_request` veto → `502`; else `501`, marker, clean disconnect, reset via the `reset` hook or `tedge_platform_reset()` (full-system reset on Espressif SoCs); `503` after the next CONNACK
+- [x] 4.2 Twin publishing (D9): `tedge_Agent` on every connect; `tedge_publish_twin()` stores application fragments and republishes them after every reconnect; `te/` topics on the MQTT Service, inventory updates on Core MQTT
+- [x] 4.3 Health: `te/device/<id>/service/tedge-zephyr/status/health` `{"status":"up"}` on connect (MQTT Service only)
+- [x] 4.4 Custom operations: `tedge_register_operation()` and `tedge_operation_payload/succeed/fail`, routed from the dispatcher (the handler sees the operation already EXECUTING)
 
 ## 5. Unit and configuration tests
 
