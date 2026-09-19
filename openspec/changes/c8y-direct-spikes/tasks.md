@@ -68,9 +68,9 @@
 
 ## 8. Footprint and profiles (firmware and tooling)
 
-- [ ] 8.1 Write `scripts/measure_tedge.sh` (D5): TEDGE off, `samples/minimal`, minimal profile, then each feature added on its own, for each board and app. Report flash and static RAM deltas and `zephyr.signed.bin` against the slot
-- [ ] 8.2 Run it for the C6, S3-DevKitC-1 and WROOM-32 (build-only) with all three apps. Add the runtime heap numbers from 3.5, 4.5, 5.5 and 6.6
-- [ ] 8.3 Draft `tedge-zephyr/profiles/minimal.conf` and `full.conf`, and a per-board profile recommendation (in particular what, if anything, fits the WROOM running OPC-UA)
+- [x] 8.1 Write `scripts/measure_tedge.sh` (D5): TEDGE off, `samples/minimal`, minimal profile, then each feature added on its own, for each board and app. Report flash and static RAM deltas and `zephyr.signed.bin` against the slot
+- [x] 8.2 Run it for the C6, S3-DevKitC-1 and WROOM-32 (build-only) with all three apps. Add the runtime heap numbers from 3.5, 4.5, 5.5 and 6.6
+- [x] 8.3 Draft `tedge-zephyr/profiles/minimal.conf` and `full.conf`, and a per-board profile recommendation (in particular what, if anything, fits the WROOM running OPC-UA)
 
 ## 9. Spike E (optional): SoftAP provisioner feasibility (firmware)
 

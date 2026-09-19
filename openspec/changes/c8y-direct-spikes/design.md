@@ -495,6 +495,82 @@ archived.
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
 
+### Section 8: footprint and profiles (2026-09-19)
+
+`scripts/measure_tedge.sh` builds `apps/c8y-spike` with `--sysbuild`, adding
+one spike feature at a time, and reports the signed image, `text` (code +
+read-only data), the libc heap left for the application (`_libc_heap_size`;
+every static RAM cost shows up as a drop there) and the static mbedTLS heap.
+`TLS_HEAP` / `TLS_RECORD` override the spike's 96 KB measuring heap with
+production-like sizes. The features exist only in the spike so far, so these
+are **spike costs**, an upper bound for the real client (see the overhead
+list below).
+
+**ESP32-C6 (4 MB, 96 KB TLS heap):**
+
+| Step | Image (slot 1280 KB) | text | Δ text | libc heap left | Δ libc |
+|---|---|---|---|---|---|
+| base (Wi-Fi, lib/common, module skeleton) | 731 KB (55%) | 601,136 | | 300,432 | |
+| + A TLS + MQTT + SNTP + DNS | 876 KB (66%) | 735,452 | +134,316 | 162,880 | −137,552 (96 KB of it is the TLS heap) |
+| + B firmware update | 891 KB (67%) | 796,788 | +61,336 | 109,376 | −53,504 |
+| + C CA enrollment | 893 KB (68%) | 814,448 | +17,660 | 67,008 | −42,368 |
+| + F remote access | 960 KB (73%) | 830,108 | +15,660 | 47,872 | −19,136 |
+
+The signed image grows in steps (+F: +67 KB image for +15.7 KB text),
+because the ESP32 image layout pads segments to page boundaries. Compare
+features by `text`.
+
+**ESP32-S3-DevKitC-1 (16 MB flash; PSRAM not used):**
+
+| Step | 96 KB TLS heap | 56 KB TLS heap |
+|---|---|---|
+| base | libc 200,308 | libc 200,308 |
+| + A | libc 62,860 | libc 103,820 (text +118,012) |
+| + B | dram0 overflow 4.6 KB | libc 51,204 (text +54,772) |
+| + C | dram0 overflow 46.8 KB | dram0 overflow 5.9 KB |
+| + F | dram0 overflow 65.9 KB | dram0 overflow 24.9 KB |
+
+**ESP32-WROOM-32 (4 MB, 520 KB SRAM, no PSRAM):**
+
+| Step | 96 KB TLS heap | 56 KB TLS heap | 40 KB heap, 8 KB records |
+|---|---|---|---|
+| base | libc 98,064 | libc 98,064 | libc 98,064 |
+| + A | dram0 overflow 24.2 KB | libc **16,792** (text +118,800) | libc **33,176** |
+| + B | overflow 32.8 KB | dram1 overflow 6.9 KB | dram1 overflow 6.9 KB |
+| + C | overflow 62.7 KB | dram0 overflow 21.8 KB | dram0 overflow 5.4 KB |
+| + F | overflow 72.8 KB | dram0 overflow 31.8 KB | dram0 overflow 15.4 KB |
+
+**Spike overhead that inflates these numbers** (the production client won't
+carry it):
+- the shell with its 10 KB stack (B), and the 10 KB re-enroll and 8 KB
+  OTA/bridge thread stacks;
+- the network buffers raised under the wrong hypothesis in Spike B (RX 128 ×
+  128 B, 24/64 packets and buffers);
+- the 16 KB log buffer (C);
+- 4 KB HTTP response and 1–2 KB CSR/PEM/certificate work buffers;
+- the 12 KB MQTT thread stack (the measured peak is ~3 KB);
+- the TLS heap: the spike's 96 KB against the measured need of 51.8 KB
+  (MQTT), 90.9 KB (MQTT + HTTPS) and 86.2 KB (MQTT + tunnel) with 16 KB
+  buffers, or roughly 16 KB less per session with 8 KB buffers.
+
+**Runtime TLS heap** (from Spikes A–F, 16 KB buffers): one session 51.8 KB
+peak / 34.8 KB connected; MQTT + HTTPS 90.9 KB peak; MQTT + tunnel 86.2 KB
+peak / 69.2 KB connected. With 8 KB buffers: one session 35.4 / 18.5 KB.
+
+**Application budgets** (libc heap before the client; README, BLE
+provisioning): C6 Modbus 298 KB, OPC-UA 256 KB, SNMP 268 KB; S3-DevKitC
+Modbus 200 KB, SNMP 170 KB; WROOM OPC-UA 73 KB, where open62541 needs
+nearly all of it.
+
+**Per-board recommendation (task 8.3):**
+
+| Board | Direct transport profile | Notes |
+|---|---|---|
+| ESP32-C6 | **full** (`profiles/full.conf`), one tunnel | Fits the 1280 KB slot at 73%. RAM fits the spike app even with its overheads; next to OPC-UA (256 KB budget) it needs the lean production client and a right-sized TLS heap (~92 KB for MQTT + one HTTPS/WSS). With 8 KB buffers, two parallel tunnels become possible. |
+| ESP32-S3-DevKitC-1 (N16R8) | **full**, with the TLS heap and buffers in **PSRAM** | Internal DRAM runs out at +C even with a 56 KB TLS heap. The board has 8 MB of octal PSRAM that the build doesn't use; putting the mbedTLS heap and the bridge/HTTP buffers there is the first thing to try. |
+| QT Py ESP32-S3 (N4R2) | as S3, with 2 MB PSRAM | Not measured. |
+| ESP32-WROOM-32 | **minimal at most**, and not next to OPC-UA | Only A (TLS + MQTT) links: 33 KB of libc heap left with 8 KB records and a 40 KB TLS heap, 17 KB with 16 KB records, with no protocol app. OPC-UA needs ~70 KB, so the WROOM is a **gateway-transport** device (thin-edge.io child device, no TLS), or direct-minimal only with the light Modbus/SNMP apps. No firmware download over HTTPS, no remote access. |
+
 ### Section 7: cloud-side verification (2026-09-19)
 
 - **7.1** `tedge-e8f60afc320c` (managed object 60211263): external ID of
