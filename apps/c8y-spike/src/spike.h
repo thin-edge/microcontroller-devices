@@ -46,4 +46,25 @@ void spike_ota_log_boot(void);
 /** Write the running image's "major.minor.revision" into @p buf. */
 int spike_ota_running_version(char *buf, size_t len);
 
+/* Spike F: remote access. */
+enum spike_ra_event_type {
+	SPIKE_RA_UP,     /* tunnel established: report the operation SUCCESSFUL */
+	SPIKE_RA_FAILED, /* before the tunnel was up: report FAILED with text */
+	SPIKE_RA_CLOSED, /* an established tunnel ended: publish an event */
+};
+
+struct spike_ra_event {
+	enum spike_ra_event_type type;
+	char text[128];
+};
+
+/**
+ * Handle a "530,<serial>,<host>,<port>,<key>" message: start the bridge
+ * thread, or return a negative errno with @p reason (malformed, busy).
+ */
+int spike_ra_request(const char *msg, char *reason, size_t rlen);
+
+/** Next result from the bridge thread; 0 if @p ev was filled. */
+int spike_ra_poll_event(struct spike_ra_event *ev);
+
 #endif /* SPIKE_H_ */

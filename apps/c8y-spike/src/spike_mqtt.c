@@ -80,6 +80,10 @@ static uint32_t telemetry_sent;
 static bool connack_seen;
 static int connack_result;
 static bool restart_requested;
+#if defined(CONFIG_SPIKE_REMOTE_ACCESS)
+static char ra_msg[192];
+static bool ra_requested;
+#endif
 static bool restart_pending_after_boot;
 
 /* The latest JWT (s/dat), for HTTPS requests to Cumulocity. */
@@ -252,6 +256,10 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 	}
 	if (strcmp(topic, "s/dcr") == 0 && strncmp(payload, "70,", 3) == 0) {
 		LOG_INF("s/dcr: 70,<tenant>,<user>,<password> received (%zu B)", len);
+	} else if (strncmp(payload, "530,", 4) == 0 ||
+		   strstr(payload, "c8y_RemoteAccessConnect")) {
+		LOG_INF("%s: remote-access request (%zu B, key not logged)", topic,
+			len);
 	} else {
 		LOG_INF("%s: %.*s", topic, (int)MIN(len, 200), payload);
 	}
@@ -259,6 +267,12 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "510,", 4) == 0) {
 		restart_requested = true;
 	}
+#if defined(CONFIG_SPIKE_REMOTE_ACCESS)
+	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "530,", 4) == 0) {
+		snprintk(ra_msg, sizeof(ra_msg), "%s", payload);
+		ra_requested = true;
+	}
+#endif
 #if defined(CONFIG_SPIKE_AUTH_BOOTSTRAP)
 	/* 70,<tenant>,<user>,<password> */
 	if (strcmp(topic, "s/dcr") == 0 && strncmp(payload, "70,", 3) == 0) {
@@ -526,7 +540,10 @@ static void on_connected(void)
 		 DEVICE_ID);
 	publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
 #if defined(CONFIG_SPIKE_OTA)
-	publish("s/us", "114,c8y_Restart,c8y_Firmware", MQTT_QOS_1_AT_LEAST_ONCE);
+	publish("s/us", IS_ENABLED(CONFIG_SPIKE_REMOTE_ACCESS)
+				? "114,c8y_Restart,c8y_Firmware,c8y_RemoteAccessConnect"
+				: "114,c8y_Restart,c8y_Firmware",
+		MQTT_QOS_1_AT_LEAST_ONCE);
 	{
 		char ver[24] = "unknown";
 
@@ -827,6 +844,44 @@ static void spike_mqtt_main(void *a, void *b, void *c)
 #if defined(CONFIG_SPIKE_OTA)
 			if (fw_requested) {
 				do_firmware();
+			}
+#endif
+#if defined(CONFIG_SPIKE_REMOTE_ACCESS)
+			if (ra_requested) {
+				char reason[96];
+				char line[160];
+
+				ra_requested = false;
+				publish("s/us", "501,c8y_RemoteAccessConnect",
+					MQTT_QOS_1_AT_LEAST_ONCE);
+				if (spike_ra_request(ra_msg, reason, sizeof(reason))) {
+					snprintk(line, sizeof(line),
+						 "502,c8y_RemoteAccessConnect,\"%s\"", reason);
+					publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
+				}
+			}
+			{
+				struct spike_ra_event ev;
+				char line[200];
+
+				while (spike_ra_poll_event(&ev) == 0) {
+					if (ev.type == SPIKE_RA_UP) {
+						publish("s/us", "503,c8y_RemoteAccessConnect",
+							MQTT_QOS_1_AT_LEAST_ONCE);
+						snprintk(line, sizeof(line),
+							 "400,c8y_RemoteAccessOpened,\"%s\"",
+							 ev.text);
+					} else if (ev.type == SPIKE_RA_FAILED) {
+						snprintk(line, sizeof(line),
+							 "502,c8y_RemoteAccessConnect,\"%s\"",
+							 ev.text);
+					} else {
+						snprintk(line, sizeof(line),
+							 "400,c8y_RemoteAccessClosed,\"%s\"",
+							 ev.text);
+					}
+					publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
+				}
 			}
 #endif
 			if (k_uptime_get() - last_telemetry >=

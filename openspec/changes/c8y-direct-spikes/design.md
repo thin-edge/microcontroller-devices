@@ -437,11 +437,88 @@ archived.
 | P7 | **A firmware update takes the C6 offline for ~40 s** (MCUboot swap-scratch of ~900 KB). | The update window, and what Cumulocity shows meanwhile. The device is dark during the swap. | Spike B. | Measure swap-using-move and overwrite-only (which gives up rollback) as alternatives; report the expected downtime in the operation. |
 | P8 | **Operations are missed in a new device's first session** if the client subscribes before the device exists: `s/ds`, `s/dat` and `devicecontrol/notifications` are refused (0x80) until `100` has created it. | A bootstrap-registered device would miss operations in its first session. | Spike C (5.7). | Client order: `100`, wait for the device to exist, then subscribe; treat a 0x80 SUBACK as "retry later", not as final. |
 | P9 | **The device key is only obfuscated.** The ITS encryption key comes from a hash of the device ID, and the key is exported into RAM for TLS for the whole uptime. | Anyone with flash or RAM access gets the device identity. | Spike C (U9). | Flash encryption or a hardware-unique key provider for ITS; upstream opaque PSA keys in `tls_credentials`. Document the limitation until then. |
+| P10 | **No safe local shell target.** Zephyr's `shell_telnet` binds `INADDR_ANY` (an unauthenticated shell on the LAN) and mirrors logs. Loopback (`NET_LOOPBACK`) broke outbound SNTP here. | Remote access to the device's own shell is a headline use case. | Spike F (6.7). | A shell backend fed directly by the remote-access WebSocket (no TCP listener), or a loopback-only listener. Investigate the loopback/SNTP interaction. |
+| P11 | **Remote-access throughput is 40–56 KB/s.** | Fine for SSH and config work; slow for bulk copies (10 MB in 3–4 min). | Spike F (6.6). | Larger bridge buffers, batching several TCP reads per WebSocket frame, and measuring where the time goes. |
 
 ## Spike results
 
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
+
+### Spike F: remote access through the device (section 6, 2026-09-19)
+
+**Setup:** `overlay-spike-f.conf` on top of A+B+C (enrolled identity
+`tedge-e8f60afc320c`), `src/spike_ra.c`. Sessions were opened from a PC
+with `c8y remoteaccess server --configuration <name> --listen 127.0.0.1:<port>`
+(passthrough configurations only), then `ssh -p <port> root@127.0.0.1`.
+
+**U12: the protocol**, matching thin-edge.io's `c8y-remote-access-plugin`:
+- **`530,<serial>,<host>,<port>,<connectionKey>`** arrives on `s/ds`, and
+  also as JSON on `devicecontrol/notifications`. The key is 36 characters;
+  the spike never logs it.
+- The device opens a TCP connection to `<host>:<port>`, then
+  **`wss://<tenant>/service/remoteaccess/device/<connectionKey>`** with
+  **`Sec-WebSocket-Protocol: binary`**; the reply is `101` with
+  `Sec-WebSocket-Protocol: binary`.
+- **Authentication:** with the **client certificate only** →
+  `401, www-authenticate: Basic realm="Cumulocity"`. With
+  **`Authorization: Bearer <JWT>`** → works. As for `simplereenroll`, a
+  certificate device needs a fresh JWT (1 h) from `s/uat` for every HTTPS
+  or WSS call.
+- Reported as `501` → `503` (tunnel up) or `502,"<reason>"`, plus events
+  `c8y_RemoteAccessOpened` and
+  `c8y_RemoteAccessClosed` ("… closed (<why>): <n> B up, <n> B down").
+
+**U11: SSH to the Pi (192.168.68.72:22) through Cumulocity and the C6.**
+
+| | Result |
+|---|---|
+| TCP connect to the target | 14–178 ms |
+| WSS to Cumulocity (TLS + upgrade) | 2.43–2.54 s |
+| `ssh … "hostname; uname -m"` end to end (530, tunnel, SSH handshake) | **5.6 s** |
+| Interactive echo round trip (20 lines through a remote `cat`) | **median 103 ms**, 89–134 ms |
+| 10 MB PC → Pi | **40 KB/s** (257.9 s), SHA-256 intact |
+| 10 MB Pi → PC | **56 KB/s** (182.3 s), SHA-256 intact |
+| TLS heap with MQTT + tunnel (16 KB buffers) | 69,200 B connected, 86,176 B peak; steady through 10 MB each way |
+| Bridge | one thread (8 KB stack), 2 × 2 KB buffers, one WebSocket frame per TCP read |
+
+Throughput is probably limited by the per-frame design (2 KB buffers, a
+masked frame per read, one thread), not the link. Larger buffers and
+batching are the obvious first optimisation.
+
+**Policy, cap and failures.**
+
+| Case | Result |
+|---|---|
+| `8.8.8.8:53` (outside the subnet), 6.2 | FAILED `target 8.8.8.8:53 denied: not on the device's subnet`; no socket opened |
+| Second session while one is open (cap 1), 6.6 | FAILED `session limit reached (1)`; the open session carried on |
+| Target on the subnet with no host (192.168.68.250:22), 6.8 | FAILED `cannot connect to 192.168.68.250:22 (-116)` |
+| The client closes (SSH exits) | Cumulocity closes the WebSocket, the bridge logs "WebSocket close from Cumulocity" and publishes the close event |
+| Wi-Fi drop mid-session, 6.8 | **not tested** (needs the AP; see P1) |
+
+**Local target (6.7).**
+- The device's own Zephyr shell is reachable through the tunnel.
+  `kernel version`, `kernel uptime` and `spike ota status` were answered via
+  a passthrough endpoint to the **device's own LAN address**
+  (192.168.68.50:23; TCP connect 2 ms).
+- `127.0.0.1` didn't work out. It needs `NET_LOOPBACK` (+ `NET_DRIVERS`),
+  and with the loopback interface enabled **outbound SNTP failed** (`-101`,
+  then `-116`), so the device never connected.
+- **`shell_telnet` is not shippable.** It binds `INADDR_ANY` with no option
+  for loopback only, so **the unauthenticated shell was open on the LAN**
+  (port 23 reachable from the PC). It also mirrors the device log into the
+  session. A production remote shell should bridge the WebSocket straight
+  into a shell backend with no TCP listener, or listen on loopback only.
+- Adding the telnet backend exceeded `ZVFS_POLL_MAX` (7 socket-service
+  entries against 6), and then **the socket-service thread doesn't run at
+  all, which also stops mDNS**. It needs `ZVFS_POLL_MAX` of 10.
+
+**Zephyr findings.**
+- **`websocket_connect()` needs PSA SHA-1** for `Sec-WebSocket-Accept`
+  but doesn't select it. Without `PSA_WANT_ALG_SHA_1` it fails with `-EPROTO`
+  before sending anything.
+- The remote-access image (A+B+C+F) is 959,851 bytes, 75% of the 1280 KB
+  slot on the C6.
 
 ### Spike C: Cumulocity CA enrollment on the device (section 5, 2026-09-19)
 

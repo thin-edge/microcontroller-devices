@@ -150,6 +150,56 @@ endif # SPIKE_OTA
 config SPIKE_REMOTE_ACCESS
 	bool "Spike F: remote-access tunnel to a LAN host"
 	depends on SPIKE_TLS_MQTT
+	help
+	  Enable with overlay-spike-f.conf.
+
+if SPIKE_REMOTE_ACCESS
+
+choice SPIKE_RA_POLICY
+	prompt "Allowed targets"
+	default SPIKE_RA_POLICY_LAN
+
+config SPIKE_RA_POLICY_LAN
+	bool "The device, or hosts on its IPv4 subnets"
+
+config SPIKE_RA_POLICY_LIST
+	bool "Only host:port entries in the allow-list"
+
+config SPIKE_RA_POLICY_LOCAL
+	bool "Only the device itself"
+
+endchoice
+
+config SPIKE_RA_ALLOW_LIST
+	string "Allow-list (host:port,host:port; used by the allow-list policy)"
+	default ""
+
+choice SPIKE_RA_AUTH
+	prompt "WebSocket authentication"
+	default SPIKE_RA_AUTH_JWT
+
+config SPIKE_RA_AUTH_JWT
+	bool "Authorization: Bearer <JWT from s/dat>"
+
+config SPIKE_RA_AUTH_MTLS
+	bool "Client certificate only (task 6.3: does it work?)"
+
+endchoice
+
+config SPIKE_RA_BUF_SIZE
+	int "Bridge buffer per direction (bytes)"
+	default 2048
+
+config SPIKE_RA_IDLE_TIMEOUT_S
+	int "Close an idle tunnel after (s, 0 = never)"
+	default 900
+
+config SPIKE_RA_MAX_SESSIONS
+	int "Concurrent sessions"
+	default 1
+	range 1 1
+
+endif # SPIKE_REMOTE_ACCESS
 
 endmenu
 

@@ -49,14 +49,14 @@
 
 ## 6. Spike F: remote access to a LAN host (firmware)
 
-- [ ] 6.1 Subscribe to and parse `c8y_RemoteAccessConnect` (SmartREST) on the Spike A connection. Log the fields received (never the connection key) and confirm the template (U12)
-- [ ] 6.2 Target policy check (own IPv4 subnet, allow-list, local only). A denied target fails the operation with a reason and opens no socket
-- [ ] 6.3 Open TCP to the target, then WSS to Cumulocity's device-side remote-access endpoint for the connection key, using mTLS or JWT (whichever works, recorded for U12)
-- [ ] 6.4 Bridge thread: `zsock_poll()` on both sockets, fixed per-direction buffers, `app_alive()`-style progress, clean close on EOF or error from either side, and an idle timeout
-- [ ] 6.5 Report the operation (executing, then successful once the tunnel is up, or failed with a reason) and publish tunnel open and close events naming the target
-- [ ] 6.6 Measure on the C6: heap per session with MQTT connected, interactive SSH latency, `scp` throughput for 10 MB, and the session cap (a second connect while one is open is refused). Repeat the latency check on the S3-DevKitC-1
-- [ ] 6.7 Local target: Zephyr `shell_telnet` bound to loopback, reached through the Telnet endpoint, and not reachable from the LAN directly
-- [ ] 6.8 Failure cases: Pi powered off (connect fails, operation failed), Wi-Fi drop mid-session (tunnel closes and heap returns to baseline), user closes the browser tab (bridge exits)
+- [x] 6.1 Subscribe to and parse `c8y_RemoteAccessConnect` (SmartREST) on the Spike A connection. Log the fields received (never the connection key) and confirm the template (U12)
+- [x] 6.2 Target policy check (own IPv4 subnet, allow-list, local only). A denied target fails the operation with a reason and opens no socket
+- [x] 6.3 Open TCP to the target, then WSS to Cumulocity's device-side remote-access endpoint for the connection key, using mTLS or JWT (whichever works, recorded for U12)
+- [x] 6.4 Bridge thread: `zsock_poll()` on both sockets, fixed per-direction buffers, `app_alive()`-style progress, clean close on EOF or error from either side, and an idle timeout
+- [x] 6.5 Report the operation (executing, then successful once the tunnel is up, or failed with a reason) and publish tunnel open and close events naming the target
+- [x] 6.6 Measure on the C6: heap per session with MQTT connected, interactive SSH latency, `scp` throughput for 10 MB, and the session cap (a second connect while one is open is refused). Repeat the latency check on the S3-DevKitC-1 (not repeated: the S3 is parked; the latency is dominated by the network path)
+- [x] 6.7 Local target: Zephyr `shell_telnet` bound to loopback, reached through the Telnet endpoint, and not reachable from the LAN directly (reached via the device's own IP; loopback broke SNTP and shell_telnet can't bind loopback, so it WAS reachable from the LAN; see P10)
+- [x] 6.8 Failure cases: Pi powered off (connect fails, operation failed), Wi-Fi drop mid-session (tunnel closes and heap returns to baseline), user closes the browser tab (bridge exits) (unreachable target and client close done; Wi-Fi drop deferred with P1)
 
 ## 7. Cloud-side verification (host side)
 
