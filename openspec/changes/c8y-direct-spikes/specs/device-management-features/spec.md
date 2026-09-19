@@ -161,3 +161,46 @@ concurrent sessions SHALL be capped by a Kconfig option.
   is open
 - **THEN** the device marks the new operation as failed, and the open sessions
   continue undisturbed
+
+### Requirement: State and telemetry use thin-edge.io topics on the MQTT Service
+
+The device SHALL publish telemetry, twin data, health and events on free-form
+topics in thin-edge.io's `te/` topic and payload shape when it uses the direct
+transport and the Cumulocity MQTT Service endpoint, so that a thin-edge.io gateway
+and Cumulocity Smart Functions can map the same messages. Operations and their
+status SHALL stay on SmartREST. Without free-form topics (Core MQTT, basic
+authentication), the device SHALL send twin data as direct inventory updates
+and telemetry as SmartREST measurements. The device SHALL republish its twin
+data after every (re)connect, and SHALL NOT rely on retained messages.
+
+#### Scenario: Twin data on the MQTT Service
+
+- **WHEN** the device, connected to the MQTT Service, has twin data to report
+- **THEN** it publishes it to `te/device/<id>///twin/<fragment>`, and a
+  Smart Function can map it to the managed object
+
+#### Scenario: Twin data on Core MQTT
+
+- **WHEN** the device is connected to Core MQTT
+- **THEN** it sends the same twin data as a direct inventory update of its
+  managed object
+
+### Requirement: Remote-access capacity and use are published as twin data
+
+When the remote-access feature is built in, the device SHALL publish
+`tedge_RemoteAccess` twin data with the session limit, the number of active
+sessions and the target policy. It SHALL publish it when it connects, with no
+active sessions after a (re)connect, and whenever a session opens or closes.
+The list of active sessions with their targets SHALL be a build-time option.
+
+#### Scenario: A session opens
+
+- **WHEN** a remote-access tunnel is established
+- **THEN** the device publishes `tedge_RemoteAccess` with `activeSessions`
+  increased by one
+
+#### Scenario: The device reconnects
+
+- **WHEN** the device reconnects after a reboot or a lost connection
+- **THEN** it publishes `tedge_RemoteAccess` with `activeSessions: 0`,
+  replacing any stale value

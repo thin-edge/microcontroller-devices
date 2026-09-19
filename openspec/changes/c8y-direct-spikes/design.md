@@ -420,6 +420,55 @@ unchanged, and the target can be the MCU itself or any host it can reach:
 - [A spike result invalidates the roadmap order] → That is the purpose of the
   spikes. The results section records the decision and `SCOPE.md` is updated.
 
+### D10: State and telemetry on free-form `te/` topics, mapped by Smart Functions
+
+Decided 2026-09-19 with the tenant owner, after section 7 showed a Smart
+Function turning free-form telemetry into measurements.
+
+- **The device publishes state and telemetry on MQTT Service free-form
+  topics in thin-edge.io's `te/` shape**, the same topics a thin-edge.io
+  gateway understands:
+  - measurements `te/device/<id>///m/<type>`;
+  - twin data `te/device/<id>///twin/<fragment>`;
+  - health `te/device/<id>/service/<name>/status/health`;
+  - events and alarms.
+- **Cumulocity Smart Functions map them**, playing the part of thin-edge.io's
+  mapper. tedge-zephyr ships a **reference set of Smart Functions** that
+  reproduces the mapper's default behaviour (twin → inventory fragment,
+  `m/` → measurements, and so on), and users adapt them to present the data
+  however they like.
+- **Operations stay on SmartREST** (`s/ds`, `501`/`503`/`502`). That's how
+  Cumulocity tracks an operation's lifecycle; free-form topics suit state
+  and telemetry, not operations.
+- **Fallback:** Core MQTT (8883) and basic-auth builds have no free-form
+  topics. They send twin data as direct inventory updates
+  (`inventory/managedObjects/update/<external id>`, as thin-edge.io's mapper
+  does) and telemetry as SmartREST measurements.
+- **State is republished on every (re)connect.** A twin value is state, not
+  an event: a reboot or disconnect mid-session would otherwise leave a stale
+  value (for example active remote-access sessions). The design must not
+  rely on retained messages on the MQTT Service (unverified, P12).
+- **First user:** remote-access capacity and use as twin data, so operators
+  see before opening a session that the device is busy (the UI only reports
+  a refused session after its own timeout; see Spike F):
+
+  ```
+  te/device/<id>///twin/tedge_RemoteAccess
+  {"maxSessions":1,"activeSessions":1,"policy":"lan",
+   "sessions":[{"target":"192.168.68.72:22","since":"<ISO 8601>"}]}
+  ```
+
+  Published at connect (limits, policy, `activeSessions: 0`) and whenever a
+  tunnel opens or closes. The `sessions` list, which holds internal
+  addresses, is a build option; the count and limit are always sent. The
+  name is `tedge_…`, not `c8y_RemoteAccess…`, to stay clear of
+  Cumulocity's own `c8y_RemoteAccessList`.
+- *Alternative: direct inventory updates only.* Works with no cloud-side
+  set-up, but fixes the presentation on the device and gives the two
+  transports different payloads. Kept as the fallback.
+- *Alternative: SmartREST for everything.* No custom fragments, and
+  telemetry would be fixed to the static templates.
+
 ## Open problems
 
 Problems found or deferred during the spikes, to be picked up later. Each one
@@ -439,6 +488,7 @@ archived.
 | P9 | **The device key is only obfuscated.** The ITS encryption key comes from a hash of the device ID, and the key is exported into RAM for TLS for the whole uptime. | Anyone with flash or RAM access gets the device identity. | Spike C (U9). | Flash encryption or a hardware-unique key provider for ITS; upstream opaque PSA keys in `tls_credentials`. Document the limitation until then. |
 | P10 | **No safe local shell target.** Zephyr's `shell_telnet` binds `INADDR_ANY` (an unauthenticated shell on the LAN), mirrors logs into the session, and doesn't offer echo (fixed in the spike by the bridge offering WILL ECHO/SGA). Loopback (`NET_LOOPBACK`) broke outbound SNTP here. | Remote access to the device's own shell is a headline use case. | Spike F (6.7). | A shell backend fed directly by the remote-access WebSocket (no TCP listener), or a loopback-only listener. Investigate the loopback/SNTP interaction. |
 | P11 | **Remote-access throughput is 40–56 KB/s.** | Fine for SSH and config work; slow for bulk copies (10 MB in 3–4 min). | Spike F (6.6). | Larger bridge buffers, batching several TCP reads per WebSocket frame, and measuring where the time goes. |
+| P12 | **Unknowns for D10.** Does the MQTT Service keep retained messages for subscribers or Smart Functions? Which reference Smart Functions (twin, health, events, alarms, measurements) does tedge-zephyr ship, where, and how are they installed? How do they tell the device apart (topic, or client identity)? | D10 relies on them for anything beyond telemetry to appear in Cumulocity. | Discussion after section 7. | Check retained behaviour on the MQTT Service; write the reference functions starting with twin → inventory; prototype `tedge_RemoteAccess` (task 6.9). |
 
 ## Spike results
 
