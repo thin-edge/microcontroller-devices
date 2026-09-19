@@ -20,12 +20,12 @@
 ## 3. Spike A: TLS and MQTT to Cumulocity (firmware)
 
 - [ ] 3.1 SNTP before the first TLS connect. Log the time, and refuse to connect until the clock is set
-- [ ] 3.2 MQTTS to 9883 with basic auth and the embedded tenant CA, `MBEDTLS_SSL_MAX_CONTENT_LEN=16384`. Connect, subscribe to `s/ds` and `s/e`, publish `100`/`114`/`117`
+- [ ] 3.2 MQTTS to 9883 with mutual TLS (the `tedge-spike-c6` key and certificate from `apps/c8y-spike/credentials/`) and the embedded server CA, `MBEDTLS_SSL_MAX_CONTENT_LEN=16384`. Connect, subscribe one filter per SUBSCRIBE (exact topics `s/ds`, `s/e`, `s/dat`), publish `100`/`114`/`117`
 - [ ] 3.3 Handle `510` (restart): report `501`, persist a "restart pending" marker in settings, reboot, then report `503` after reconnecting
 - [ ] 3.4 Publish a thin-edge.io-shaped free-form measurement every 10 s (the spike app feeds it from `data_source_*`, as a user app would feed its own data). Request a JWT on `s/uat` and log that `s/dat` arrives (never the token itself)
 - [ ] 3.5 Measure on the C6: flash delta, static RAM, heap at idle, handshake peak and steady state, and handshake time over 10 connects. Record them in design.md
 - [ ] 3.6 Retry with a 4096-byte record size and max-fragment-length (U2). Record whether the handshake and a large downlink message work
-- [ ] 3.7 Repeat 3.2–3.5 against Core MQTT 8883 (U3 fallback), then repeat 3.5 on the S3-DevKitC-1
+- [ ] 3.7 Repeat 3.2–3.5 against Core MQTT 8883 (the fallback; note its 12.9 KB CertificateRequest, and also try basic auth as `tedge-spike-a-c6`), then repeat 3.5 on the S3-DevKitC-1
 - [ ] 3.8 Reconnect test: drop Wi-Fi at the AP for 60 s, three times. Record the time back to "connected" and the heap after each cycle (leak check)
 
 ## 4. Spike B: OTA into slot1 (firmware)

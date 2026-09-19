@@ -116,7 +116,10 @@ def main() -> int:
     client.loop_stop()
     client.disconnect()
 
-    errors = [t for t, _ in received if t == "s/e"]
+    # "41,100,Device already existing" only means the device was created
+    # earlier (e.g. by the registration), so it doesn't count as a failure.
+    errors = [text for t, text in received
+              if t == "s/e" and not text.startswith("41,100,")]
     print(f"summary: jwt={'ok' if jwt_ok else 'fail'} s/e errors={len(errors)}")
     return 0 if jwt_ok and not errors else 1
 

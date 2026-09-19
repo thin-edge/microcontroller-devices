@@ -192,8 +192,16 @@ colliding with a host application's own symbols.
   `openssl s_client -showcerts`) is embedded as a `TLS_CREDENTIAL_CA_CERTIFICATE`
   in the spike. How trust anchors are managed in production is out of scope,
   but we record which roots were needed.
-- **Authentication:** Spike A uses a device user with basic authentication
-  (created on the test tenant). mTLS comes from Spike C.
+- **Authentication:** Spike A uses **mutual TLS** with a Cumulocity CA
+  certificate for `tedge-spike-c6`, issued from a PC (key and CSR generated
+  on the PC, `register-ca`, EST `simpleenroll`). It is embedded from the
+  git-ignored `apps/c8y-spike/credentials/`. This replaces the planned basic
+  auth, because the MQTT Service (9883) refuses basic auth (see Spike
+  results, section 1). Spike C then moves key generation and enrollment onto
+  the device, under the default identity `tedge-<MAC>`. The basic-auth
+  device `tedge-spike-a-c6` remains available for an 8883 comparison.
+- **Subscriptions:** one filter per SUBSCRIBE, exact topics only: `s/ds`,
+  `s/e`, `s/dat`, `devicecontrol/notifications`, `error`.
 - **Record size:** first attempt with `MBEDTLS_SSL_MAX_CONTENT_LEN=16384`,
   then 4096 with `MBEDTLS_SSL_MAX_FRAGMENT_LENGTH`. Record which one completes
   the handshake and moves data.
@@ -529,6 +537,10 @@ decision each unknown (U1–U12) produced._
   same endpoints once it exists (Spike C).
 
 **Identities created on the tenant:**
+
+- `tedge-spike-c6`: CA certificate issued from the PC, managed object
+  20211235, the C6's identity for Spike A (and F). Remote-access endpoints
+  `pi-ssh` and `device-shell` are configured on it.
 
 - `tedge-spike-a-c6`: basic auth, managed object 26211202, for Spike A.
 - `tedge-spike-host`: CA certificate, managed object 20211208, a host-only
