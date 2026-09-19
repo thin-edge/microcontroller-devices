@@ -134,8 +134,13 @@ top of the MQTT session.
 
 - Should a second session be allowed by default on the C6 with 8 KB records
   (the spike showed it fits), or stay at one until it is measured under load?
-- Does the reference Smart Function present `tedge_RemoteAccess` as a
-  fragment on the managed object, a measurement, or both (P12)?
+- ~~Does the reference Smart Function present `tedge_RemoteAccess` as a
+  fragment on the managed object, a measurement, or both (P12)?~~
+  **Answered 2026-09-20:** the tenant owner's Smart Function maps the
+  `te/device/<id>///twin/tedge_RemoteAccess` message to a **`remoteAccess`
+  fragment** on the managed object, with the payload unchanged:
+  `{"activeSessions":0,"freeSessions":1,"maxSessions":1,"policy":"lan",
+  "sessions":[]}`. The reference function ships that shape.
 
 ## Results
 
@@ -165,3 +170,16 @@ leaving the operation pending, which is the behaviour the spec asks for.
 received it (no request in its log), so the microservice had marked it
 EXECUTING itself. Nothing for the device to do, but it means a stuck
 EXECUTING operation is not proof that the device ignored it.
+
+### Policy, cap and capacity (C6, 2026-09-20)
+
+| Check | Result |
+|---|---|
+| Target outside the subnet (8.8.8.8:53) | FAILED `target 8.8.8.8:53 refused: not on this device's network`; no socket opened |
+| Unreachable target on the subnet (192.168.68.250:22) | FAILED `cannot reach 192.168.68.250:22 (-116)` |
+| Second session while one is open | FAILED `no free session (the limit is 1)` within seconds; the open tunnel carried on and closed normally |
+| Capacity at startup | `tedge_RemoteAccess` is published ~0.5 s after the connection, before any session: `{"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}`, and again after every reconnect |
+
+An operation created while the local `c8y remoteaccess server` is shutting
+down stays EXECUTING: the device never receives it. Seen twice; it is a
+cloud-side artefact, not a device fault.

@@ -613,6 +613,9 @@ static int publish_twin_impl(const char *fragment, const char *json)
 		snprintf(body, sizeof(body), "{\"%s\":%s}", fragment, json);
 		rc = publish(topic, body, MQTT_QOS_1_AT_LEAST_ONCE);
 	}
+	if (rc == 0) {
+		LOG_INF("twin %s: %s", fragment, json);
+	}
 	return rc;
 }
 

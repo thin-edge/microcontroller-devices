@@ -80,24 +80,6 @@ int tedge_ra_poll_event(struct tedge_ra_event *ev)
 /* Target policy                                                             */
 /* ------------------------------------------------------------------------ */
 
-static bool in_allow_list(const char *host, uint16_t port)
-{
-	const char *list = CONFIG_TEDGE_REMOTE_ACCESS_ALLOW_LIST;
-	char entry[80];
-
-	snprintf(entry, sizeof(entry), "%s:%u", host, port);
-	for (const char *p = list; *p != '\0';) {
-		const char *comma = strchr(p, ',');
-		size_t n = comma ? (size_t)(comma - p) : strlen(p);
-
-		if (n == strlen(entry) && strncmp(p, entry, n) == 0) {
-			return true;
-		}
-		p += n + (comma ? 1 : 0);
-	}
-	return false;
-}
-
 /* Returns 0 when the target may be contacted, or -EACCES with a reason. */
 static int policy_check(const struct in_addr *addr, const char *host,
 			uint16_t port, char *reason, size_t rlen)
@@ -116,7 +98,8 @@ static int policy_check(const struct in_addr *addr, const char *host,
 				 port);
 		}
 	} else if (IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LIST)) {
-		allowed = in_allow_list(host, port);
+		allowed = tedge_ra_in_allow_list(
+			CONFIG_TEDGE_REMOTE_ACCESS_ALLOW_LIST, host, port);
 		if (!allowed) {
 			snprintf(reason, rlen,
 				 "target %s:%u refused: not in the allow-list",

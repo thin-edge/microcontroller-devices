@@ -135,6 +135,44 @@ ZTEST(tedge_backoff, test_jitter_spreads_attempts)
 ZTEST_SUITE(tedge_backoff, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
+/* Remote access                                                             */
+/* ------------------------------------------------------------------------ */
+
+ZTEST(tedge_remote_access, test_request_fields)
+{
+	/* 530,<serial>,<host>,<port>,<connectionKey> */
+	const char *line = "530,tedge-abc,192.168.68.72,22,"
+			   "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+	char host[64], port[8], key[48];
+
+	zassert_equal(tedge_sr_template(line), 530);
+	zassert_true(tedge_sr_field(line, 2, host, sizeof(host)) > 0);
+	zassert_str_equal(host, "192.168.68.72");
+	zassert_true(tedge_sr_field(line, 3, port, sizeof(port)) > 0);
+	zassert_str_equal(port, "22");
+	zassert_equal(tedge_sr_field(line, 4, key, sizeof(key)), 36);
+}
+
+ZTEST(tedge_remote_access, test_allow_list)
+{
+	const char *list = "192.168.1.20:22,10.0.0.5:502,pi.local:23";
+
+	zassert_true(tedge_ra_in_allow_list(list, "192.168.1.20", 22));
+	zassert_true(tedge_ra_in_allow_list(list, "10.0.0.5", 502));
+	zassert_true(tedge_ra_in_allow_list(list, "pi.local", 23));
+
+	/* The port is part of the entry. */
+	zassert_false(tedge_ra_in_allow_list(list, "192.168.1.20", 23));
+	/* A prefix of an entry is not an entry. */
+	zassert_false(tedge_ra_in_allow_list(list, "192.168.1.2", 22));
+	zassert_false(tedge_ra_in_allow_list(list, "192.168.1.21", 22));
+	/* An empty list allows nothing. */
+	zassert_false(tedge_ra_in_allow_list("", "192.168.1.20", 22));
+}
+
+ZTEST_SUITE(tedge_remote_access, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
 /* PKCS#7 (the enrollment reply)                                             */
 /* ------------------------------------------------------------------------ */
 

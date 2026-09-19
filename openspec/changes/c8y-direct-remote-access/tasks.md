@@ -11,15 +11,15 @@
 
 ## 2. Tests
 
-- [ ] 2.1 Unit tests (`native_sim`): `530` parsing (including a quoted key), the policy check against a subnet and an allow-list, and the twin JSON
-- [ ] 2.2 A Kconfig case: the feature off leaves no WebSocket client in the image; on, it requires CA authentication
-- [ ] 2.3 Check that no test or log path prints the connection key
+- [x] 2.1 Unit tests (`native_sim`): `530` parsing (including a quoted key), the policy check against a subnet and an allow-list, and the twin JSON
+- [x] 2.2 A Kconfig case: the feature off leaves no WebSocket client in the image; on, it requires CA authentication
+- [x] 2.3 Check that no test or log path prints the connection key
 
 ## 3. Hardware verification
 
 - [x] 3.1 C6 Modbus + client: SSH to the Pi through the device; record time to first command, echo latency and throughput both ways (echo latency still to measure)
-- [ ] 3.2 Policy: a target outside the subnet and an unreachable target on it both fail with their reasons, and nothing is dialled
-- [ ] 3.3 Cap: a second session while one is open fails within seconds and the first survives
+- [x] 3.2 Policy: a target outside the subnet and an unreachable target on it both fail with their reasons, and nothing is dialled
+- [x] 3.3 Cap: a second session while one is open fails within seconds and the first survives
 - [ ] 3.4 Twin data and events in Cumulocity across open, close and a reboot with a session open
 - [ ] 3.5 Telnet target: echo in Cumulocity's web terminal
 - [ ] 3.6 TLS heap and TCP contexts before, during and after a session (no leak), and the footprint row in `measure_tedge.sh`

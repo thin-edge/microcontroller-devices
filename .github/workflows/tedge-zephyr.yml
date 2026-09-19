@@ -24,6 +24,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 tedge-zephyr/scripts/check-independence.py
+      - run: python3 tedge-zephyr/scripts/check-secrets.py
 
   unit:
     name: Unit tests and Kconfig rules

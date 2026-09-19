@@ -116,6 +116,9 @@ struct tedge_ra_event {
 	char text[144];
 };
 
+/** True when "<host>:<port>" is one of the comma-separated @p list entries. */
+bool tedge_ra_in_allow_list(const char *list, const char *host, uint16_t port);
+
 /** Handle a "530,..." line: start a session, or fail with @p reason. */
 int tedge_ra_request(const char *line, char *reason, size_t rlen);
 /** Next result from a bridge thread; 0 when @p ev was filled. */
