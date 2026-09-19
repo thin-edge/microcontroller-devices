@@ -74,12 +74,14 @@
 
 ## 9. Spike E (optional): SoftAP provisioner feasibility (firmware)
 
+Not run: U10 stays open, and the BLE provisioner remains the onboarding path (see the go/no-go table in design.md).
+
 - [ ] 9.1 Build a SoftAP, DHCP-server, catch-all DNS and HTTP-form provisioner variant for the C6. Measure it against the 1024 KB `prov` partition with BLE removed
 - [ ] 9.2 Check whether AP and station at the same time works with Zephyr's ESP32 Wi-Fi driver (serve the form while a station connect tests the credentials)
 - [ ] 9.3 Test captive-portal behaviour on one iOS and one Android phone, and record the result
 
 ## 10. Wrap-up
 
-- [ ] 10.1 Fill in "Spike results" in design.md: one go/no-go per unknown U1–U12, with the measurements
-- [ ] 10.2 Update the `SCOPE.md` Phase 3 roadmap with anything the results changed (transport default, board profiles, onboarding path)
-- [ ] 10.3 Draft the `c8y-direct-core` proposal from the results, carrying over the open problems in design.md (including the deferred 3.8)
+- [x] 10.1 Fill in "Spike results" in design.md: one go/no-go per unknown U1–U12, with the measurements
+- [x] 10.2 Update the `SCOPE.md` Phase 3 roadmap with anything the results changed (transport default, board profiles, onboarding path)
+- [x] 10.3 Draft the `c8y-direct-core` proposal from the results, carrying over the open problems in design.md (including the deferred 3.8): `openspec/changes/c8y-direct-core/proposal.md`

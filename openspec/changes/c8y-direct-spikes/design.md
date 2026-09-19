@@ -493,8 +493,27 @@ archived.
 
 ## Spike results
 
-_To be filled in as each spike completes: measurements, go/no-go, and the
-decision each unknown (U1–U12) produced._
+### Go/no-go per unknown (task 10.1)
+
+The detail and the raw measurements are in the per-spike sections below.
+
+| # | Answer | Verdict | Decision it produces |
+|---|---|---|---|
+| U1 | One TLS session: handshake 2.7 s (C6) / 1.9 s (S3), 51.8 KB heap peak / 34.8 KB connected (16 KB records), 0 B after disconnect. MQTT + HTTPS 90.9 KB peak, MQTT + tunnel 86.2 KB peak. Spike A adds ~134 KB of text. The full A+B+C+F image is 73–75% of the C6's slot and 25% of the S3's | **Go** (C6, S3 with PSRAM) | C6: `full`. S3: `full` with the mbedTLS heap in PSRAM. WROOM: `remote-access-enabler` only (per-board table in section 8). At most two concurrent TLS sessions (MQTT + one transfer or tunnel) on the default profiles |
+| U2 | Max-fragment-length is honoured, but mbedTLS needs 8 KB of input buffer for the 5.9 KB chain on 9883. 4 KB and 6 KB fail. 8883 needs 16 KB (12.9 KB CertificateRequest) | **Go, with 16 KB as the default** | 16 KB records by default; 8 KB is an opt-in saving of 16 KB per session for the MQTT Service only (P3) |
+| U3 | SmartREST `100`/`114`/`117`/`200`/`400`/`500`/`510`/`515`/`530` all work on 9883, with one filter per SUBSCRIBE. Free-form `te/` telemetry is mapped by a Smart Function. Basic auth is refused on 9883 | **Go** | Default: MQTT Service with CA authentication. Core MQTT (8883) for basic auth and as the fallback. State and telemetry on free-form `te/` topics (D10) |
+| U4 | `s/uat` → `s/dat` gives a JWT (768 B) with a certificate on both ports. It is refused for basic-auth devices | **Go** for certificate devices | HTTPS/WSS calls authenticate with a fresh Bearer JWT. Basic-auth devices would use basic auth for HTTPS (not tested) and get no remote access |
+| U5 | Swap ~40 s on the C6 (~19 s on the S3). Test boot, confirm and revert all work, including from a real Cumulocity download. `prov`, `bootreq` and `storage` are untouched. A CPU reset hangs MCUboot on the C6 (P2) | **Go** | Confirm only after reaching Cumulocity; report rollback as `502`. Use a full-system reset everywhere (platform reset hook). Report the expected downtime (P7) |
+| U6 | Zephyr's HTTP client doesn't follow redirects; the spike's ~1 KB-URL redirect handling works for GitHub. Chunked bodies are corrupted by the client's response callback (P5). P-384 chains need a 30 s TLS timeout | **Go, with our own code** | The module follows up to 3 redirects, never forwards the JWT off the tenant's domain, writes from `on_body`, and uses a longer connect timeout for external hosts |
+| U7 | Key in PSA ITS, one-time password, CSR signed inside PSA, `simpleenroll` polling, PKCS#7 unwrap and mTLS all work on the C6, S3 and WROOM. Mutual TLS costs no extra TLS RAM | **Go** | Onboarding through the Cumulocity CA is primary. Bootstrap basic auth is the fallback, and must send `100` before subscribing (P8) |
+| U8 | `simplereenroll` refuses mTLS alone (401) and accepts `Authorization: Bearer <JWT>` without a client certificate | **Go** | Renewal = JWT over MQTT, then `simplereenroll` with the Bearer header |
+| U9 | The key is exported into RAM for as long as the TLS credential is registered, and ITS is encrypted with a key derived from the device ID | **Go for development, no-go for production as-is** | Document the limitation. Flash encryption or a hardware-unique key provider, and opaque PSA keys in `tls_credentials`, before real deployments (P9) |
+| U10 | Not measured (section 9 skipped) | **Open** | The BLE provisioner stays the onboarding path; SoftAP is a separate, optional change |
+| U11 | SSH to a LAN host works: 5.6 s to a command, 103 ms echo, 40–56 KB/s (C6), 51–66 KB/s (S3), ~4–17 KB/s with one stall (WROOM, P13). MQTT + tunnel: 86.2 KB TLS heap peak (16 KB records), 53.4 KB (8 KB). Target policy, session cap and failure reasons work | **Go** (C6, S3); **limited** (WROOM) | One session by default (two on the C6 with 8 KB records). Bulk transfer tuning later (P11) |
+| U12 | `530,<serial>,<host>,<port>,<key>`, then `wss://<tenant>/service/remoteaccess/device/<key>` with `Sec-WebSocket-Protocol: binary` and a Bearer JWT. The client certificate alone gets 401 | **Go** | Remote access requires CA authentication and a JWT. A remote shell must start the telnet negotiation itself, and `shell_telnet` isn't shippable (P10) |
+
+**Overall: go** for `c8y-direct-core` with the direct transport, CA
+onboarding and the C6/S3 profiles. The open problems P1–P13 carry over.
 
 ### Section 8: footprint and profiles (2026-09-19)
 
