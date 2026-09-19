@@ -420,6 +420,19 @@ unchanged, and the target can be the MCU itself or any host it can reach:
 - [A spike result invalidates the roadmap order] → That is the purpose of the
   spikes. The results section records the decision and `SCOPE.md` is updated.
 
+## Open problems
+
+Problems found or deferred during the spikes, to be picked up later. Each one
+needs an owner in `c8y-direct-core` (or its own change) before this change is
+archived.
+
+| # | Problem | Why it matters | Where it came from | Next step |
+|---|---|---|---|---|
+| P1 | **Reconnect after losing the network is unmeasured** (task 3.8 deferred). Nobody has measured how long the device takes to get back to "connected" after the Wi-Fi or the path drops silently, or whether TLS heap and TCP contexts return to baseline. | The real client must recover on its own, without leaking memory or connection contexts. The context exhaustion seen in the cycle test hints at the risk. | Deferred 2026-09-19: dropping Wi-Fi at the access point needs someone at the AP. | Run with the AP switched off, or the C6's MAC (`e8:f6:0a:fc:32:0c`) blocked, three times for about 60 s, with `tools/console.py`. Or build a repeatable test into the real client's test plan (for example a Wi-Fi disconnect triggered from the shell, plus a real AP drop). |
+| P2 | **The C6 hangs in MCUboot after a CPU reset** (`sys_reboot()`) with Wi-Fi running. `lib/common/net.c`'s last-resort reboot still uses it. | On the C6, the existing apps' recovery reboot may leave the device hung instead of recovering it. tedge-zephyr's restart needs its own full-system reset on Espressif parts. | Spike A, task 3.3. | Fix `net.c` to reset the whole system, as `boot_request_reboot()` does, in a separate change; give tedge-zephyr a platform reset hook. |
+| P3 | **8 KB TLS buffers leave about 2 KB of margin** over today's 5.9 KB server certificate chain on 9883. | A longer chain after a server certificate rotation would break 8 KB builds in the field. | Spike A, task 3.6. | Default to 16 KB; document 8 KB as an opt-in saving for the MQTT Service; consider failing over to a 16 KB session if the handshake fails with `-0x87`. |
+| P4 | **Free-form telemetry is published but not yet seen in the cloud.** | Telemetry over the MQTT Service needs a cloud-side consumer (for example the Dynamic Mapper). | Section 1 and Spike A. | Task 7.4. |
+
 ## Spike results
 
 _To be filled in as each spike completes: measurements, go/no-go, and the

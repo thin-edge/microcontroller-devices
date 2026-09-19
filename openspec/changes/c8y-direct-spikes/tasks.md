@@ -26,7 +26,7 @@
 - [x] 3.5 Measure on the C6: flash delta, static RAM, heap at idle, handshake peak and steady state, and handshake time over 10 connects. Record them in design.md
 - [x] 3.6 Retry with a 4096-byte record size and max-fragment-length (U2). Record whether the handshake and a large downlink message work
 - [x] 3.7 Repeat 3.2–3.5 against Core MQTT 8883 (the fallback; note its 12.9 KB CertificateRequest, and also try basic auth as `tedge-spike-a-c6`), then repeat 3.5 on the S3-DevKitC-1
-- [ ] 3.8 Reconnect test: drop Wi-Fi at the AP for 60 s, three times. Record the time back to "connected" and the heap after each cycle (leak check)
+- [ ] 3.8 **DEFERRED (2026-09-19): see "Open problems" in design.md.** Reconnect test: drop Wi-Fi at the AP for 60 s, three times. Record the time back to "connected" and the heap after each cycle (leak check)
 
 ## 4. Spike B: OTA into slot1 (firmware)
 
@@ -81,4 +81,4 @@
 
 - [ ] 10.1 Fill in "Spike results" in design.md: one go/no-go per unknown U1–U12, with the measurements
 - [ ] 10.2 Update the `SCOPE.md` Phase 3 roadmap with anything the results changed (transport default, board profiles, onboarding path)
-- [ ] 10.3 Draft the `c8y-direct-core` proposal from the results
+- [ ] 10.3 Draft the `c8y-direct-core` proposal from the results, carrying over the open problems in design.md (including the deferred 3.8)
