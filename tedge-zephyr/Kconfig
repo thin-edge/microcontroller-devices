@@ -105,16 +105,22 @@ choice TEDGE_C8Y_ENDPOINT
 
 config TEDGE_C8Y_MQTT_SERVICE
 	bool "MQTT Service (port 9883): SmartREST and free-form topics"
+	# The MQTT Service refuses basic auth for devices, so basic-auth
+	# (bootstrap) builds use Core MQTT. Drop this line once it accepts
+	# basic auth.
+	depends on TEDGE_AUTH_C8Y_CA
 	help
 	  One connection carries device management (SmartREST 2.0) and
 	  free-form telemetry. SmartREST on the MQTT Service needs the tenant
-	  feature mqtt-service.smartrest (Public Preview).
+	  feature mqtt-service.smartrest (Public Preview). Requires
+	  certificate authentication.
 
 config TEDGE_C8Y_CORE_MQTT
 	bool "Core MQTT (port 8883): SmartREST only"
 	help
 	  The generally available endpoint. Telemetry is sent as SmartREST
-	  measurements.
+	  measurements. Works with both authentication methods, and is the
+	  endpoint basic-auth (bootstrap) builds use.
 
 endchoice
 

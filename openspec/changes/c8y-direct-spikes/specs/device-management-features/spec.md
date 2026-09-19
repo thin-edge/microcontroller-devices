@@ -70,7 +70,10 @@ Dependencies between features and on the platform SHALL be expressed in Kconfig
 configured, not at runtime. Firmware update SHALL require an MCUboot build.
 Remote access SHALL require certificate (CA) authentication. Features that
 transfer files (firmware update, log upload, configuration management) SHALL
-bring in the HTTP client.
+bring in the HTTP client. Both authentication methods SHALL stay selectable.
+The Cumulocity MQTT Service endpoint SHALL require certificate
+authentication, and a basic-auth build SHALL use Core MQTT without further
+configuration.
 
 #### Scenario: Firmware update without MCUboot
 
@@ -78,6 +81,12 @@ bring in the HTTP client.
   or MCUboot
 - **THEN** configuration fails, or the option cannot be selected, with a
   message naming the missing MCUboot dependency
+
+#### Scenario: Basic authentication selects Core MQTT
+
+- **WHEN** a build selects bootstrap basic authentication and sets no endpoint
+- **THEN** the build uses the Core MQTT endpoint, and the MQTT Service
+  endpoint cannot be selected
 
 #### Scenario: Remote access with basic authentication
 

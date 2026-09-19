@@ -142,8 +142,8 @@ menuconfig TEDGE                      "thin-edge.io device management client" (d
     TEDGE_TRANSPORT_C8Y               direct to Cumulocity
     TEDGE_TRANSPORT_GATEWAY           via a thin-edge.io gateway  (not yet selectable)
   choice TEDGE_C8Y_ENDPOINT           (if TEDGE_TRANSPORT_C8Y)
-    TEDGE_C8Y_MQTT_SERVICE            :9883, SmartREST + free-form (default)
-    TEDGE_C8Y_CORE_MQTT               :8883, SmartREST only (GA fallback)
+    TEDGE_C8Y_MQTT_SERVICE            :9883, SmartREST + free-form (default; needs TEDGE_AUTH_C8Y_CA)
+    TEDGE_C8Y_CORE_MQTT               :8883, SmartREST only (GA fallback; basic-auth builds use it)
   choice TEDGE_AUTH
     TEDGE_AUTH_C8Y_CA                 x.509 from the Cumulocity CA (default)
     TEDGE_AUTH_BOOTSTRAP              basic auth via bootstrap user
@@ -489,10 +489,13 @@ decision each unknown (U1–U12) produced._
 - With certificate authentication, 9883 carries the whole device-management
   contract: operations (`510` → `501`/`503`), errors on `s/e` and the JWT.
   The MQTT Service remains the default endpoint.
-- **Basic authentication only works on 8883.** The bootstrap (basic-auth)
-  path must use Core MQTT, so in Kconfig `TEDGE_C8Y_MQTT_SERVICE` should
-  depend on `TEDGE_AUTH_C8Y_CA`, unless the MQTT Service turns out to support
-  basic auth for devices.
+- **Basic authentication only works on 8883.** Both auth methods stay
+  selectable in Kconfig, and the endpoint follows the choice:
+  `TEDGE_C8Y_MQTT_SERVICE` depends on `TEDGE_AUTH_C8Y_CA`, so a basic-auth
+  (bootstrap) build falls back to Core MQTT automatically. The constraint is
+  one line, to be dropped if the MQTT Service accepts basic auth for devices.
+  Covered by the `basic-auth-uses-core-mqtt` and `mqtt-service-needs-ca`
+  Kconfig cases.
 - **Every multi-filter SUBSCRIBE is refused, from two filters up.** The
   same happens for two plain free-form topics (`spike/a` + `spike/b`) and
   for `s/ds` + `s/e` in either order. Growing tedge's set from one filter:
