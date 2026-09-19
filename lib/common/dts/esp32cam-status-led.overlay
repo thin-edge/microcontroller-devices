@@ -1,0 +1,20 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * ESP32-CAM (AI-Thinker layout, e.g. the diymore ESP32-CAM on an ESP32-CAM-MB
+ * USB base): these boards are built as esp32_devkitc/esp32/procpu, whose
+ * board overlays put the status LED on GPIO2. On the CAM, GPIO2 is an SD card
+ * data line; the small red LED on the back of the module is on GPIO33 and is
+ * lit when the pin is low. Pass this file as an extra overlay to the
+ * application and, with --sysbuild, to the provisioner:
+ *
+ *   west build --sysbuild -b esp32_devkitc/esp32/procpu apps/snmp-agent -- \
+ *     -DEXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay \
+ *     -Dwifi-provisioner_EXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay
+ *
+ * The white flash LED on GPIO4 is deliberately not used: it is far too bright
+ * for a status light and shares its pin with the SD card.
+ */
+
+&status_led {
+	gpios = <&gpio1 1 GPIO_ACTIVE_LOW>; /* GPIO33 */
+};

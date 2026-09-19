@@ -25,6 +25,10 @@ whether a press registered.
   also reports the Improv identify capability. The QT Py ESP32-S3 needs no
   board change: its upstream devicetree already has the NeoPixel (`led-strip`,
   WS2812 over SPI) and a GPIO hog for its power pin.
+- ESP32-CAM, which is built as a DevKitC: an extra overlay
+  (`lib/common/dts/esp32cam-status-led.overlay`) moves the plain `led0` from
+  GPIO2, an SD card line on the CAM, to the module's red LED on GPIO33
+  (active low).
 
 ## Non-goals
 

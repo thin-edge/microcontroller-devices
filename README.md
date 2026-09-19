@@ -604,6 +604,19 @@ QT Py S3's NeoPixel comes from its upstream board devicetree (with a GPIO hog
 powering it). It's a no-op on boards without an LED (the S2 TFT shows the same
 state on-screen).
 
+**ESP32-CAM** (built as `esp32_devkitc/esp32/procpu`): the DevKitC overlays put
+`led0` on GPIO2, which is an SD card line on the CAM. Its status LED is the
+small red LED on the back of the module, on GPIO33 and active low; the red LED
+on the ESP32-CAM-MB USB base is its power LED. Add
+`lib/common/dts/esp32cam-status-led.overlay` to the application and, with
+`--sysbuild`, to the provisioner:
+
+```sh
+west build --sysbuild -b esp32_devkitc/esp32/procpu apps/snmp-agent -- \
+  -DEXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay \
+  -Dwifi-provisioner_EXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay
+```
+
 ## Stalls, liveness watchdog & diagnostics
 
 A device that stops answering and **never comes back without a power-cycle** has
