@@ -600,6 +600,9 @@ On hardware (full A+B+C+F, `_mbedtls_heap` at 0x3c0b0000):
 - Remote access to the Pi's SSH: MQTT + tunnel 86.2 KB peak / 69.2 KB
   connected (as the C6); 2 MB each way at ~51 and ~66 KB/s by the device's
   counters.
+  Separately, the user ran an interactive session for ~6 minutes
+  (`c8y remoteaccess connect ssh --device tedge-7c0c5f5a6eb8 --configuration
+  pi-ssh`) and reported no problems.
 - Firmware update 0.0.1 → 0.1.0 (`zephyr-c8y-spike` 0.1.0-s3): 790 KB in
   ~12 s while the TLS heap was in PSRAM and the flash was written (cache
   disabled during writes: no problem seen), swap ~19 s, confirmed after
