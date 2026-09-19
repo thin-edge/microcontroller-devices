@@ -136,17 +136,40 @@ static void btn_work_fn(struct k_work *work)
 	bool level = gpio_pin_get_dt(&btn) > 0;
 	enum gesture g = GESTURE_NONE;
 
+	/* Per-press log lines: on boards without an LED the console is the only
+	 * feedback an operator has on what the device saw. */
+	static int64_t pressed_at;
+	static bool seq_active;
+	static bool seq_matched;
+
 	if (level != btn_level) {
 		btn_level = level;
+		if (level) {
+			pressed_at = now;
+			seq_active = true;
+			LOG_INF("sw0 pressed");
+		} else {
+			LOG_INF("sw0 released after %u ms",
+				(unsigned int)(now - pressed_at));
+		}
 		g = level ? gesture_press(&gst, now) : gesture_release(&gst, now);
 	}
 	if (g == GESTURE_NONE) {
 		g = gesture_tick(&gst, now);
 	}
+	if (g != GESTURE_NONE) {
+		seq_matched = true;
+	}
 	handle_gesture(g);
 	if (gesture_busy(&gst)) {
 		(void)k_work_reschedule_for_queue(app_net_workq(), &btn_work,
 						  K_MSEC(BTN_TICK_MS));
+	} else if (seq_active) {
+		if (!seq_matched) {
+			LOG_INF("sw0: not a gesture, ignored");
+		}
+		seq_active = false;
+		seq_matched = false;
 	}
 }
 

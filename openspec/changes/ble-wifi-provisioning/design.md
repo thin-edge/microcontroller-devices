@@ -496,6 +496,29 @@ S3 (Modbus) provisioned, then re-provisioned twice, back serving in 4–6 s.
 The first QT Py provisioning after a fresh flash was not serving within 40 s
 (pingable); not reproduced since, cause unknown.
 
+**Button gestures (task 7.4), C6, someone at the board.** Test provisioners
+with a 60 s window (and one with `REQUIRE_AUTH=y`, 120 s); the console was
+the only feedback, as the C6 has no usable LED, so the application now logs
+every debounced `sw0` press and release with its length, and "not a gesture,
+ignored" when a sequence matches nothing.
+
+| Gesture | Result |
+|---|---|
+| 1 press, 2 presses, 4 presses, a 4 s hold | each logged and ignored; no reboot |
+| 3 presses (95–111 ms each) | "Button pattern" → provisioner under the app's name; left alone, the window's end returned to the app on its old network |
+| 17 s hold | "Erase armed" at 10 s; on release, credentials erased → provisioner; window's end with no credentials → idle, not advertising |
+| a press while idle | advertising again; provisioned, back serving |
+| `REQUIRE_AUTH=y`: settings with no press | refused, error "not authorized", no connect attempt |
+| `REQUIRE_AUTH=y`: a press, then settings | "authorized for 60 s"; provisioned, back serving |
+
+**Status LED (task 7.8), WROOM `30aea4e87ee0` (GPIO2 `led0`), observed by
+someone at the board:** steady on while serving; the even blink while
+connecting after a reboot; the double-blink in the provisioner; the fast blink
+for 10 s on an Improv identify request, then back to the double-blink. The
+provisioner reports the identify capability (0x01) on this board. Not
+observed: the erase-armed flicker and the acknowledgement blink, as the
+gestures were tested on the C6.
+
 **WROOM OPC-UA churn (task 7.7): passes.** 300 connect → session → browse →
 disconnect cycles (asyncua, 8 s timeout, from a Mac over Wi-Fi) per board, with
 each board's console captured on the Pi for the whole run:

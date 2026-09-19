@@ -484,9 +484,12 @@ unattended fresh device does not advertise forever.
 | very fast flicker | erase hold armed — release to erase |
 | off | provisioning window expired; press the button to advertise again |
 
-Neither the C6 clone nor the S3-DevKitC-1 has a plain-GPIO `led0` (both carry
-an addressable RGB LED that `status_led.c` does not drive), so on them the
-console is the indicator.
+Of the BLE boards only the WROOM has a plain-GPIO `led0` (GPIO2); the C6 clone
+and both S3 boards carry an addressable RGB LED that `status_led.c` does not
+drive, so on them the console is the indicator. The application logs every
+button press and release with its length (`app_prov: sw0 released after
+140 ms`), then what it made of the sequence ("not a gesture, ignored", "Button
+pattern: …", "Erase armed: …"), so you can check a gesture on the console.
 
 **Options.** Application (`lib/common/Kconfig`): `APP_PROV_HANDOFF` (on by
 default in an MCUboot build with the provisioner layout),

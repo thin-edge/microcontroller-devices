@@ -54,11 +54,11 @@
 - [x] 7.1 C6: fresh flash → app finds no credentials → provisioner → provisioned from `improv_provision.py` → app serves (Modbus and OPC-UA)
 - [x] 7.2 C6: wrong password → "unable to connect", nothing stored, retry succeeds
 - [x] 7.3 C6: power cut during provisioning comes back into the provisioner; the window expiry with credentials returns to the application — resets (C6 USB, S3 EN), not a pulled plug, come back into the provisioner; window expiry run on the S3 with a 60 s window: operator request returns to the app, no credentials goes idle
-- [ ] 7.4 C6 (someone at the board): triple press → provisioner → abandoned → back on the old network; 1, 2, 4 presses and a short hold do nothing; 10 s hold erases; `REQUIRE_AUTH=y` refuses settings until a press — needs someone at the board (implemented in lib/common/prov_handoff.c)
+- [x] 7.4 C6 (someone at the board): triple press → provisioner → abandoned → back on the old network; 1, 2, 4 presses and a short hold do nothing; 10 s hold erases; `REQUIRE_AUTH=y` refuses settings until a press — done 2026-09-19 with someone at the board, using test provisioners with a 60 s window and with REQUIRE_AUTH=y (design.md)
 - [x] 7.5 C6: an OTA-style test-swap of a second app build through `slot1` swaps and reverts with credentials intact
 - [ ] 7.6 Improv web page (Chrome/Edge) and Home Assistant provision a device; record versions — needs a Chrome/Edge or Home Assistant session
 - [x] 7.7 WROOM-32 (OPC-UA, including the connection-churn stress test), S3-DevKitC-1 and QT Py S3: provision and serve — S3-DevKitC-1, QT Py S3 (Modbus), two WROOMs (OPC-UA) and an ESP32 SNMP board provisioned and served; WROOM churn test passed on both WROOMs (design.md)
-- [ ] 7.8 LED patterns on a board with a plain `led0` (WROOM), or record that no BLE board can show them yet — the WROOM has led0 (GPIO2) in the provisioner too; needs someone to look at it
+- [x] 7.8 LED patterns on a board with a plain `led0` (WROOM), or record that no BLE board can show them yet — done 2026-09-19 on a WROOM: steady when serving, even blink while connecting, double-blink in the provisioner, fast blink on identify
 
 ## 8. Documentation and wrap-up
 
