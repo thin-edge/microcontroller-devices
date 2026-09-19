@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Spike E: the second Wi-Fi interface (the access point) for AP+STA mode.
+ * The ESP32 driver creates it from a second espressif,esp32-wifi node.
+ */
+/ {
+	wifi_ap: wifi_ap {
+		compatible = "espressif,esp32-wifi";
+		status = "okay";
+	};
+};

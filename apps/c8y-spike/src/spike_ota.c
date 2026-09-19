@@ -491,6 +491,22 @@ static int cmd_reboot(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* Spike E: start the provisioner as the button pattern would (operator
+ * request, so it returns here when its window expires). */
+static int cmd_provision(const struct shell *sh, size_t argc, char **argv)
+{
+	int rc = boot_request_set(BOOT_REQUEST_PROVISIONER, BOOT_REQUEST_OPERATOR);
+
+	if (rc) {
+		shell_error(sh, "boot request failed (%d)", rc);
+		return rc;
+	}
+	shell_print(sh, "rebooting into the provisioner");
+	k_sleep(K_MSEC(100));
+	boot_request_reboot();
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_ota,
 	SHELL_CMD_ARG(get, NULL, "<url> [--no-reboot] [--discard]: download into slot1, test-boot",
 		      cmd_get, 2, 2),
@@ -501,6 +517,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_ota,
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_spike,
 	SHELL_CMD(ota, &sub_ota, "Spike B: firmware update", NULL),
 	SHELL_CMD(reboot, NULL, "full-system reset", cmd_reboot),
+	SHELL_CMD(provision, NULL, "reboot into the Wi-Fi provisioner", cmd_provision),
 	SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(spike, &sub_spike, "c8y-direct spike commands", NULL);

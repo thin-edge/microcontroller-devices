@@ -211,8 +211,10 @@ the strongest reason for the direct transport.
   Improv RPC result. The provisioner stores only the one-time password; all
   crypto stays in the application image. The tenant URL comes from a per-fleet
   Kconfig default, overridable from the shell. A SoftAP/captive-portal
-  provisioner, which would add iOS support, was not assessed in the spikes;
-  it is an optional later change.
+  provisioner works too (Spike E: 71% of the `prov` partition against 92%
+  for BLE, AP+STA credential test, the iPhone's portal sheet opens by
+  itself). It becomes a supported alternative once it shows a success page,
+  requires authorization and is checked on Android.
 
 ### Order
 
@@ -240,8 +242,9 @@ the strongest reason for the direct transport.
 - Which data/sensor sources to model in the initial address space.
 - How to supply Wi-Fi credentials without committing secrets. (Answered by BLE
   provisioning, `ble-wifi-provisioning`.)
-- Phase 3: the spikes answered U1–U9 and U11–U12 (go/no-go table in
-  `openspec/changes/c8y-direct-spikes/design.md`); U10 (SoftAP) is open. The
+- Phase 3: the spikes answered U1–U12 (go/no-go table in
+  `openspec/changes/c8y-direct-spikes/design.md`; SoftAP verified on iOS
+  only). The
   open problems P1–P13 there carry into `c8y-direct-core`, notably reconnect
   after a network drop (P1), the C6 reset hang (P2) and key protection (P9).
 - Phase 3: free-form telemetry is turned into measurements by Cumulocity

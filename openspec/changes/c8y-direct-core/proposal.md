@@ -54,7 +54,8 @@ access, firmware update, telemetry) runs on.
   certificate renewal (roadmap P2–P7). The spike code for them stays in
   `apps/c8y-spike`.
 - The thin-edge.io gateway transport (P8).
-- A SoftAP/captive-portal provisioner (U10 is still open).
+- A production SoftAP/captive-portal provisioner (Spike E showed it works;
+  it needs a success page, authorization and an Android check first).
 - Protecting the device key beyond what the spikes showed (P9): documented as
   a limitation, not solved here.
 - The same full-system reset fix in `lib/common` (`liveness.c`, `net.c`): a

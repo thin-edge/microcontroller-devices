@@ -12,4 +12,9 @@ list(APPEND ZEPHYR_EXTRA_MODULES
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(wifi_provisioner C)
 
-target_sources(app PRIVATE src/main.c src/improv.c)
+target_sources(app PRIVATE src/main.c)
+if(CONFIG_APP_WIFI_PROV_SOFTAP)
+  target_sources(app PRIVATE src/softap.c)
+else()
+  target_sources(app PRIVATE src/improv.c)
+endif()

@@ -74,11 +74,9 @@
 
 ## 9. Spike E (optional): SoftAP provisioner feasibility (firmware)
 
-Not run: U10 stays open, and the BLE provisioner remains the onboarding path (see the go/no-go table in design.md).
-
-- [ ] 9.1 Build a SoftAP, DHCP-server, catch-all DNS and HTTP-form provisioner variant for the C6. Measure it against the 1024 KB `prov` partition with BLE removed
-- [ ] 9.2 Check whether AP and station at the same time works with Zephyr's ESP32 Wi-Fi driver (serve the form while a station connect tests the credentials)
-- [ ] 9.3 Test captive-portal behaviour on one iOS and one Android phone, and record the result
+- [x] 9.1 Build a SoftAP, DHCP-server, catch-all DNS and HTTP-form provisioner variant for the C6. Measure it against the 1024 KB `prov` partition with BLE removed
+- [x] 9.2 Check whether AP and station at the same time works with Zephyr's ESP32 Wi-Fi driver (serve the form while a station connect tests the credentials)
+- [x] 9.3 Test captive-portal behaviour on one iOS and one Android phone, and record the result (iPhone only; Android not tested)
 
 ## 10. Wrap-up
 

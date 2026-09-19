@@ -508,7 +508,7 @@ The detail and the raw measurements are in the per-spike sections below.
 | U7 | Key in PSA ITS, one-time password, CSR signed inside PSA, `simpleenroll` polling, PKCS#7 unwrap and mTLS all work on the C6, S3 and WROOM. Mutual TLS costs no extra TLS RAM | **Go** | Onboarding through the Cumulocity CA is primary. Bootstrap basic auth is the fallback, and must send `100` before subscribing (P8) |
 | U8 | `simplereenroll` refuses mTLS alone (401) and accepts `Authorization: Bearer <JWT>` without a client certificate | **Go** | Renewal = JWT over MQTT, then `simplereenroll` with the Bearer header |
 | U9 | The key is exported into RAM for as long as the TLS credential is registered, and ITS is encrypted with a key derived from the device ID | **Go for development, no-go for production as-is** | Document the limitation. Flash encryption or a hardware-unique key provider, and opaque PSA keys in `tls_credentials`, before real deployments (P9) |
-| U10 | Not measured (section 9 skipped) | **Open** | The BLE provisioner stays the onboarding path; SoftAP is a separate, optional change |
+| U10 | The SoftAP provisioner signs to 727 KB (71% of `prov`), 218 KB smaller than the BLE one. AP+STA works on the C6: the AP and the phone's connection stayed up while the station tested the credentials (10.5 s to fail, 16.9 s to pass). The iPhone opened the captive-portal sheet by itself. Android not tested | **Go** (iOS verified) | SoftAP becomes a supported alternative to BLE (and the only option for iOS users without an Improv app). BLE stays the default until Android is checked |
 | U11 | SSH to a LAN host works: 5.6 s to a command, 103 ms echo, 40–56 KB/s (C6), 51–66 KB/s (S3), ~4–17 KB/s with one stall (WROOM, P13). MQTT + tunnel: 86.2 KB TLS heap peak (16 KB records), 53.4 KB (8 KB). Target policy, session cap and failure reasons work | **Go** (C6, S3); **limited** (WROOM) | One session by default (two on the C6 with 8 KB records). Bulk transfer tuning later (P11) |
 | U12 | `530,<serial>,<host>,<port>,<key>`, then `wss://<tenant>/service/remoteaccess/device/<key>` with `Sec-WebSocket-Protocol: binary` and a Bearer JWT. The client certificate alone gets 401 | **Go** | Remote access requires CA authentication and a JWT. A remote shell must start the telnet negotiation itself, and `shell_telnet` isn't shippable (P10) |
 
@@ -592,6 +592,62 @@ nearly all of it.
 | ESP32-S3-DevKitC-1 (N16R8) | **full**, with the mbedTLS heap in **PSRAM** (verified, see below) | Without PSRAM, internal DRAM runs out at +C. With `overlay-psram-s3.conf` the full A+B+C+F build links with a 96 KB TLS heap and 43.9 KB of libc heap left (95 KB with Wi-Fi/net in PSRAM too); enrollment, remote access and a firmware update all passed on hardware. |
 | QT Py ESP32-S3 (N4R2) | as S3, with 2 MB PSRAM | Not measured. |
 | ESP32-WROOM-32 | **remote-access enabler** (no protocol app, no OTA, no shell), or gateway transport next to OPC-UA | A+C+F runs with a 56 KB TLS heap and 8 KB records once the Wi-Fi heap is trimmed (see below), with 2.8 KB of libc heap left: nothing else fits beside it. Remote access works but is slow (~4–17 KB/s) and stalled once (P13). No HTTPS firmware download next to MQTT (B needs a second TLS session's RAM). Next to OPC-UA only the gateway transport (thin-edge.io child device, no TLS) fits. |
+
+### Spike E: SoftAP captive-portal provisioner (section 9, 2026-09-19)
+
+**Setup:** `apps/wifi-provisioner` with `overlay-softap.conf` and
+`softap.overlay` (`CONFIG_APP_WIFI_PROV_SOFTAP`, `src/softap.c`), built as
+the C6's sysbuild provisioner image next to the full spike app. The app's new
+`spike provision` shell command sets the operator boot request and reboots
+into it. The front end:
+- an open AP `<hostname>-setup` at 192.168.4.1, with Zephyr's DHCPv4 server
+  handing out 192.168.4.1 as router and DNS server;
+- a catch-all DNS responder (every A query → 192.168.4.1);
+- a single-threaded HTTP server: `GET /` serves the form, any other `GET`
+  gets a 302 to it, `POST /connect` takes `ssid` and `psk`;
+- the credential test and hand-off shared with the BLE front end
+  (`app_net_try_credentials`, `wifi_credentials`, clear the boot request,
+  full-system reset).
+
+**9.1 size (C6):**
+
+| Provisioner | Signed image | of 1024 KB `prov` | text |
+|---|---|---|---|
+| Improv over BLE | 944,924 B | 92% | 861,680 |
+| SoftAP (BT off, AP+STA, DHCP server, TCP) | **726,731 B** | **71%** | 590,936 |
+
+**9.2 AP and station at the same time:** works with Zephyr's ESP32 driver
+(`WIFI_NM`, `WIFI_USAGE_MODE_STA_AP`, a second `espressif,esp32-wifi` node for
+the AP interface). The station is interface 1, `net_if_get_first_wifi()` and
+the default, so `lib/common`'s credential test needed no change. During the
+test the phone stayed associated and asked for the page again the moment the
+test ended. The C6 has one radio, so the AP follows the station's channel;
+that caused no drop here. Test times: 10.5–17.8 s to fail (three association
+attempts), 16.9 s to pass. After the reboot the app was on the network in 5 s
+and connected to Cumulocity 3 s later.
+
+**9.3 phones:**
+- **iPhone (by the tenant owner):** joining the open network opened the
+  captive-portal sheet on its own (`GET /hotspot-detect.html` → 302 → form).
+  Wrong password: "Could not join …" shown once the page reloaded itself
+  (first build: no feedback, because the "Testing…" page didn't reload; the
+  fix is a meta refresh that waits in the listen backlog until the test
+  ends). Correct password: stored, device rebooted into the app, **but the
+  phone got no success page**: no reload reached the device between the
+  pass and the reboot, so the user only saw the network disappear.
+- **Android:** not tested.
+
+**For a real SoftAP provisioner:**
+- After a pass, keep the AP up for a few seconds and serve a "connected, the
+  device restarts" page (and the application's URL or the Cumulocity
+  registration URL, as Improv's RPC result does) before rebooting.
+- Report the result without a page reload (a small script polling a status
+  URL), since captive-portal sheets differ.
+- A scan list for the SSID; the spike takes typed input.
+- Authorization: the AP is open and unauthenticated. Anyone in range during
+  the window can set the device's network. Reuse `APP_WIFI_PROV_REQUIRE_AUTH`
+  (a button press) or a WPA2 AP whose password is printed on the device.
+- Check Android's detection (`/generate_204`) and a laptop.
 
 ### Section 8 follow-up: PSRAM on the S3, the WROOM as a remote-access enabler (2026-09-19)
 
