@@ -15,6 +15,10 @@
 #              TLS peaks from design.md for a production estimate)
 # plus the delta of each step against the previous one.
 #
+# MODE=module measures the real client instead of the spike: each application
+# built with and without CONFIG_TEDGE, so the table shows what the module
+# costs a host application (task 8.6).
+#
 # Runs inside the zephyr-dev container:
 #   docker exec zephyr-dev bash -lc 'cd /ws/app && scripts/measure_tedge.sh'
 # BOARDS overrides the boards. TLS_HEAP (bytes) and TLS_RECORD (bytes)
@@ -58,6 +62,52 @@ part_size() {
 }
 
 row() { printf "| %-30s | %-12s | %9s | %5s | %9s | %9s | %9s | %9s | %9s |\n" "$@"; }
+
+# --- MODE=module: the client's cost in a host application -------------------
+if [ "${MODE:-spike}" = module ]; then
+	MB=/ws/app/apps/modbus-server/boards
+	# label : board : app : overlays (on top of the Wi-Fi credentials)
+	CASES=${CASES:-"
+c6 modbus, no client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:
+c6 modbus + client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MB/esp32c6_devkitc_esp32c6_hpcore_tedge.conf;/ws/app/tedge.local.conf
+s3 modbus, no client:esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:
+s3 modbus + client (PSRAM):esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:$MB/esp32s3_devkitc_esp32s3_procpu_tedge.conf;/ws/app/tedge.local.conf
+c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:tedge-zephyr/samples/minimal:!/ws/app/tedge-zephyr/samples/minimal/overlay-c8y.conf;/ws/app/tedge.local.conf
+"}
+	echo "| case | image_B | text_B | libc_B | tlsheap_B |"
+	echo "|---|---|---|---|---|"
+	prev_text=""; prev_libc=""
+	echo "$CASES" | while IFS=: read -r label board app add; do
+		[ -z "$label" ] && continue
+		d="$OUT/mod_$(echo "$label" | tr -c 'A-Za-z0-9\n' '_')"
+		# A case whose overlays start with "!" does not take the
+		# repository's Wi-Fi overlay (it has its own options).
+		case "$add" in
+		"!"*) overlays="${add#!}" ;;
+		*) overlays="$BASE${add:+;$add}" ;;
+		esac
+		# Only the applications with a sysbuild.cmake build with MCUboot.
+		sb=--sysbuild
+		[ -f "/ws/app/$app/sysbuild.cmake" ] || sb=
+		if ! west build $sb -b "$board" "$app" -d "$d" --pristine \
+			-- -DEXTRA_CONF_FILE="$overlays" >"$d.log" 2>&1; then
+			reason=$(grep -aoE "region \`[a-z0-9_]+' overflowed by [0-9]+ bytes" "$d.log" | head -1)
+			printf "| %-28s | %s |\n" "$label" "FAIL ${reason:-see $d.log}"
+			continue
+		fi
+		img_dir="$d/$(basename "$app")"
+		[ -d "$img_dir" ] || img_dir="$d"
+		elf="$img_dir/zephyr/zephyr.elf"
+		img=$(stat -c %s "$img_dir/zephyr/zephyr.signed.bin" 2>/dev/null ||
+		      stat -c %s "$img_dir/zephyr/zephyr.bin")
+		text=$($(size_for "$board") "$elf" | awk 'NR==2{print $1}')
+		libc=$($(nm_for "$board") "$elf" | awk '$3=="_libc_heap_size"{print strtonum("0x"$1)}')
+		tls=$(awk -F= '$1=="CONFIG_MBEDTLS_HEAP_SIZE"{print $2}' "$img_dir/zephyr/.config")
+		printf "| %-28s | %9s | %9s | %9s | %9s |\n" "$label" "$img" "$text" \
+			"${libc:-?}" "${tls:-0}"
+	done
+	exit 0
+fi
 
 echo "| board | step | image_B | slot | text_B | d_text | libc_B | d_libc | tlsheap_B |"
 echo "|---|---|---|---|---|---|---|---|---|"
