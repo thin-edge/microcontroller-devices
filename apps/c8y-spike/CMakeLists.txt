@@ -20,6 +20,7 @@ target_sources(app PRIVATE src/main.c)
 
 if(CONFIG_SPIKE_TLS_MQTT)
   target_sources(app PRIVATE src/spike_time.c src/spike_mqtt.c)
+  target_sources_ifdef(CONFIG_SPIKE_OTA app PRIVATE src/spike_ota.c)
 
   # Credentials are embedded as NUL-terminated PEM. The server trust anchor
   # is public and committed; device credentials live in the git-ignored
@@ -27,6 +28,13 @@ if(CONFIG_SPIKE_TLS_MQTT)
   set(gen_dir ${ZEPHYR_BINARY_DIR}/include/generated/spike)
   generate_inc_file_for_target(app certs/godaddy-root-g2.pem
     ${gen_dir}/server_ca.pem.inc)
+
+  if(CONFIG_SPIKE_OTA_EXTRA_CAS)
+    generate_inc_file_for_target(app certs/usertrust-ecc.pem
+      ${gen_dir}/usertrust_ecc.pem.inc)
+    generate_inc_file_for_target(app certs/isrg-root-x1.pem
+      ${gen_dir}/isrg_root_x1.pem.inc)
+  endif()
 
   if(CONFIG_SPIKE_AUTH_CERT)
     set(id ${CONFIG_SPIKE_DEVICE_ID})

@@ -27,6 +27,10 @@ int main(void)
 		IS_ENABLED(CONFIG_SPIKE_ENROLL),
 		IS_ENABLED(CONFIG_SPIKE_REMOTE_ACCESS));
 
+#if defined(CONFIG_SPIKE_OTA)
+	spike_ota_log_boot();
+#endif
+
 	ret = app_net_init();
 	if (ret) {
 		LOG_ERR("Connectivity init failed (%d)", ret);

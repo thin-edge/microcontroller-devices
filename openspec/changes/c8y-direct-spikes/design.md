@@ -429,14 +429,104 @@ archived.
 | # | Problem | Why it matters | Where it came from | Next step |
 |---|---|---|---|---|
 | P1 | **Reconnect after losing the network is unmeasured** (task 3.8 deferred). Nobody has measured how long the device takes to get back to "connected" after the Wi-Fi or the path drops silently, or whether TLS heap and TCP contexts return to baseline. | The real client must recover on its own, without leaking memory or connection contexts. The context exhaustion seen in the cycle test hints at the risk. | Deferred 2026-09-19: dropping Wi-Fi at the access point needs someone at the AP. | Run with the AP switched off, or the C6's MAC (`e8:f6:0a:fc:32:0c`) blocked, three times for about 60 s, with `tools/console.py`. Or build a repeatable test into the real client's test plan (for example a Wi-Fi disconnect triggered from the shell, plus a real AP drop). |
-| P2 | **The C6 hangs in MCUboot after a CPU reset** (`sys_reboot()`) with Wi-Fi running. `lib/common/net.c`'s last-resort reboot still uses it. | On the C6, the existing apps' recovery reboot may leave the device hung instead of recovering it. tedge-zephyr's restart needs its own full-system reset on Espressif parts. | Spike A, task 3.3. | Fix `net.c` to reset the whole system, as `boot_request_reboot()` does, in a separate change; give tedge-zephyr a platform reset hook. |
+| P2 | **The C6 hangs in MCUboot after a CPU reset** (`sys_reboot()`) with Wi-Fi running, even without Bluetooth. Both recovery paths in the apps use it: `lib/common/net.c`'s last-resort reboot, and **`lib/common/liveness.c`'s watchdog reset**, whose full-system reset is compiled in only `#if defined(CONFIG_BT)` (the provisioner). Confirmed in Spike B: a stalled test image was reset by the liveness watchdog (`SW_CPU`) and MCUboot hung instead of reverting it. | On the C6 the stall safety net (liveness) and the connectivity safety net (net.c) leave the device hung until a power cycle, and an unconfirmed OTA image that stalls is not rolled back. It affects the OPC-UA/Modbus/SNMP apps today. tedge-zephyr's restart needs its own full-system reset on Espressif parts. | Spike A (3.3), Spike B (4.3). | Drop the `CONFIG_BT` condition in `liveness.c` and use `esp_rom_software_reset_system()` in `net.c`, as a separate small change touching production code; give tedge-zephyr a platform reset hook. |
 | P3 | **8 KB TLS buffers leave about 2 KB of margin** over today's 5.9 KB server certificate chain on 9883. | A longer chain after a server certificate rotation would break 8 KB builds in the field. | Spike A, task 3.6. | Default to 16 KB; document 8 KB as an opt-in saving for the MQTT Service; consider failing over to a 16 KB session if the handshake fails with `-0x87`. |
 | P4 | **Free-form telemetry is published but not yet seen in the cloud.** | Telemetry over the MQTT Service needs a cloud-side consumer (for example the Dynamic Mapper). | Section 1 and Spike A. | Task 7.4. |
+| P5 | **Zephyr's HTTP client reports chunked bodies wrongly** in its response callback (first segment's start, last segment's length). | Any user of `http_client` downloading from Cumulocity gets corrupt data. The spike works around it via `on_body`. | Spike B (4.5). | Report upstream with a reproduction; tedge-zephyr uses the `on_body` path. |
+| P6 | **Public-key crypto is slow in software:** Cumulocity handshake ~2.7 s (C6) / ~1.9 s (S3); ECDSA P-384 ~11 s for github.com's chain on the C6. Zephyr's mbedTLS doesn't use the ESP32 RSA/ECC accelerators. | Long handshakes cost battery and connect time. P-384 hosts need a longer TLS connect timeout than Zephyr's 10 s default. | Spike A, Spike B (4.6). | Evaluate the Espressif hardware crypto drivers under Zephyr (PSA driver); until then set `NET_SOCKETS_TLS_CONNECT_TIMEOUT` generously and prefer RSA/P-256 servers. |
+| P7 | **A firmware update takes the C6 offline for ~40 s** (MCUboot swap-scratch of ~900 KB). | The update window, and what Cumulocity shows meanwhile. The device is dark during the swap. | Spike B. | Measure swap-using-move and overwrite-only (which gives up rollback) as alternatives; report the expected downtime in the operation. |
 
 ## Spike results
 
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
+
+### Spike B: firmware update into slot1 (section 4, 2026-09-19)
+
+**Setup:** `overlay-spike-b.conf` on top of Spike A. The shell provides
+`spike ota get|confirm|status` and `spike reboot`. `c8y_Firmware` (`515`) is
+handled over the Spike A connection. Test images A–E (0.0.1–0.0.5), built by
+`apps/c8y-spike/ota-variants/build_all.sh`, differ in version, auto-confirm and, for
+D, an injected stall.
+
+**U5: MCUboot on the C6 (4 MB, swap-scratch).**
+
+| | Result |
+|---|---|
+| Swap time, ~890–898 KB image | **39.8–40.5 s** (MCUboot start → "Loading image 0"); the device is offline for that time |
+| Normal boot, no swap | ~1.8 s |
+| Test boot (4.1) | B 0.0.2 came up "NOT confirmed (test boot)" |
+| Confirm from the shell, then reset (4.2) | stays 0.0.2, confirmed |
+| Reset without confirming (4.3) | MCUboot reverts to A (another ~40 s swap) |
+| Stall without confirming (4.3, image D) | blocked workqueue at +6 s, liveness watchdog at +33 s, **reset was a CPU reset (`SW_CPU`) and MCUboot hung**; after a full reset MCUboot reverted D → A. See P2 |
+| `prov`, `bootreq` after all tests (4.4) | byte-for-byte unchanged (SHA-256 compared), `bootreq` still empty; Wi-Fi credentials in `storage` survived (reconnected every time) |
+
+**Downloads.**
+
+| Source | Rate | Notes |
+|---|---|---|
+| LAN HTTP → slot1 | 43–65 KB/s | bound by progressive erase + flash writes |
+| LAN HTTP, discarded (`--discard`) | 311–339 KB/s | network only |
+| Cumulocity binary, HTTPS + JWT → slot1 (4.5) | 79 KB/s (898,378 B in 11.4 s) | `Transfer-Encoding: chunked` |
+| GitHub release asset (4.6) | 1,971 B in 16.9 s | two TLS handshakes; github.com's takes ~13 s |
+
+**U1: MQTT and HTTPS open together:** TLS heap peak **90,928 B** with 16 KB
+buffers on both sessions, 34,836 B once the download closes.
+
+**The firmware flow on Cumulocity (4.5):** `515` → `501` → HTTPS download
+with the JWT → test boot → swap → the new image connects → **confirmed only
+after reaching Cumulocity** → `115,<name>,<version>,<url>` + `503`.
+Operation SUCCESSFUL in **69 s**, and the inventory shows the new firmware.
+If MCUboot rejects or reverts the image, the old image finds the pending
+marker while running confirmed, and reports
+`502,c8y_Firmware,"…rolled back…"`. That path fired for real (below).
+
+**Findings.**
+
+1. **Zephyr's HTTP client corrupts chunked bodies in its response
+   callback.** One receive buffer can hold several body segments separated
+   by chunk-size lines. `on_body` is called for each, but the client keeps
+   the *first* segment's `body_frag_start` and overwrites `body_frag_len`
+   with the *last* segment's length. Cumulocity serves binaries chunked, so
+   the image in slot1 was corrupt. MCUboot rejected it (the signature
+   check), erased slot1 and booted the old image, and the device reported
+   the rollback. **The safety net worked.** The fix: write each segment from
+   the parser's own `on_body` callback, then flush. This should be reported
+   upstream.
+2. **Binary URLs use the tenant-ID host** (`https://t<tenantId>.<domain>/inventory/binaries/<id>`),
+   not the tenant's host name. Deciding "is this Cumulocity, so send the
+   JWT?" needs a domain rule (the spike uses the parent domain). The JWT must
+   never go to another host, including after a redirect.
+3. **Redirects:** Zephyr's HTTP client doesn't follow them. The spike follows
+   relative, absolute and cross-scheme (HTTP → HTTPS) redirects, up to 3
+   hops. A GitHub release asset is one 302 to
+   `release-assets.githubusercontent.com` with a **913-byte `Location`**, so
+   URL buffers need about 1 KB.
+4. **GitHub needs two more trust roots:** USERTrust ECC (github.com's
+   Sectigo E46 is cross-signed by it) and ISRG Root X1. It also needs
+   P-384/SHA-384: **+8.1 KB of flash**
+   (`overlay-github.conf`). **ECDSA P-384 in software takes about 11 s** to
+   verify github.com's chain on the C6, so the whole handshake takes about
+   14 s. That is more than Zephyr's default TLS connect timeout
+   (`NET_SOCKETS_TLS_CONNECT_TIMEOUT` = 10 s), so the connect failed with
+   `-116` until it was raised to 30 s. Cumulocity's RSA chain takes about
+   2.7 s.
+5. **The shell as log backend holds logs back while a command runs:** the
+   shell thread prints them. The download runs on its own thread for that
+   reason. The C6's USB console also **drops typed characters** while logs
+   are being printed (`--no-reboot` arrived as `--no-reo` and triggered an
+   unintended test boot). The capture tool now types one character every
+   10 ms.
+6. **Test hygiene: a duplicate MQTT client ID looks like a flaky network.**
+   The S3 was still running Spike A as `tedge-spike-c6`, so the broker kept
+   closing one connection whenever the other connected ("Connection closed"
+   every few seconds). It was first mistaken for downloads starving the
+   MQTT session; the net-buffer increases in `overlay-spike-b.conf` came
+   from that wrong hypothesis. Cumulocity redelivered the pending `515` on
+   every reconnect. **The client should detect repeated takeovers**
+   (connect, then closed after a few seconds, again and again) and log a
+   clear "another client uses this ID" warning. The S3 is parked in its ROM
+   bootloader; a reset brings Spike A back.
 
 ### Spike A: TLS and MQTT from the device (section 3, 2026-09-19)
 

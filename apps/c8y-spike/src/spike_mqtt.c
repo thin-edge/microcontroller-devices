@@ -28,13 +28,17 @@
 
 #include <mbedtls/memory_buffer_alloc.h>
 
+#if defined(CONFIG_SPIKE_OTA)
+#include <zephyr/dfu/mcuboot.h>
+#endif
+
 #include "boot_request.h"
 #include "data_source.h"
 #include "spike.h"
 
 LOG_MODULE_REGISTER(spike_mqtt, LOG_LEVEL_INF);
 
-#define TAG_SERVER_CA 0x5A10
+#define TAG_SERVER_CA SPIKE_TAG_SERVER_CA
 #define TAG_DEVICE    0x5A11
 
 #define DEVICE_ID CONFIG_SPIKE_DEVICE_ID
@@ -72,6 +76,16 @@ static bool connack_seen;
 static int connack_result;
 static bool restart_requested;
 static bool restart_pending_after_boot;
+
+/* The latest JWT (s/dat), for HTTPS requests to Cumulocity. */
+static char jwt[1024];
+
+#if defined(CONFIG_SPIKE_OTA)
+/* c8y_Firmware (515): "<name>,<version>,<url>" while an update is pending. */
+static char fw_request[320];
+static bool fw_requested;
+static char fw_marker[320];
+#endif
 
 #if defined(CONFIG_SPIKE_AUTH_BASIC)
 static struct mqtt_utf8 basic_user = {
@@ -129,9 +143,29 @@ static int restart_marker_cb(const char *key, size_t len,
 	return 0;
 }
 
+#if defined(CONFIG_SPIKE_OTA)
+static int fw_marker_cb(const char *key, size_t len, settings_read_cb read_cb,
+			void *cb_arg, void *param)
+{
+	ARG_UNUSED(key);
+	ARG_UNUSED(param);
+	if (len > 1 && len < sizeof(fw_marker)) {
+		read_cb(cb_arg, fw_marker, len);
+		fw_marker[len] = '\0';
+	}
+	return 0;
+}
+#endif
+
 static void restart_marker_load(void)
 {
 	settings_subsys_init();
+#if defined(CONFIG_SPIKE_OTA)
+	settings_load_subtree_direct("spike/fw", fw_marker_cb, NULL);
+	if (fw_marker[0]) {
+		LOG_INF("firmware update pending: %s", fw_marker);
+	}
+#endif
 	settings_load_subtree_direct("spike/restart", restart_marker_cb,
 				     &restart_pending_after_boot);
 	if (restart_pending_after_boot) {
@@ -166,6 +200,10 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 	if (strcmp(topic, "s/dat") == 0) {
 		/* "71,<jwt>": never log the token itself. */
 		LOG_INF("s/dat: JWT received (%zu bytes)", len > 3 ? len - 3 : 0);
+		if (len > 3 && len - 3 < sizeof(jwt)) {
+			memcpy(jwt, payload + 3, len - 3);
+			jwt[len - 3] = '\0';
+		}
 		return;
 	}
 	LOG_INF("%s: %.*s", topic, (int)MIN(len, 200), payload);
@@ -173,6 +211,17 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "510,", 4) == 0) {
 		restart_requested = true;
 	}
+#if defined(CONFIG_SPIKE_OTA)
+	/* 515,<device>,<name>,<version>,<url> */
+	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "515,", 4) == 0) {
+		const char *rest = strchr(payload + 4, ',');
+
+		if (rest) {
+			snprintk(fw_request, sizeof(fw_request), "%s", rest + 1);
+			fw_requested = true;
+		}
+	}
+#endif
 }
 
 static void mqtt_evt(struct mqtt_client *c, const struct mqtt_evt *evt)
@@ -397,7 +446,19 @@ static void on_connected(void)
 	snprintk(line, sizeof(line), "100,%s,thin-edge.io-zephyr-spike",
 		 DEVICE_ID);
 	publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
+#if defined(CONFIG_SPIKE_OTA)
+	publish("s/us", "114,c8y_Restart,c8y_Firmware", MQTT_QOS_1_AT_LEAST_ONCE);
+	{
+		char ver[24] = "unknown";
+
+		spike_ota_running_version(ver, sizeof(ver));
+		snprintk(line, sizeof(line), "115,%s,%s", CONFIG_APP_FIRMWARE_NAME,
+			 ver);
+		publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
+	}
+#else
 	publish("s/us", "114,c8y_Restart", MQTT_QOS_1_AT_LEAST_ONCE);
+#endif
 	publish("s/us", "117,60", MQTT_QOS_1_AT_LEAST_ONCE);
 
 	if (restart_pending_after_boot) {
@@ -411,7 +472,107 @@ static void on_connected(void)
 
 	publish("s/uat", "", MQTT_QOS_1_AT_LEAST_ONCE);
 	pump(2000, NULL);
+
+#if defined(CONFIG_SPIKE_OTA)
+	/* A firmware update was pending across the reboot. */
+	if (fw_marker[0]) {
+		char out[400];
+		bool done = true;
+
+		if (!boot_is_img_confirmed()) {
+			if (IS_ENABLED(CONFIG_SPIKE_OTA_AUTO_CONFIRM)) {
+				/* Cloud reachable: this is the health gate. */
+				int ret = boot_write_img_confirmed();
+
+				LOG_INF("MEAS ota: image confirmed after reaching "
+					"Cumulocity at uptime %lld ms (%d)",
+					k_uptime_get(), ret);
+				snprintk(out, sizeof(out), "115,%s", fw_marker);
+				publish("s/us", out, MQTT_QOS_1_AT_LEAST_ONCE);
+				publish("s/us", "503,c8y_Firmware",
+					MQTT_QOS_1_AT_LEAST_ONCE);
+			} else {
+				LOG_INF("ota: test image running, NOT confirmed "
+					"(auto-confirm off); a reset reverts it");
+				done = false;
+			}
+		} else {
+			/* Running a confirmed image although an update was
+			 * pending: MCUboot reverted the new one.
+			 */
+			LOG_WRN("ota: update did not stick; MCUboot rolled back");
+			publish("s/us",
+				"502,c8y_Firmware,\"new image did not confirm; "
+				"rolled back to the previous image\"",
+				MQTT_QOS_1_AT_LEAST_ONCE);
+		}
+		if (done) {
+			settings_delete("spike/fw");
+			fw_marker[0] = '\0';
+		}
+		pump(1000, NULL);
+	}
+#endif
 }
+
+#if defined(CONFIG_SPIKE_OTA)
+static void do_firmware(void)
+{
+	char req[sizeof(fw_request)];
+	char *url;
+	char reason[64];
+	int ret;
+
+	fw_requested = false;
+	snprintk(req, sizeof(req), "%s", fw_request);
+	/* "<name>,<version>,<url>" */
+	url = strchr(req, ',');
+	url = url ? strchr(url + 1, ',') : NULL;
+	if (!url) {
+		publish("s/us", "502,c8y_Firmware,\"bad 515 message\"",
+			MQTT_QOS_1_AT_LEAST_ONCE);
+		return;
+	}
+	url++;
+
+	LOG_INF("c8y_Firmware: EXECUTING (%s)", req);
+	publish("s/us", "501,c8y_Firmware", MQTT_QOS_1_AT_LEAST_ONCE);
+	pump(500, NULL);
+
+	/* The JWT only goes to Cumulocity itself. Binary URLs use the tenant-ID
+	 * host (t<id>.<domain>), not the tenant's own host name, so compare the
+	 * parent domain: "tedge-dev05.preprod.c8y.io" -> ".preprod.c8y.io".
+	 */
+	const char *parent = strchr(CONFIG_SPIKE_C8Y_HOST, '.');
+	const char *host = strstr(url, "://");
+	const char *host_end = host ? strpbrk(host + 3, ":/") : NULL;
+	bool to_c8y = false;
+
+	if (parent && host && host_end) {
+		size_t plen = strlen(parent);
+		size_t hlen = host_end - (host + 3);
+
+		to_c8y = hlen > plen &&
+			 strncmp(host_end - plen, parent, plen) == 0;
+	}
+	LOG_INF("firmware URL is %s Cumulocity: %s the JWT",
+		to_c8y ? "on" : "not on", to_c8y ? "sending" : "not sending");
+
+	ret = spike_ota_download(url, (to_c8y && jwt[0]) ? jwt : NULL);
+	log_tls_heap("after firmware download (MQTT + HTTPS)");
+	if (ret) {
+		snprintk(reason, sizeof(reason),
+			 "502,c8y_Firmware,\"download failed: %d\"", ret);
+		publish("s/us", reason, MQTT_QOS_1_AT_LEAST_ONCE);
+		pump(500, NULL);
+		return;
+	}
+	settings_save_one("spike/fw", req, strlen(req));
+	mqtt_disconnect(&client, NULL);
+	k_sleep(K_MSEC(300));
+	spike_ota_request_test_and_reboot();
+}
+#endif
 
 static void do_restart(void)
 {
@@ -535,6 +696,11 @@ static void spike_mqtt_main(void *a, void *b, void *c)
 			if (restart_requested) {
 				do_restart();
 			}
+#if defined(CONFIG_SPIKE_OTA)
+			if (fw_requested) {
+				do_firmware();
+			}
+#endif
 			if (k_uptime_get() - last_telemetry >=
 			    CONFIG_SPIKE_TELEMETRY_INTERVAL_S * 1000) {
 				last_telemetry = k_uptime_get();

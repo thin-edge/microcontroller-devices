@@ -89,6 +89,36 @@ endif # SPIKE_TLS_MQTT
 
 config SPIKE_OTA
 	bool "Spike B: stream an image into slot1 and test-boot it"
+	depends on SPIKE_TLS_MQTT
+	help
+	  Enable with overlay-spike-b.conf (shell, HTTP client, DFU).
+
+if SPIKE_OTA
+
+config SPIKE_OTA_AUTO_CONFIRM
+	bool "Confirm a test-booted image once it reaches Cumulocity"
+	default y
+	help
+	  With this off, the image stays unconfirmed until `spike ota
+	  confirm`, and any reset makes MCUboot revert it (tasks 4.2/4.3).
+
+config SPIKE_OTA_MAX_REDIRECTS
+	int "HTTP redirects to follow"
+	default 3
+
+config SPIKE_OTA_EXTRA_CAS
+	bool "Trust GitHub's roots too (task 4.6)"
+	help
+	  Adds USERTrust ECC (github.com, via Sectigo E46) and ISRG Root X1
+	  (release-assets.githubusercontent.com), so a GitHub release asset
+	  can be downloaded. github.com's chain needs P-384 and SHA-384; see
+	  overlay-github.conf.
+
+config SPIKE_BUILD_TAG
+	string "Label printed at boot, to tell test images apart"
+	default "A"
+
+endif # SPIKE_OTA
 
 config SPIKE_ENROLL
 	bool "Spike C: Cumulocity CA enrollment (key, CSR, simpleenroll)"

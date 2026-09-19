@@ -6,7 +6,11 @@ Opening the ESP32-C6's USB-Serial-JTAG port resets the board, so a capture
 starts at boot. Lines are written to stdout and to --log, prefixed with the
 seconds since the capture started.
 
+With --cmd 'REGEX=>COMMAND' (repeatable), COMMAND is typed into the shell
+the first time a line matches REGEX.
+
 Usage: console.py PORT [--seconds N] [--until REGEX] [--log FILE]
+                  [--cmd 'REGEX=>COMMAND' ...]
 """
 
 import argparse
@@ -24,7 +28,14 @@ def main() -> int:
     ap.add_argument("--until", help="stop after a line matching this regex")
     ap.add_argument("--log")
     ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--cmd", action="append", default=[],
+                    help="'REGEX=>COMMAND': send COMMAND when REGEX matches")
     args = ap.parse_args()
+
+    triggers = []
+    for c in args.cmd:
+        rx, _, command = c.partition("=>")
+        triggers.append([re.compile(rx), command, False])
 
     until = re.compile(args.until) if args.until else None
     log = open(args.log, "w") if args.log else None
@@ -60,6 +71,21 @@ def main() -> int:
                 if log:
                     log.write(stamped + "\n")
                     log.flush()
+                for trig in triggers:
+                    if not trig[2] and trig[0].search(line):
+                        trig[2] = True
+                        time.sleep(0.3)
+                        # Type slowly: the C6's USB console drops input
+                        # characters when log output interleaves ("--no-reboot"
+                        # arrived as "--no-reo").
+                        for ch in (trig[1] + "\r\n").encode():
+                            ser.write(bytes([ch]))
+                            ser.flush()
+                            time.sleep(0.01)
+                        note = f"[{time.monotonic() - t0:7.2f}] >>> sent: {trig[1]}"
+                        print(note, flush=True)
+                        if log:
+                            log.write(note + "\n")
                 if until and until.search(line):
                     return 0
     finally:

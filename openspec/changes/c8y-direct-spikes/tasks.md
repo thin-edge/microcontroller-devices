@@ -30,12 +30,12 @@
 
 ## 4. Spike B: OTA into slot1 (firmware)
 
-- [ ] 4.1 Streamed HTTP download into `slot1` with `flash_img` from a laptop `http.server`. `flash_img_check()`, `boot_request_upgrade(BOOT_UPGRADE_TEST)`, reboot. Record the download rate and the swap time
-- [ ] 4.2 The new image confirms itself with `boot_write_img_confirmed()` from a shell command. Verify the version persists across a further reset
-- [ ] 4.3 Revert run: don't confirm, reset, and check that MCUboot restores the previous image. Also check the watchdog-reset case with liveness on
-- [ ] 4.4 Verify that the Wi-Fi credentials in `storage`, the provisioner in `prov` and `bootreq` are untouched after 4.1–4.3 (the device reconnects without provisioning, and the triple-press still reaches the provisioner)
-- [ ] 4.5 HTTPS download of a Cumulocity binary using the JWT from 3.4. Record the peak heap with MQTT and HTTPS open at once (U1 concurrency)
-- [ ] 4.6 Try a redirecting URL (a GitHub release asset) and record what the HTTP client does (U6)
+- [x] 4.1 Streamed HTTP download into `slot1` with `flash_img` from a laptop `http.server`. `flash_img_check()`, `boot_request_upgrade(BOOT_UPGRADE_TEST)`, reboot. Record the download rate and the swap time
+- [x] 4.2 The new image confirms itself with `boot_write_img_confirmed()` from a shell command. Verify the version persists across a further reset
+- [x] 4.3 Revert run: don't confirm, reset, and check that MCUboot restores the previous image. Also check the watchdog-reset case with liveness on (the revert works; the watchdog's CPU reset hangs MCUboot on the C6, see P2)
+- [x] 4.4 Verify that the Wi-Fi credentials in `storage`, the provisioner in `prov` and `bootreq` are untouched after 4.1–4.3 (the device reconnects without provisioning, and the triple-press still reaches the provisioner). `prov`/`bootreq` compared by SHA-256; the triple-press is physical and wasn't tested here
+- [x] 4.5 HTTPS download of a Cumulocity binary using the JWT from 3.4. Record the peak heap with MQTT and HTTPS open at once (U1 concurrency)
+- [x] 4.6 Try a redirecting URL (a GitHub release asset) and record what the HTTP client does (U6)
 
 ## 5. Spike C: Cumulocity CA enrollment (firmware)
 
