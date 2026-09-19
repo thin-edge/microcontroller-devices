@@ -514,7 +514,7 @@ batching are the obvious first optimisation.
 | Case | Result |
 |---|---|
 | `8.8.8.8:53` (outside the subnet), 6.2 | FAILED `target 8.8.8.8:53 denied: not on the device's subnet`; no socket opened |
-| Second session while one is open (cap 1), 6.6 | FAILED `session limit reached (1)`; the open session carried on |
+| Second session while one is open (cap 1), 6.6 | FAILED `session limit reached (1)`; the open session carried on. The device answers **0.25–0.7 s after the operation is created** (audit log, 4 parallel attempts by the tenant owner), but **Cumulocity's remote-access web terminal only reports the failure after its own timeout**, since it doesn't watch the operation. The reason is only visible on the operation (Control tab). Suggestion for the UI: show `failureReason` as soon as the operation fails |
 | Target on the subnet with no host (192.168.68.250:22), 6.8 | FAILED `cannot connect to 192.168.68.250:22 (-116)` |
 | The client closes (SSH exits) | Cumulocity closes the WebSocket, the bridge logs "WebSocket close from Cumulocity" and publishes the close event |
 | Wi-Fi drop mid-session, 6.8 | **not tested** (needs the AP; see P1) |
