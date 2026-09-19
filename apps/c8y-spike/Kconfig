@@ -9,6 +9,83 @@ menu "Spikes"
 
 config SPIKE_TLS_MQTT
 	bool "Spike A: MQTTS to Cumulocity (MQTT Service / Core MQTT)"
+	help
+	  Enable with overlay-spike-a.conf, which also brings in the MQTT,
+	  TLS, SNTP and DNS options this spike needs.
+
+if SPIKE_TLS_MQTT
+
+config SPIKE_C8Y_HOST
+	string "Cumulocity tenant host"
+	help
+	  e.g. "example.cumulocity.com". Set it in a git-ignored overlay
+	  (c8y-spike.local.conf).
+
+choice SPIKE_ENDPOINT
+	prompt "Cumulocity MQTT endpoint"
+	default SPIKE_ENDPOINT_MQTT_SERVICE
+
+config SPIKE_ENDPOINT_MQTT_SERVICE
+	bool "MQTT Service (9883): SmartREST + free-form telemetry"
+
+config SPIKE_ENDPOINT_CORE
+	bool "Core MQTT (8883): SmartREST only"
+
+endchoice
+
+config SPIKE_C8Y_PORT
+	int
+	default 9883 if SPIKE_ENDPOINT_MQTT_SERVICE
+	default 8883
+
+choice SPIKE_AUTH
+	prompt "Authentication"
+	default SPIKE_AUTH_CERT
+
+config SPIKE_AUTH_CERT
+	bool "Mutual TLS (credentials/<device id>.crt and .key)"
+
+config SPIKE_AUTH_BASIC
+	bool "Basic auth (Core MQTT only)"
+
+endchoice
+
+config SPIKE_DEVICE_ID
+	string "External ID / MQTT client ID"
+	default "tedge-spike-c6"
+	help
+	  With certificate authentication this must match the certificate's
+	  CN, and credentials/<id>.crt and credentials/<id>.key must exist.
+
+config SPIKE_BASIC_USER
+	string "Basic auth user (<tenant>/device_<id>)"
+	depends on SPIKE_AUTH_BASIC
+
+config SPIKE_BASIC_PASSWORD
+	string "Basic auth password"
+	depends on SPIKE_AUTH_BASIC
+
+config SPIKE_SNTP_SERVER
+	string "SNTP server"
+	default "pool.ntp.org"
+
+config SPIKE_TELEMETRY_INTERVAL_S
+	int "Telemetry interval (s)"
+	default 10
+
+config SPIKE_CONNECT_CYCLES
+	int "Measurement: connect/disconnect cycles before normal operation"
+	default 0
+	help
+	  Task 3.5: connect and disconnect this many times, logging the
+	  handshake time and mbedTLS heap use of each, before the normal
+	  connection starts.
+
+config SPIKE_MQTT_STACK_SIZE
+	int "MQTT thread stack size"
+	default 10240
+
+endif # SPIKE_TLS_MQTT
 
 config SPIKE_OTA
 	bool "Spike B: stream an image into slot1 and test-boot it"

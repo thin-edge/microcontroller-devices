@@ -17,3 +17,26 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(c8y_spike_firmware C)
 
 target_sources(app PRIVATE src/main.c)
+
+if(CONFIG_SPIKE_TLS_MQTT)
+  target_sources(app PRIVATE src/spike_time.c src/spike_mqtt.c)
+
+  # Credentials are embedded as NUL-terminated PEM. The server trust anchor
+  # is public and committed; device credentials live in the git-ignored
+  # credentials/ directory.
+  set(gen_dir ${ZEPHYR_BINARY_DIR}/include/generated/spike)
+  generate_inc_file_for_target(app certs/godaddy-root-g2.pem
+    ${gen_dir}/server_ca.pem.inc)
+
+  if(CONFIG_SPIKE_AUTH_CERT)
+    set(id ${CONFIG_SPIKE_DEVICE_ID})
+    foreach(ext crt key)
+      set(f ${CMAKE_CURRENT_SOURCE_DIR}/credentials/${id}.${ext})
+      if(NOT EXISTS ${f})
+        message(FATAL_ERROR "Missing ${f}: issue a certificate for ${id} "
+          "first (see credentials/README.md)")
+      endif()
+      generate_inc_file_for_target(app ${f} ${gen_dir}/device.${ext}.inc)
+    endforeach()
+  endif()
+endif()

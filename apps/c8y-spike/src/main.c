@@ -4,7 +4,7 @@
  *
  * Plays the part of a user application that includes tedge-zephyr: it owns
  * connectivity (lib/common) and runs whichever spikes are enabled once the
- * network is up. The spikes themselves are added by later tasks.
+ * network is up.
  */
 
 #include <zephyr/kernel.h>
@@ -13,6 +13,7 @@
 #include <tedge/tedge.h>
 
 #include "net.h"
+#include "spike.h"
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -39,6 +40,10 @@ int main(void)
 		return 0;
 	}
 
-	LOG_INF("Network up; no spikes implemented yet");
+	LOG_INF("Network up");
+
+	if (IS_ENABLED(CONFIG_SPIKE_TLS_MQTT)) {
+		spike_mqtt_start();
+	}
 	return 0;
 }

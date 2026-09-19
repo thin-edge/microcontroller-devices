@@ -425,6 +425,102 @@ unchanged, and the target can be the MCU itself or any host it can reach:
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
 
+### Spike A: TLS and MQTT from the device (section 3, 2026-09-19)
+
+**Setup:** `apps/c8y-spike` with `overlay-spike-a.conf`, TLS 1.2 with the
+`ECDHE-RSA-AES128-GCM-SHA256` and `ECDHE-ECDSA-AES128-GCM-SHA256`
+ciphersuites (on Zephyr 4.4 / TF-PSA-Crypto the ciphersuite options pull in
+the PSA algorithms; the older `KEY_EXCHANGE_*` options alone are dropped),
+mbedTLS on its own heap so TLS memory is measured directly, a dedicated
+10 KB thread. Identity: `tedge-spike-c6`, mutual TLS with a certificate
+from the Cumulocity CA issued on a PC.
+
+**U1: cost.**
+
+| | ESP32-C6 (RISC-V, 160 MHz) | ESP32-S3-DevKitC-1 (Xtensa, 240 MHz) |
+|---|---|---|
+| TCP + TLS handshake, 9883, 10 cycles | 2,640–2,807 ms (median ~2.7 s) | 1,830–2,191 ms (median ~1.9 s) |
+| CONNACK after handshake | 40–240 ms | 70–340 ms |
+| TLS heap, handshake peak (16 KB buffers) | 51,788 B | 51,788 B |
+| TLS heap, connected (16 KB buffers) | 34,836 B | 34,836 B |
+| TLS heap after disconnect | 0 B, every cycle (no leak) | — |
+| Client thread stack, peak | 2,604–2,828 B of 10,240 | 2,928 B |
+| Signed image (slot 1280 KB / 3072 KB) | 875,771 B (68%) | 725,388 B |
+
+- Static cost of Spike A on the C6, against the same app without it:
+  text +133.6 KB; static RAM +142.6 KB, of which 96 KB is the deliberately
+  oversized measuring heap for mbedTLS. The real TLS need is the peak above,
+  so a production heap of about 56 KB (16 KB buffers) or 40 KB (8 KB buffers)
+  per session plus margin is the figure to use.
+- The handshake time is almost all public-key work in software: verifying
+  the RSA-4096 intermediate and the RSA-2048 server certificate, ECDHE, and
+  an ECDSA signature. It scales with the CPU clock (C6 vs S3). Zephyr's
+  mbedTLS does not use the ESP32 RSA/SHA accelerators.
+- SNTP (`pool.ntp.org`) set the clock in 51 ms on the first attempt;
+  certificates validate against it.
+
+**U2: record size (task 3.6).**
+
+- Below 16 KB, Zephyr offers max-fragment-length automatically, and
+  Cumulocity honours it: records are at most 4096 bytes (level-3 mbedTLS
+  debug: `found max_fragment_length extension`, input records of 4096).
+- **But mbedTLS reassembles a handshake message inside its input buffer**,
+  and it needs room for the partial message plus the next record. With a
+  5,883-byte certificate chain on 9883:
+  - 4096: fails, `requesting more data than fits` (`-0x87`);
+  - 6144: fails the same way;
+  - **8192: works**. Heap peak 35,404 B and connected 18,452 B, **16,384 B
+    less than with 16 KB buffers**. The handshake time is unchanged. A
+    6,223-byte downlink message crossed several records correctly.
+- 8883 needs 16 KB: its CertificateRequest alone is 12,919 bytes.
+- Margin: about 2 KB over today's chain. A longer server chain after a
+  certificate rotation could break 8 KB buffers, so the production default
+  should be 16 KB, with 8 KB as a documented saving for the MQTT Service.
+
+**U3/U4: the device-management contract on the device.**
+
+- 9883 with mutual TLS: all five subscriptions granted (one filter per
+  SUBSCRIBE), `100`/`114`/`117` applied, JWT on `s/dat` (768 bytes), and
+  free-form telemetry published
+  (`{"temperature":19.18,"humidity":53.19,"pressure":1016.83}` on
+  `te/device/tedge-spike-c6///m/environment`).
+- 8883 with mutual TLS: the same, with SmartREST `200` telemetry. Handshake
+  2,915–3,174 ms on the C6, about 0.3 s slower than 9883 (the 12.9 KB CA
+  list). Same heap with 16 KB buffers.
+- 8883 with basic auth (`tedge-spike-a-c6`): connects in 2,625 ms (no client
+  signature). Heap 51,356 / 34,380 B, about 430 B less than mutual TLS. The
+  JWT is refused
+  (`41,,MqttAuth: Cannot publish token for device that do not use certificate authentication`),
+  as on the PC.
+
+**Restart (task 3.3).**
+
+- `510` → `501` → marker in settings → reboot → reconnect → `503`: the
+  operation went to SUCCESSFUL 32 s after it was created. The marker survives
+  a reboot: an operation left EXECUTING by a hung reboot was completed on the
+  next boot.
+- **The reboot must be a full-system reset on the C6.** After `sys_reboot()`'s
+  CPU reset (`rst:0xc SW_CPU`) with only Wi-Fi running, MCUboot hung after
+  "SPI Flash Size : 4MB" until the next reset. `boot_request_reboot()`
+  (`esp_rom_software_reset_system()`, `rst:0x3 LP_SW_HPSYS`) works. This
+  matters beyond the spike:
+  - tedge-zephyr's restart needs its own full-system reset on Espressif
+    parts, since it can't use `lib/common`;
+  - `lib/common/net.c`'s last-resort reboot still calls
+    `sys_reboot(SYS_REBOOT_COLD)`, so on the C6 it would likely leave the
+    device hung in MCUboot. That's a separate fix.
+
+**Integration requirements found.**
+
+- **TCP connection contexts:** reconnecting once a second ran out after three
+  cycles (`Not enough connection contexts`, board `NET_MAX_CONN=6`), because
+  a closed TLS connection holds its context until TCP finishes closing.
+  Spike A uses `NET_MAX_CONN=10` / `NET_MAX_CONTEXTS=12` with 3 s between
+  cycles, and 10/10 then connect. tedge-zephyr's README must list the extra
+  contexts it needs, and the client must back off between reconnects.
+- One transient DNS failure (`-101`) and occasional first-boot Wi-Fi
+  association retries were seen; the retry loop covered both.
+
 ### Section 1: tenant and host-side findings (2026-09-19)
 
 **Tenant:** `tedge-dev05.preprod.c8y.io` (tenant `t297258657`).
