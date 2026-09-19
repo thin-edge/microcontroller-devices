@@ -21,6 +21,7 @@ target_sources(app PRIVATE src/main.c)
 if(CONFIG_SPIKE_TLS_MQTT)
   target_sources(app PRIVATE src/spike_time.c src/spike_mqtt.c)
   target_sources_ifdef(CONFIG_SPIKE_OTA app PRIVATE src/spike_ota.c)
+  target_sources_ifdef(CONFIG_SPIKE_AUTH_ENROLLED app PRIVATE src/spike_enroll.c)
 
   # Credentials are embedded as NUL-terminated PEM. The server trust anchor
   # is public and committed; device credentials live in the git-ignored

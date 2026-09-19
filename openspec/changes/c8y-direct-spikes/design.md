@@ -435,11 +435,79 @@ archived.
 | P5 | **Zephyr's HTTP client reports chunked bodies wrongly** in its response callback (first segment's start, last segment's length). | Any user of `http_client` downloading from Cumulocity gets corrupt data. The spike works around it via `on_body`. | Spike B (4.5). | Report upstream with a reproduction; tedge-zephyr uses the `on_body` path. |
 | P6 | **Public-key crypto is slow in software:** Cumulocity handshake ~2.7 s (C6) / ~1.9 s (S3); ECDSA P-384 ~11 s for github.com's chain on the C6. Zephyr's mbedTLS doesn't use the ESP32 RSA/ECC accelerators. | Long handshakes cost battery and connect time. P-384 hosts need a longer TLS connect timeout than Zephyr's 10 s default. | Spike A, Spike B (4.6). | Evaluate the Espressif hardware crypto drivers under Zephyr (PSA driver); until then set `NET_SOCKETS_TLS_CONNECT_TIMEOUT` generously and prefer RSA/P-256 servers. |
 | P7 | **A firmware update takes the C6 offline for ~40 s** (MCUboot swap-scratch of ~900 KB). | The update window, and what Cumulocity shows meanwhile. The device is dark during the swap. | Spike B. | Measure swap-using-move and overwrite-only (which gives up rollback) as alternatives; report the expected downtime in the operation. |
+| P8 | **Operations are missed in a new device's first session** if the client subscribes before the device exists: `s/ds`, `s/dat` and `devicecontrol/notifications` are refused (0x80) until `100` has created it. | A bootstrap-registered device would miss operations in its first session. | Spike C (5.7). | Client order: `100`, wait for the device to exist, then subscribe; treat a 0x80 SUBACK as "retry later", not as final. |
+| P9 | **The device key is only obfuscated.** The ITS encryption key comes from a hash of the device ID, and the key is exported into RAM for TLS for the whole uptime. | Anyone with flash or RAM access gets the device identity. | Spike C (U9). | Flash encryption or a hardware-unique key provider for ITS; upstream opaque PSA keys in `tls_credentials`. Document the limitation until then. |
 
 ## Spike results
 
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
+
+### Spike C: Cumulocity CA enrollment on the device (section 5, 2026-09-19)
+
+**Setup:** `overlay-spike-c.conf` (`SPIKE_AUTH_ENROLLED`), `src/spike_enroll.c`,
+shell `enroll status|csr|bench|reenroll|reset`. Identity `tedge-<MAC>` =
+`tedge-e8f60afc320c`. The one-time password was taken from the device's
+registration URL and registered with `c8y deviceregistration register-ca`,
+which does what opening the URL does.
+
+**U7: onboarding works end to end on the device.**
+
+| Step | Result |
+|---|---|
+| Key (5.1) | Persistent P-256 key `0x0007E571` in PSA ITS (`SECURE_STORAGE`, ITS store over settings/NVS in `storage`). **Survives a reboot and an app reflash**: the device reconnected with no new enrollment. Key IDs must be at most `PSA_KEY_ID_USER_MAX` (`0x3FFFFFFF`); `0x7E570001` gave `PSA_ERROR_INVALID_ARGUMENT` |
+| One-time password (5.2) | 32 characters from `psa_generate_random`, stored until the certificate arrives; registration URL logged |
+| CSR (5.3) | 297-byte body, `CN=tedge-e8f60afc320c`, ecdsa-with-SHA256, signed through `mbedtls_pk_wrap_psa` so **the key stays in PSA for signing**. `openssl req -verify`: OK. Signing the CSR takes 1.19 s; one ECDSA P-256 signature 414 ms |
+| Enrollment (5.4) | Before registration each poll gets `401 {"message":"No newDeviceRequest found for this ID. It may already be registered…"}`. Certificate issued on the 3rd poll (27 s after the first, mostly waiting for the registration). The 515-byte base64 PKCS#7 reply is unwrapped to the **332-byte DER certificate** with about 30 lines of ASN.1 walking; no PKCS#7 module is needed |
+| Mutual TLS (5.5) | 9883: handshake 2.69 s, TLS heap peak 51,820 B / connected 34,820 B. 8883: 2.73 s, same heap. **Within ±30 B of Spike A** (certificate from a PC): client-certificate auth costs no extra TLS RAM |
+
+**U9: where the key lives.** Zephyr's `tls_credentials` take only a key
+buffer. The key is exported (`mbedtls_pk_copy_from_psa` +
+`mbedtls_pk_write_key_der`, 121 bytes of DER) and **stays in RAM for as long
+as the credential is registered**. Every handshake parses it again, so in
+practice that is the device's whole uptime. On top of that, the ITS
+encryption key comes from a **hash of the device ID**, and Zephyr warns at
+boot: "Using a potentially insecure PSA ITS encryption key provider". The
+key is obfuscated at rest, not protected. For real protection:
+- flash encryption, or a hardware-unique key provider for ITS;
+- opaque PSA keys in `tls_credentials` (upstream work), so TLS signs inside
+  PSA as the CSR already does.
+
+**U8: renewal.** `POST /.well-known/est/simplereenroll`:
+- with **mutual TLS only**: `401 {"message":"Full authentication is required to access this resource"}`;
+- with **`Authorization: Bearer <JWT>`** and no client certificate: **200, a
+  new 332-byte certificate**.
+
+So renewal needs a JWT, which only certificate devices get, over MQTT
+(`s/uat` → `s/dat`). That matches tedge, whose proxy adds the token. The
+Bearer header is about 800 bytes.
+
+**Bootstrap fallback (5.7).**
+- `c8y deviceregistration register --id tedge-boot-c6` creates the
+  request (WAITING_FOR_CONNECTION). The device connects to 8883 as
+  `management/devicebootstrap`, subscribes to `s/dcr` and polls `s/ucr`
+  every 5 s; the request becomes PENDING_ACCEPTANCE; `approve` accepts it.
+- `70,<tenant>,<user>,<password>` arrived after 2 polls (12.8 s, mostly
+  waiting for the accept). It is stored in settings, and the device
+  reconnects as `t297258657/device_tedge-boot-c6` (handshake 2.5 s). The
+  password is never logged.
+- **First-session ordering problem:** in the first session as the new
+  device user, the device subscribed before sending `100` (create device).
+  Cumulocity **refused `s/ds`, `s/dat` and `devicecontrol/notifications`
+  (0x80)** while the device didn't exist yet, `114` was lost, and the
+  duplicate `100` got `50,100,Error on device creation, message: Error on
+  identity creation`. In the next session everything was granted and
+  applied. **The client must create the device first**: send `100`, wait
+  for it to exist (or for `41,100,Device already existing`), then
+  subscribe. Otherwise it must retry refused subscriptions. CA-registered
+  devices aren't affected, because `register-ca` creates the device before
+  it first connects.
+
+**Other notes.**
+- A burst of log lines (CSR, URL) overflowed the default log buffer
+  ("--- 17 messages dropped ---"); Spike C uses 16 KB.
+- Deferred logging of `%s` arguments that point into a buffer the next
+  request reuses loses or garbles the line: copy first.
 
 ### Spike B: firmware update into slot1 (section 4, 2026-09-19)
 

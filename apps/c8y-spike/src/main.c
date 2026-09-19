@@ -24,7 +24,7 @@ int main(void)
 	LOG_INF("c8y spike firmware starting: tedge-zephyr %s", tedge_version());
 	LOG_INF("spikes: tls_mqtt=%d ota=%d enroll=%d remote_access=%d",
 		IS_ENABLED(CONFIG_SPIKE_TLS_MQTT), IS_ENABLED(CONFIG_SPIKE_OTA),
-		IS_ENABLED(CONFIG_SPIKE_ENROLL),
+		IS_ENABLED(CONFIG_SPIKE_AUTH_ENROLLED),
 		IS_ENABLED(CONFIG_SPIKE_REMOTE_ACCESS));
 
 #if defined(CONFIG_SPIKE_OTA)

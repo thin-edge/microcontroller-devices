@@ -48,7 +48,26 @@ config SPIKE_AUTH_CERT
 config SPIKE_AUTH_BASIC
 	bool "Basic auth (Core MQTT only)"
 
+config SPIKE_AUTH_BOOTSTRAP
+	bool "Basic auth from the bootstrap user (Spike C, task 5.7; Core MQTT)"
+	help
+	  Connects as the bootstrap user, polls s/ucr until the device is
+	  accepted in the device registration UI, stores the credentials from
+	  s/dcr ("70,<tenant>,<user>,<password>") and reconnects as that
+	  device user.
+
+config SPIKE_AUTH_ENROLLED
+	bool "Mutual TLS with a certificate enrolled on the device (Spike C)"
+	help
+	  The device generates its key, one-time password and CSR, and
+	  enrolls with the Cumulocity CA (overlay-spike-c.conf).
+
 endchoice
+
+config SPIKE_ENROLL_DEVICE_ID
+	string "External ID for enrollment (empty: tedge-<MAC>)"
+	depends on SPIKE_AUTH_ENROLLED
+	default ""
 
 config SPIKE_DEVICE_ID
 	string "External ID / MQTT client ID"
@@ -56,6 +75,14 @@ config SPIKE_DEVICE_ID
 	help
 	  With certificate authentication this must match the certificate's
 	  CN, and credentials/<id>.crt and credentials/<id>.key must exist.
+
+config SPIKE_BOOTSTRAP_USER
+	string "Bootstrap user (<tenant>/<user>)"
+	depends on SPIKE_AUTH_BOOTSTRAP
+
+config SPIKE_BOOTSTRAP_PASSWORD
+	string "Bootstrap password"
+	depends on SPIKE_AUTH_BOOTSTRAP
 
 config SPIKE_BASIC_USER
 	string "Basic auth user (<tenant>/device_<id>)"
@@ -119,9 +146,6 @@ config SPIKE_BUILD_TAG
 	default "A"
 
 endif # SPIKE_OTA
-
-config SPIKE_ENROLL
-	bool "Spike C: Cumulocity CA enrollment (key, CSR, simpleenroll)"
 
 config SPIKE_REMOTE_ACCESS
 	bool "Spike F: remote-access tunnel to a LAN host"

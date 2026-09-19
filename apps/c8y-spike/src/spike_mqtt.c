@@ -39,13 +39,21 @@
 LOG_MODULE_REGISTER(spike_mqtt, LOG_LEVEL_INF);
 
 #define TAG_SERVER_CA SPIKE_TAG_SERVER_CA
-#define TAG_DEVICE    0x5A11
+#define TAG_DEVICE    SPIKE_TAG_DEVICE
 
-#define DEVICE_ID CONFIG_SPIKE_DEVICE_ID
+/* The external ID: from Kconfig, or from enrollment (Spike C). */
+static char device_id[48] = CONFIG_SPIKE_DEVICE_ID;
+#define DEVICE_ID device_id
 
 static const unsigned char server_ca[] = {
 #include "spike/server_ca.pem.inc"
 	0x00};
+
+#if defined(CONFIG_SPIKE_AUTH_CERT) || defined(CONFIG_SPIKE_AUTH_ENROLLED)
+static const sec_tag_t sec_tags[] = {TAG_SERVER_CA, TAG_DEVICE};
+#else
+static const sec_tag_t sec_tags[] = {TAG_SERVER_CA};
+#endif
 
 #if defined(CONFIG_SPIKE_AUTH_CERT)
 static const unsigned char device_crt[] = {
@@ -54,9 +62,6 @@ static const unsigned char device_crt[] = {
 static const unsigned char device_key[] = {
 #include "spike/device.key.inc"
 	0x00};
-static const sec_tag_t sec_tags[] = {TAG_SERVER_CA, TAG_DEVICE};
-#else
-static const sec_tag_t sec_tags[] = {TAG_SERVER_CA};
 #endif
 
 /* Downstream topics: tedge's bridge set minus s/ucr (bootstrap only). */
@@ -80,11 +85,50 @@ static bool restart_pending_after_boot;
 /* The latest JWT (s/dat), for HTTPS requests to Cumulocity. */
 static char jwt[1024];
 
+const char *spike_mqtt_jwt(void)
+{
+	return jwt;
+}
+
 #if defined(CONFIG_SPIKE_OTA)
 /* c8y_Firmware (515): "<name>,<version>,<url>" while an update is pending. */
 static char fw_request[320];
 static bool fw_requested;
 static char fw_marker[320];
+#endif
+
+#if defined(CONFIG_SPIKE_AUTH_BOOTSTRAP)
+/* Bootstrap (task 5.7): first as the bootstrap user, then as the device user
+ * from "70,<tenant>,<user>,<password>".
+ */
+static char dev_user[96];
+static char dev_password[96];
+static struct mqtt_utf8 rt_user;
+static struct mqtt_utf8 rt_password;
+static bool bootstrapping;
+static bool got_credentials;
+
+static int basic_cb(const char *key, size_t len, settings_read_cb read_cb,
+		    void *cb_arg, void *param)
+{
+	char buf[200];
+
+	ARG_UNUSED(key);
+	ARG_UNUSED(param);
+	if (len < sizeof(buf)) {
+		char *sep;
+
+		read_cb(cb_arg, buf, len);
+		buf[len] = '\0';
+		sep = strchr(buf, '\n');
+		if (sep) {
+			*sep = '\0';
+			snprintk(dev_user, sizeof(dev_user), "%s", buf);
+			snprintk(dev_password, sizeof(dev_password), "%s", sep + 1);
+		}
+	}
+	return 0;
+}
 #endif
 
 #if defined(CONFIG_SPIKE_AUTH_BASIC)
@@ -206,11 +250,33 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 		}
 		return;
 	}
-	LOG_INF("%s: %.*s", topic, (int)MIN(len, 200), payload);
+	if (strcmp(topic, "s/dcr") == 0 && strncmp(payload, "70,", 3) == 0) {
+		LOG_INF("s/dcr: 70,<tenant>,<user>,<password> received (%zu B)", len);
+	} else {
+		LOG_INF("%s: %.*s", topic, (int)MIN(len, 200), payload);
+	}
 
 	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "510,", 4) == 0) {
 		restart_requested = true;
 	}
+#if defined(CONFIG_SPIKE_AUTH_BOOTSTRAP)
+	/* 70,<tenant>,<user>,<password> */
+	if (strcmp(topic, "s/dcr") == 0 && strncmp(payload, "70,", 3) == 0) {
+		char buf[200];
+		char *tenant = buf, *user, *password;
+
+		snprintk(buf, sizeof(buf), "%s", payload + 3);
+		user = strchr(tenant, ',');
+		password = user ? strchr(user + 1, ',') : NULL;
+		if (user && password) {
+			*user++ = '\0';
+			*password++ = '\0';
+			snprintk(dev_user, sizeof(dev_user), "%s/%s", tenant, user);
+			snprintk(dev_password, sizeof(dev_password), "%s", password);
+			got_credentials = true;
+		}
+	}
+#endif
 #if defined(CONFIG_SPIKE_OTA)
 	/* 515,<device>,<name>,<version>,<url> */
 	if (strcmp(topic, "s/ds") == 0 && strncmp(payload, "515,", 4) == 0) {
@@ -328,6 +394,19 @@ static void client_setup(void)
 #if defined(CONFIG_SPIKE_AUTH_BASIC)
 	client.user_name = &basic_user;
 	client.password = &basic_password;
+#elif defined(CONFIG_SPIKE_AUTH_BOOTSTRAP)
+	{
+		const char *u = bootstrapping ? CONFIG_SPIKE_BOOTSTRAP_USER : dev_user;
+		const char *pw = bootstrapping ? CONFIG_SPIKE_BOOTSTRAP_PASSWORD
+					       : dev_password;
+
+		rt_user.utf8 = (const uint8_t *)u;
+		rt_user.size = strlen(u);
+		rt_password.utf8 = (const uint8_t *)pw;
+		rt_password.size = strlen(pw);
+		client.user_name = &rt_user;
+		client.password = &rt_password;
+	}
 #endif
 
 	client.transport.type = MQTT_TRANSPORT_SECURE;
@@ -622,7 +701,10 @@ static void publish_telemetry(void)
 	if (off < sizeof(json)) {
 		snprintk(json + off, sizeof(json) - off, "}");
 	}
-	if (publish("te/device/" DEVICE_ID "///m/environment", json,
+	char topic[96];
+
+	snprintk(topic, sizeof(topic), "te/device/%s///m/environment", DEVICE_ID);
+	if (publish(topic, json,
 		    MQTT_QOS_0_AT_MOST_ONCE) == 0 && telemetry_sent++ == 0) {
 		LOG_INF("telemetry: first free-form publish: %s", json);
 	}
@@ -655,6 +737,52 @@ static void spike_mqtt_main(void *a, void *b, void *c)
 
 	restart_marker_load();
 	spike_time_sync();
+#if defined(CONFIG_SPIKE_AUTH_ENROLLED)
+	if (spike_enroll_run(device_id, sizeof(device_id))) {
+		LOG_ERR("enrollment failed; not connecting");
+		return;
+	}
+#endif
+#if defined(CONFIG_SPIKE_AUTH_BOOTSTRAP)
+	settings_load_subtree_direct("spike/basic", basic_cb, NULL);
+	if (dev_user[0]) {
+		LOG_INF("bootstrap: device credentials found in settings (%s)",
+			dev_user);
+	} else {
+		int64_t t0 = k_uptime_get();
+		int polls = 0;
+
+		bootstrapping = true;
+		while (connect_measured("bootstrap") != 0) {
+			k_sleep(K_SECONDS(5));
+		}
+		subscribe_one("s/dcr");
+		while (!got_credentials) {
+			publish("s/ucr", "", MQTT_QOS_1_AT_LEAST_ONCE);
+			polls++;
+			if (pump(5000, NULL)) {
+				LOG_WRN("bootstrap connection lost; reconnecting");
+				mqtt_abort(&client);
+				while (connect_measured("bootstrap") != 0) {
+					k_sleep(K_SECONDS(5));
+				}
+				subscribe_one("s/dcr");
+			}
+		}
+		{
+			char buf[200];
+			size_t n = snprintk(buf, sizeof(buf), "%s\n%s", dev_user,
+					    dev_password);
+
+			settings_save_one("spike/basic", buf, n);
+		}
+		LOG_INF("MEAS bootstrap: device credentials after %d s/ucr polls, "
+			"%lld ms; user %s", polls, k_uptime_get() - t0, dev_user);
+		mqtt_disconnect(&client, NULL);
+		pump(500, NULL);
+		bootstrapping = false;
+	}
+#endif
 	log_tls_heap("before first connect");
 
 	for (int i = 1; i <= CONFIG_SPIKE_CONNECT_CYCLES; i++) {
@@ -736,8 +864,9 @@ void spike_mqtt_start(void)
 	}
 
 	LOG_INF("Spike A: %s:%d as %s (%s)", CONFIG_SPIKE_C8Y_HOST,
-		CONFIG_SPIKE_C8Y_PORT, DEVICE_ID,
-		IS_ENABLED(CONFIG_SPIKE_AUTH_CERT) ? "mutual TLS" : "basic auth");
+		CONFIG_SPIKE_C8Y_PORT,
+		IS_ENABLED(CONFIG_SPIKE_AUTH_ENROLLED) ? "<enrolled ID>" : DEVICE_ID,
+		IS_ENABLED(CONFIG_SPIKE_AUTH_BASIC) ? "basic auth" : "mutual TLS");
 
 	k_thread_create(&spike_mqtt_thread, spike_mqtt_stack,
 			K_THREAD_STACK_SIZEOF(spike_mqtt_stack), spike_mqtt_main,

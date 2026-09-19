@@ -39,13 +39,13 @@
 
 ## 5. Spike C: Cumulocity CA enrollment (firmware)
 
-- [ ] 5.1 Persistent P-256 key in PSA ITS (`SECURE_STORAGE` over settings). It survives a reboot and a reflash of the app
-- [ ] 5.2 Generate a 32-character one-time password from the CSPRNG and store it. Print the registration URL on the console and from a `tedge enroll` shell command
-- [ ] 5.3 Build a PKCS#10 CSR with `CN=<external id>` signed by the PSA key (`MBEDTLS_X509_CSR_WRITE_C`). Check it on the host with `openssl req -verify`
-- [ ] 5.4 Poll `simpleenroll` every 10 s with Basic `<id>:<otp>`. On `200`, store the certificate. Log the error bodies seen before the device is registered
-- [ ] 5.5 mTLS connect to 9883 (and 8883) with the enrolled certificate, reusing the Spike A loop. Record the extra RAM of client-certificate authentication and how long the exported key is resident (U9)
-- [ ] 5.6 Call `simplereenroll` with mTLS only, then with a Bearer JWT. Record which one works (U8)
-- [ ] 5.7 Bootstrap fallback: `s/ucr` polling with the bootstrap user until `70,…`, store the credentials, reconnect as the device user
+- [x] 5.1 Persistent P-256 key in PSA ITS (`SECURE_STORAGE` over settings). It survives a reboot and a reflash of the app
+- [x] 5.2 Generate a 32-character one-time password from the CSPRNG and store it. Print the registration URL on the console and from the `enroll` shell command
+- [x] 5.3 Build a PKCS#10 CSR with `CN=<external id>` signed by the PSA key (`MBEDTLS_X509_CSR_WRITE_C`). Check it on the host with `openssl req -verify`
+- [x] 5.4 Poll `simpleenroll` every 10 s with Basic `<id>:<otp>`. On `200`, store the certificate. Log the error bodies seen before the device is registered
+- [x] 5.5 mTLS connect to 9883 (and 8883) with the enrolled certificate, reusing the Spike A loop. Record the extra RAM of client-certificate authentication and how long the exported key is resident (U9)
+- [x] 5.6 Call `simplereenroll` with mTLS only, then with a Bearer JWT. Record which one works (U8)
+- [x] 5.7 Bootstrap fallback: `s/ucr` polling with the bootstrap user until `70,…`, store the credentials, reconnect as the device user
 
 ## 6. Spike F: remote access to a LAN host (firmware)
 

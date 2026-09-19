@@ -18,6 +18,18 @@ void spike_mqtt_start(void);
 
 /** TLS credential tag of the server trust anchor (added by spike_mqtt.c). */
 #define SPIKE_TAG_SERVER_CA 0x5A10
+/** TLS credential tag of the device certificate and key. */
+#define SPIKE_TAG_DEVICE 0x5A11
+
+/** The latest JWT from s/dat, or an empty string. */
+const char *spike_mqtt_jwt(void);
+
+/**
+ * Spike C: make sure the device has a key and a Cumulocity CA certificate
+ * (enrolling if needed, which blocks until an operator registers it), and
+ * register them as TLS credentials. Writes the external ID to @p id_out.
+ */
+int spike_enroll_run(char *id_out, size_t id_len);
 
 /**
  * Spike B: download @p url into slot1 (HTTP or HTTPS, following redirects).
