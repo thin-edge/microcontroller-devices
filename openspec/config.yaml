@@ -11,11 +11,23 @@ context: |
 
   Phasing (respect the ordering):
     1. Industrial-protocol source firmware — Zephyr-based OPC-UA server
-       serving device/sensor data to an external client. (Current focus.)
-    2. Additional industry protocols as source options.
-    3. Exploratory, LATER: a lightweight thin-edge.io variant on Zephyr that
-       connects to Cumulocity directly. Only after earlier phases are done;
-       do not pull this into Phase 1 work.
+       serving device/sensor data to an external client. (Done.)
+    2. Additional industry protocols as source options (Modbus TCP, SNMP;
+       done), plus deployability: BLE Wi-Fi provisioning and the MCUboot
+       A/B layout.
+    3. Started 2026-09-19: tedge-zephyr, a thin-edge.io device-management
+       client shipped as a reusable Zephyr module (`tedge-zephyr/`, API
+       `tedge_*`, Kconfig `CONFIG_TEDGE_*`) that ANY user's Zephyr
+       application can include. This repo's protocol apps are example user
+       applications. The module must never depend on `lib/` or `apps/`, and
+       must stay ready to move into its own repository. It connects directly
+       to Cumulocity first (MQTT Service :9883, SmartREST 2.0; onboarding
+       via the Cumulocity CA); remote access, including forwarding to other
+       LAN hosts, is the headline feature. The thin-edge.io gateway
+       transport comes later. Roadmap: SCOPE.md, "Phase 3 roadmap". Every
+       feature is selected at build time so constrained boards include only
+       what fits; see the device-management-features and
+       tedge-client-module specs.
 
   Design priorities (in order):
     1. Fit constrained MCU resources (flash, RAM, no/limited filesystem).
@@ -33,8 +45,12 @@ rules:
     - State which industrial protocol and Zephyr board(s) the change targets.
     - Include a "Non-goals" section.
     - Call out MCU resource constraints (flash/RAM) the design must fit.
-    - Note which phase (1/2/3) the change belongs to; keep Phase 3
-      (thin-edge/Cumulocity) out of scope unless explicitly stated.
+    - Note which phase (1/2/3) the change belongs to. Phase 1/2 changes
+      keep thin-edge.io/Cumulocity out of scope.
+    - For Phase 3 changes, list the Kconfig options the change adds, and
+      their measured flash/RAM cost per target board.
+    - For Phase 3 changes, state any change to the public `tedge_*` API and
+      keep host-app glue out of `tedge-zephyr/`.
   tasks:
     - Break tasks into chunks of at most ~2 hours.
     - Separate firmware (device/source) work from client/collector work.
