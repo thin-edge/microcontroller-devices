@@ -1,21 +1,21 @@
 ## 1. Tenant and host preparation (cloud and host side)
 
-- [ ] 1.1 Pick the Cumulocity test tenant. Confirm the tenant features `mqtt-service.smartrest` and the Cumulocity CA are enabled, and note the tenant URL in a git-ignored overlay (`c8y.local.conf`)
-- [ ] 1.2 Create a device user (basic auth) for Spike A, and confirm bootstrap-user credentials are available for the Spike C fallback
-- [ ] 1.3 Capture the tenant's TLS chain for 9883 and 8883 (`openssl s_client -showcerts`). Record the root CAs, key types and whether max-fragment-length is negotiated (`-maxfraglen 4096`)
-- [ ] 1.4 Prepare a Raspberry Pi with `sshd` on the same LAN as the C6, and create two Cloud Remote Access endpoints on the spike device: SSH to the Pi's `<ip>:22`, and Telnet to `127.0.0.1:23` (for Spike F)
-- [ ] 1.5 Check the host-side paths with `mosquitto_pub`/`mosquitto_sub`, so that a device failure can't be mistaken for a tenant problem: SmartREST `100`/`114` on 9883 and 8883, one free-form publish, and `s/uat` → `s/dat`
+- [x] 1.1 Pick the Cumulocity test tenant. Confirm the tenant features `mqtt-service.smartrest` and the Cumulocity CA are enabled, and note the tenant URL in a git-ignored overlay (`c8y.local.conf`)
+- [x] 1.2 Create a device user (basic auth) for Spike A, and confirm bootstrap-user credentials are available for the Spike C fallback
+- [x] 1.3 Capture the tenant's TLS chain for 9883 and 8883 (`openssl s_client -showcerts`). Record the root CAs, key types and whether max-fragment-length is negotiated (`-maxfraglen 4096`)
+- [x] 1.4 Prepare a Raspberry Pi with `sshd` on the same LAN as the C6, and create two Cloud Remote Access endpoints on the spike device: SSH to the Pi's `<ip>:22`, and Telnet to `127.0.0.1:23` (for Spike F)
+- [x] 1.5 Check the host-side paths with `mosquitto_pub`/`mosquitto_sub`, so that a device failure can't be mistaken for a tenant problem: SmartREST `100`/`114` on 9883 and 8883, one free-form publish, and `s/uat` → `s/dat`
 
 ## 2. Module skeleton (firmware)
 
-- [ ] 2.1 Create `tedge-zephyr/` in the D8 layout (`zephyr/module.yml` named `tedge`, `CMakeLists.txt`, `Kconfig`, `VERSION`, `README.md`, `include/tedge/`, `profiles/`, `samples/`, `tests/`)
-- [ ] 2.2 Write the D2 Kconfig menu: `TEDGE` umbrella, transport, endpoint and auth choices, one option per feature, the remote-access targets choice and session cap, hidden `TEDGE_FEATURE_AVAILABLE_*` gates, `TEDGE_HTTP`, and the thread, heap and TLS-tag options
-- [ ] 2.3 Encode the dependencies from the spec (firmware update needs MCUboot, remote access needs CA authentication, file features select `TEDGE_HTTP`). Confirm that an invalid combination fails at configure time
-- [ ] 2.4 Outline `include/tedge/tedge.h` from D7 (identity, `tedge_publish_*`, `tedge_register_*`, restart, firmware-confirm and remote-access hooks, state callback, progress hook). Declarations and doc comments only, marked unstable
-- [ ] 2.5 Add `samples/minimal` (build-only for now) that builds with Zephyr and `tedge-zephyr` only. Build it for the C6 and `native_sim`
-- [ ] 2.6 Add the extraction guard: a check script (and a CI step) that fails if anything under `tedge-zephyr/` references `lib/`, `apps/` or `../`
-- [ ] 2.7 Show that a protocol app built with `TEDGE=n` matches its baseline flash and RAM (`build_sb_c6_modbus` against a build that adds the module through `ZEPHYR_EXTRA_MODULES`)
-- [ ] 2.8 Create `apps/c8y-spike/` (sysbuild, C6 and S3-DevKitC-1 board files reusing the shared layouts, spike Kconfig options `SPIKE_TLS_MQTT`/`SPIKE_OTA`/`SPIKE_ENROLL`/`SPIKE_REMOTE_ACCESS`), composing `lib/common` and `tedge-zephyr`
+- [x] 2.1 Create `tedge-zephyr/` in the D8 layout (`zephyr/module.yml` named `tedge`, `CMakeLists.txt`, `Kconfig`, `VERSION`, `README.md`, `include/tedge/`, `profiles/`, `samples/`, `tests/`)
+- [x] 2.2 Write the D2 Kconfig menu: `TEDGE` umbrella, transport, endpoint and auth choices, one option per feature, the remote-access targets choice and session cap, hidden `TEDGE_FEATURE_AVAILABLE_*` gates, `TEDGE_HTTP`, and the thread, heap and TLS-tag options
+- [x] 2.3 Encode the dependencies from the spec (firmware update needs MCUboot, remote access needs CA authentication, file features select `TEDGE_HTTP`). Confirm that an invalid combination fails at configure time
+- [x] 2.4 Outline `include/tedge/tedge.h` from D7 (identity, `tedge_publish_*`, `tedge_register_*`, restart, firmware-confirm and remote-access hooks, state callback, progress hook). Declarations and doc comments only, marked unstable
+- [x] 2.5 Add `samples/minimal` (build-only for now) that builds with Zephyr and `tedge-zephyr` only. Build it for the C6 and `native_sim`
+- [x] 2.6 Add the extraction guard: a check script (and a CI step) that fails if anything under `tedge-zephyr/` references `lib/`, `apps/` or `../`
+- [x] 2.7 Show that a protocol app built with `TEDGE=n` matches its baseline flash and RAM (`build_sb_c6_modbus` against a build that adds the module through `ZEPHYR_EXTRA_MODULES`)
+- [x] 2.8 Create `apps/c8y-spike/` (sysbuild, C6 and S3-DevKitC-1 board files reusing the shared layouts, spike Kconfig options `SPIKE_TLS_MQTT`/`SPIKE_OTA`/`SPIKE_ENROLL`/`SPIKE_REMOTE_ACCESS`), composing `lib/common` and `tedge-zephyr`
 
 ## 3. Spike A: TLS and MQTT to Cumulocity (firmware)
 

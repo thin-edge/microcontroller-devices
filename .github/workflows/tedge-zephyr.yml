@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Checks for the tedge-zephyr module. It must stay self-contained so it can
+# move into its own repository unchanged.
+name: tedge-zephyr
+
+on:
+  pull_request:
+    paths:
+      - "tedge-zephyr/**"
+      - ".github/workflows/tedge-zephyr.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tedge-zephyr/**"
+
+jobs:
+  independence:
+    name: Module is self-contained
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 tedge-zephyr/scripts/check-independence.py

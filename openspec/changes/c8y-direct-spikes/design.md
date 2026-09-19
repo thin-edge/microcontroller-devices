@@ -416,3 +416,125 @@ unchanged, and the target can be the MCU itself or any host it can reach:
 
 _To be filled in as each spike completes: measurements, go/no-go, and the
 decision each unknown (U1–U12) produced._
+
+### Section 1: tenant and host-side findings (2026-09-19)
+
+**Tenant:** `tedge-dev05.preprod.c8y.io` (tenant `t297258657`).
+
+- Features `certificate-authority` (GA) and `mqtt-service.smartrest`
+  (Public Preview) are on. The tenant CA certificate exists (valid until 2029,
+  auto-registration on).
+- The tenant is subscribed to the `cloud-remote-access` and `mqtt-service`
+  microservices. No Dynamic Mapper is subscribed.
+- Credentials: `c8y.local.conf` holds go-c8y-cli environment variables, not
+  a Kconfig overlay. Firmware overlays therefore use other `*.local.conf`
+  names (all git-ignored). The Spike A device credentials are in
+  `spike-a-device.local.conf`.
+- The bootstrap credentials (`management/devicebootstrap`) work against the
+  tenant: `POST /devicecontrol/deviceCredentials` returns 404 for an unknown
+  ID. go-c8y-cli does not use them unless `C8Y_BOOTSTRAP_*` are set; with the
+  session token the same request returns 403.
+
+**TLS (U1, U2):**
+
+- Every port uses the same chain: `*.preprod.c8y.io` → GoDaddy DV R1v1 →
+  GoDaddy Root R1 → Go Daddy Root G2. All certificates are RSA (2048/4096).
+  TLS 1.3 and TLS 1.2 (ECDHE-RSA, AES-GCM) both work.
+- **All ports accept max-fragment-length.** The server echoes the extension
+  (id 1) on TLS 1.2 when the client offers 4096. Whether mbedTLS then
+  reassembles handshake messages that span several records is checked on the
+  device in 3.6.
+- Largest handshake messages (TLS 1.2):
+
+  | Port | Certificate | CertificateRequest | NewSessionTicket |
+  |---|---|---|---|
+  | 9883 | 5,883 B | 44 B (no CA list) | 6,153 B |
+  | 8883 | 5,883 B | **12,919 B (166 acceptable client CAs)** | 6,167 B |
+
+  NewSessionTicket is only sent if the client offers tickets. With tickets
+  off, 9883 needs roughly an 8 KB input buffer (or MFL). Core MQTT's
+  CertificateRequest grows with the platform's trusted certificates, so
+  8883 is the riskier endpoint for a fixed MCU buffer.
+
+**MQTT and SmartREST (U3, U4), checked from a PC with
+`apps/c8y-spike/tools/c8y_mqtt_probe.py`:**
+
+| | Core MQTT 8883 | MQTT Service 9883 |
+|---|---|---|
+| Basic auth (`<tenant>/device_<id>`) | connects | **Not authorized**. Tried 4 user-name formats and the MQTT Service roles; also refused for a device freshly created with `register-basic` and never used with a certificate, which connects to 8883 seconds later |
+| mTLS (Cumulocity CA certificate) | connects | connects |
+| Publish on `s/us` (100/114) | applied | applied (114 changed `c8y_SupportedOperations`) |
+| Subscribe `s/ds`, `s/e`, `s/dat` | granted; `510` and `40,999,…` arrive | granted **only with one filter per SUBSCRIBE**. A SUBSCRIBE carrying several filters is refused as a whole (SUBACK 0x80 on 3.1.1, "Topic filter invalid" on MQTT 5), whatever the filters are. Sent one at a time, every filter is granted, including wildcards, `s/ucr` and `te/device/<id>///cmd/+/+`. Then `510` and `40,999,…` arrive |
+| `s/uat` → `s/dat` JWT | certificate devices only (771-byte JWT, 1 h). A basic-auth device gets `41,,MqttAuth: Cannot publish token for device that do not use certificate authentication` | works (certificate device) |
+| Persistent session (clean session off) | not tested | no CONNACK |
+
+- **Firmware rule: send one topic filter per SUBSCRIBE.** It costs nothing
+  on 8883 and is required on 9883. The multi-filter packet alone is the
+  trigger. The exact set tedge's bridge subscribes to (`s/dat`, `s/dt`,
+  `s/ds`, `s/e`, `devicecontrol/notifications`, `error`, from
+  `tedge bridge inspect c8y`) is refused as one packet. `s/ucr` and
+  `te/…/cmd/#` are each granted on their own. tedge works on 9883 because
+  its bridge subscribes one topic at a time
+  (`crates/extensions/tedge_mqtt_bridge/src/lib.rs`, `start_subscribe_round`).
+  The firmware subscribes to the same downstream set as tedge, minus `s/ucr`,
+  which only the bootstrap flow needs.
+- With certificate authentication, 9883 carries the whole device-management
+  contract: operations (`510` → `501`/`503`), errors on `s/e` and the JWT.
+  The MQTT Service remains the default endpoint.
+- **Basic authentication only works on 8883.** The bootstrap (basic-auth)
+  path must use Core MQTT, so in Kconfig `TEDGE_C8Y_MQTT_SERVICE` should
+  depend on `TEDGE_AUTH_C8Y_CA`, unless the MQTT Service turns out to support
+  basic auth for devices.
+- **Every multi-filter SUBSCRIBE is refused, from two filters up.** The
+  same happens for two plain free-form topics (`spike/a` + `spike/b`) and
+  for `s/ds` + `s/e` in either order. Growing tedge's set from one filter:
+  1 is granted, 2 or more are refused.
+- Free-form: publishes on `spike/test` and `te/device/<id>///m/environment`
+  are accepted (PUBACK). **The MQTT Service isolates clients from each
+  other**, so a free-form message is never delivered to another device's
+  subscription. A device-to-device test can't show anything, and the
+  two-device attempt (`tedge-spike-host2` publishing) was void for that
+  reason. Free-form topics are for traffic between a device and the cloud:
+  whether device publishes arrive is checked in 7.4 with a cloud-side
+  consumer, and cloud-to-device free-form traffic comes from the cloud side.
+- Wildcard free-form subscriptions aren't supported by the MQTT Service at
+  present (per the tenant owner), **even though the SUBACK grants them**
+  (`spike/+`, `spike/#`, `te/…/m/+` were all granted). A granted SUBACK is
+  therefore no proof that a subscription works. **Firmware rule: subscribe
+  only to exact topics.**
+- A basic-auth (bootstrap) device authenticates HTTPS with its own
+  credentials, because it can't get a JWT. A certificate device must get a
+  JWT over MQTT (`s/uat`) for HTTPS. That answers U4 for 8883.
+
+**Cumulocity CA enrollment (U7, host-side rehearsal):**
+
+- `c8y deviceregistration register-ca` with a 32-character one-time password,
+  then `POST /.well-known/est/simpleenroll` (Basic `<id>:<otp>`, PKCS#10 body
+  without the armour lines), returns `200`.
+- **The response is base64 PKCS#7** (`application/pkcs7-mime;
+  smime-type=certs-only`), not PEM. The firmware must unwrap it
+  (mbedTLS `MBEDTLS_PKCS7_C`, or pull out the single certificate).
+- The issued certificate: `CN=<external id>`, issuer `O=<tenant domain>,
+  CN=<tenant id>`, P-256, **valid for 1 year**, 330 bytes as DER, and no chain.
+  It connected with mTLS to both 8883 and 9883.
+
+**Remote access target (for Spike F):**
+
+- The Pi `rpi5-d83add9f145a` is at 192.168.68.72/22 on `wlan0`. `sshd`
+  already listens on `0.0.0.0:22` and is reachable from the LAN.
+- The endpoints are on `tedge-spike-a-c6` (managed object 26211202) for now:
+  `pi-ssh` (PASSTHROUGH to 192.168.68.72:22; the local ssh client
+  authenticates, and no Pi credentials are stored in Cumulocity) and
+  `device-shell` (TELNET to 127.0.0.1:23). The CA-enrolled device needs the
+  same endpoints once it exists (Spike C).
+
+**Identities created on the tenant:**
+
+- `tedge-spike-a-c6`: basic auth, managed object 26211202, for Spike A.
+- `tedge-spike-host`: CA certificate, managed object 20211208, a host-only
+  probe identity.
+- `tedge-spike-basic-9883`: basic auth, created only to reproduce the 9883
+  basic-auth refusal on a fresh device.
+- `tedge-spike-host2`: CA certificate, a second host identity. It was
+  created for a device-to-device delivery test, which client isolation makes
+  void.

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# c8y-direct-spikes firmware. Each spike is switched on separately, so its cost
+# can be measured on its own (see the change's design.md, D1).
+
+mainmenu "c8y-direct spike firmware"
+
+menu "Spikes"
+
+config SPIKE_TLS_MQTT
+	bool "Spike A: MQTTS to Cumulocity (MQTT Service / Core MQTT)"
+
+config SPIKE_OTA
+	bool "Spike B: stream an image into slot1 and test-boot it"
+
+config SPIKE_ENROLL
+	bool "Spike C: Cumulocity CA enrollment (key, CSR, simpleenroll)"
+
+config SPIKE_REMOTE_ACCESS
+	bool "Spike F: remote-access tunnel to a LAN host"
+	depends on SPIKE_TLS_MQTT
+
+endmenu
+
+source "Kconfig.zephyr"
