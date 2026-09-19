@@ -317,6 +317,23 @@ static void bridge(void *a, void *b, void *c)
 		cur, peak);
 	post(SPIKE_RA_UP, "tunnel to %s:%u opened", target_host, target_port);
 
+#if defined(CONFIG_SPIKE_RA_TELNET_NEGOTIATE)
+	/* Zephyr's telnet backend turns echo off on accept and never offers
+	 * WILL ECHO / WILL SUPPRESS-GO-AHEAD, and Cumulocity's web terminal
+	 * waits for the server to offer: both stay in line mode and nobody
+	 * echoes. Offer them to the client; its DO ECHO / DO SGA replies reach
+	 * the telnet backend (SHELL_TELNET_SUPPORT_COMMAND), which then turns
+	 * echo on.
+	 */
+	if (target_port == 23) {
+		static const uint8_t offer[] = {0xFF, 0xFB, 0x01, 0xFF, 0xFB, 0x03};
+
+		websocket_send_msg(ws, offer, sizeof(offer),
+				   WEBSOCKET_OPCODE_DATA_BINARY, true, true, 5000);
+		LOG_INF("RA telnet: offered WILL ECHO, WILL SUPPRESS-GO-AHEAD");
+	}
+#endif
+
 	/* 6.4: bridge. */
 	last_activity = last_meas = k_uptime_get();
 	for (;;) {

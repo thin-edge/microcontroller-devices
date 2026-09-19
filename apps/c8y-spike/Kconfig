@@ -186,6 +186,12 @@ config SPIKE_RA_AUTH_MTLS
 
 endchoice
 
+config SPIKE_RA_TELNET_NEGOTIATE
+	bool "Offer WILL ECHO / WILL SGA to the client on port-23 tunnels"
+	help
+	  So a browser telnet terminal switches to character mode and the
+	  device's shell echoes what is typed.
+
 config SPIKE_RA_BUF_SIZE
 	int "Bridge buffer per direction (bytes)"
 	default 2048

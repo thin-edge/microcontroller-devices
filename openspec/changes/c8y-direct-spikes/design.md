@@ -437,7 +437,7 @@ archived.
 | P7 | **A firmware update takes the C6 offline for ~40 s** (MCUboot swap-scratch of ~900 KB). | The update window, and what Cumulocity shows meanwhile. The device is dark during the swap. | Spike B. | Measure swap-using-move and overwrite-only (which gives up rollback) as alternatives; report the expected downtime in the operation. |
 | P8 | **Operations are missed in a new device's first session** if the client subscribes before the device exists: `s/ds`, `s/dat` and `devicecontrol/notifications` are refused (0x80) until `100` has created it. | A bootstrap-registered device would miss operations in its first session. | Spike C (5.7). | Client order: `100`, wait for the device to exist, then subscribe; treat a 0x80 SUBACK as "retry later", not as final. |
 | P9 | **The device key is only obfuscated.** The ITS encryption key comes from a hash of the device ID, and the key is exported into RAM for TLS for the whole uptime. | Anyone with flash or RAM access gets the device identity. | Spike C (U9). | Flash encryption or a hardware-unique key provider for ITS; upstream opaque PSA keys in `tls_credentials`. Document the limitation until then. |
-| P10 | **No safe local shell target.** Zephyr's `shell_telnet` binds `INADDR_ANY` (an unauthenticated shell on the LAN) and mirrors logs. Loopback (`NET_LOOPBACK`) broke outbound SNTP here. | Remote access to the device's own shell is a headline use case. | Spike F (6.7). | A shell backend fed directly by the remote-access WebSocket (no TCP listener), or a loopback-only listener. Investigate the loopback/SNTP interaction. |
+| P10 | **No safe local shell target.** Zephyr's `shell_telnet` binds `INADDR_ANY` (an unauthenticated shell on the LAN), mirrors logs into the session, and doesn't offer echo (fixed in the spike by the bridge offering WILL ECHO/SGA). Loopback (`NET_LOOPBACK`) broke outbound SNTP here. | Remote access to the device's own shell is a headline use case. | Spike F (6.7). | A shell backend fed directly by the remote-access WebSocket (no TCP listener), or a loopback-only listener. Investigate the loopback/SNTP interaction. |
 | P11 | **Remote-access throughput is 40–56 KB/s.** | Fine for SSH and config work; slow for bulk copies (10 MB in 3–4 min). | Spike F (6.6). | Larger bridge buffers, batching several TCP reads per WebSocket frame, and measuring where the time goes. |
 
 ## Spike results
@@ -535,6 +535,19 @@ batching are the obvious first optimisation.
 - Adding the telnet backend exceeded `ZVFS_POLL_MAX` (7 socket-service
   entries against 6), and then **the socket-service thread doesn't run at
   all, which also stops mDNS**. It needs `ZVFS_POLL_MAX` of 10.
+- **No echo in Cumulocity's web terminal** (found by the tenant owner with
+  the TELNET endpoint). Zephyr's telnet backend turns echo off on accept and
+  never offers `WILL ECHO` / `WILL SUPPRESS-GO-AHEAD`, and the web terminal
+  waits for the server to offer. Both stayed in line mode: typed text was
+  invisible, and the whole line went out on Enter (3 bytes for `ls`↵).
+  - Fixed in the spike: the bridge sends `IAC WILL ECHO, IAC WILL SGA` to the
+    client when a port-23 tunnel opens, and
+    `SHELL_TELNET_SUPPORT_COMMAND` (experimental) lets the backend act on the
+    client's `DO ECHO` / `DO SGA`.
+  - Verified: the device offers `ff fb 01, ff fb 03`, confirms after the
+    DOs, and echoes each typed character.
+  - **Design rule:** a device-side remote shell must start the telnet
+    negotiation itself.
 
 **Zephyr findings.**
 - **`websocket_connect()` needs PSA SHA-1** for `Sec-WebSocket-Accept`
