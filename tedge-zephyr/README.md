@@ -13,7 +13,7 @@ already does:
 
 > **Status: skeleton.** This is the Kconfig menu, a public header outline
 > (`include/tedge/tedge.h`, marked unstable) and a minimal sample. No feature
-> logic exists yet; see `openspec/changes/c8y-direct-spikes/` in the incubating
+> logic exists yet; see `openspec/changes/archive/2026-09-19-c8y-direct-spikes/` in the incubating
 > repository for the plan.
 
 ## Transports

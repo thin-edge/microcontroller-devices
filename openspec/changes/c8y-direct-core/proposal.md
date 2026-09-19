@@ -95,8 +95,8 @@ the app leaves.
 
 ### Modified Capabilities
 
-These two are introduced by `c8y-direct-spikes`, which must be archived
-first:
+Both became baseline specs when `c8y-direct-spikes` was archived
+(2026-09-19):
 
 - `tedge-client-module`: the public API moves from outline to stable-for-P1,
   and the platform-reset and restart-veto hooks become requirements.
@@ -114,6 +114,7 @@ first:
   `http_client` (for EST), SNTP, settings.
 - Cumulocity tenant: the `certificate-authority` and `mqtt-service.smartrest`
   features, one Smart Function.
-- Open problems carried over from `c8y-direct-spikes` (design.md): P1
+- Open problems carried over from `c8y-direct-spikes`
+  (`openspec/changes/archive/2026-09-19-c8y-direct-spikes/design.md`): P1
   (reconnect) and P2 (reset) are in scope; P3, P6, P8, P9 and P12 shape the
   design; P4, P5, P7, P10, P11 and P13 belong to later features.

@@ -1,6 +1,6 @@
 # c8y-direct spike firmware (throwaway)
 
-The firmware for `openspec/changes/c8y-direct-spikes`. It measures and proves
+The firmware for `openspec/changes/archive/2026-09-19-c8y-direct-spikes`. It measures and proves
 the direct-to-Cumulocity transport before any production code is written in
 `tedge-zephyr/`. It stands in for a user application: `lib/common` provides
 Wi-Fi, identity and the data model, and it includes `tedge-zephyr` the way any

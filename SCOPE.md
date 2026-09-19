@@ -243,7 +243,7 @@ the strongest reason for the direct transport.
 - How to supply Wi-Fi credentials without committing secrets. (Answered by BLE
   provisioning, `ble-wifi-provisioning`.)
 - Phase 3: the spikes answered U1–U12 (go/no-go table in
-  `openspec/changes/c8y-direct-spikes/design.md`; SoftAP verified on iOS
+  `openspec/changes/archive/2026-09-19-c8y-direct-spikes/design.md`; SoftAP verified on iOS
   only). The
   open problems P1–P13 there carry into `c8y-direct-core`, notably reconnect
   after a network drop (P1), the C6 reset hang (P2) and key protection (P9).
