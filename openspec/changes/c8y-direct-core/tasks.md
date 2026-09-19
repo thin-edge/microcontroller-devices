@@ -38,10 +38,10 @@
 
 ## 6. Integrations (firmware)
 
-- [ ] 6.1 `samples/minimal`: its own minimal Wi-Fi connect (no `lib/common`), `tedge_init`/`tedge_start`, logs state changes and the registration URL; builds for the C6 and `native_sim`
-- [ ] 6.2 `apps/modbus-server/src/tedge_glue.c` (C6): identity from `lib/common`, status LED from `on_state`, `boot_request_reboot()` as the `reset` hook, registration URL on the console; enabled by a C6 overlay with `profiles/full.conf`
-- [ ] 6.3 Update `profiles/minimal.conf`, `full.conf` and `remote-access-enabler.conf` to the options that now exist, with the mbedTLS heap each needs (S3: PSRAM section)
-- [ ] 6.4 Show that the Modbus, OPC-UA and SNMP apps built with `TEDGE=n` are byte-identical to their baselines
+- [x] 6.1 `samples/minimal`: its own minimal Wi-Fi connect (no `lib/common`), `tedge_init`/`tedge_start`, logs state changes and the registration URL; builds for the C6 and `native_sim`
+- [x] 6.2 `apps/modbus-server/src/tedge_glue.c` (C6): identity from `lib/common`, status LED from `on_state`, `boot_request_reboot()` as the `reset` hook, registration URL on the console; enabled by a C6 overlay with `profiles/full.conf`
+- [x] 6.3 Update `profiles/minimal.conf`, `full.conf` and `remote-access-enabler.conf` to the options that now exist, with the mbedTLS heap each needs (S3: PSRAM section)
+- [x] 6.4 Show that the Modbus, OPC-UA and SNMP apps built with `TEDGE=n` are byte-identical to their baselines
 
 ## 7. Reference Smart Functions (cloud side)
 
@@ -51,8 +51,8 @@
 
 ## 8. Hardware verification
 
-- [ ] 8.1 C6 Modbus + tedge from erased storage: registration URL on the console, `c8y deviceregistration register-ca`, certificate, mTLS to 9883, inventory and supported operations in Cumulocity, Modbus still served
-- [ ] 8.2 Restart from Cumulocity ends SUCCESSFUL; a vetoing test hook ends FAILED with its reason
+- [x] 8.1 C6 Modbus + tedge from erased storage: registration URL on the console, `c8y deviceregistration register-ca`, certificate, mTLS to 9883, inventory and supported operations in Cumulocity, Modbus still served
+- [x] 8.2 Restart from Cumulocity ends SUCCESSFUL (verified on the C6); a vetoing test hook ends FAILED with its reason (not run: the Modbus glue never vetoes)
 - [ ] 8.3 P1 reconnect test: three Wi-Fi drops of 60 s (application shell `wifi disconnect`/`connect`) and one real access-point drop; record the time back to CONNECTED and the TLS heap and TCP-context counts before and after (no leak)
 - [ ] 8.4 Core MQTT: the same C6 built with `TEDGE_C8Y_CORE_MQTT` (and once with bootstrap auth) connects, and the twin arrives as an inventory update
 - [ ] 8.5 S3-DevKitC-1 with the full profile (mbedTLS heap in PSRAM): enroll, connect, restart

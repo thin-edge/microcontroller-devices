@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "tedge-zephyr minimal sample"
+
+config TEDGE_SAMPLE_WIFI_SSID
+	string "Wi-Fi SSID"
+	default ""
+	depends on WIFI
+
+config TEDGE_SAMPLE_WIFI_PSK
+	string "Wi-Fi password (empty for an open network)"
+	default ""
+	depends on WIFI
+
+source "Kconfig.zephyr"

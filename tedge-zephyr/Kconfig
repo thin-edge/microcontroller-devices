@@ -16,6 +16,12 @@ menuconfig TEDGE
 
 if TEDGE
 
+# The client's own kernel needs, whatever the transport.
+config TEDGE_KERNEL_SELECTS
+	bool
+	default y
+	select EVENTS
+
 config TEDGE_EXPERIMENTAL_FEATURES
 	bool "Allow selecting features that are not implemented yet"
 	select EXPERIMENTAL
