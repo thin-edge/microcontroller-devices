@@ -2,8 +2,10 @@
  *
  * Connectivity status LED: blinks while the device is not on the network and is
  * steady once connected, so an operator can tell a device-side network problem
- * from a collector-side one at a glance. Uses the board's `led0` alias; a no-op
- * on boards without one (and on native_sim). Complements the optional TFT status.
+ * from a collector-side one at a glance. Uses the board's `led0` alias (a GPIO
+ * LED) or else its `led-strip` alias (an addressable RGB LED, which also shows
+ * each mode in its own colour); a no-op on boards with neither (and on
+ * native_sim). Complements the optional TFT status.
  *
  * BLE provisioning adds further patterns (see enum status_led_mode).
  */

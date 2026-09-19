@@ -473,20 +473,19 @@ button pattern, the window's end returns to the application on its old network.
 With no credentials it stops advertising and waits for a button press, so an
 unattended fresh device does not advertise forever.
 
-**Status LED** (boards with `led0`):
+**Status LED** (the WROOM's GPIO2 LED; the RGB LED of the C6, the
+S3-DevKitC-1 and the QT Py S3, which also shows the colour):
 
-| Pattern | Meaning |
-|---|---|
-| steady on | connected and serving |
-| even blink, 250 ms on / 250 ms off | not connected (associating, reconnecting) |
-| **two short blinks, then a pause** (100 ms on, 150 off, 100 on, ~1.5 s off) | provisioner, waiting for credentials |
-| fast 5 Hz blink | identify request from a client, or the button pattern was recognized (just before the reboot) |
-| very fast flicker | erase hold armed — release to erase |
-| off | provisioning window expired; press the button to advertise again |
+| Pattern | Colour (RGB LED) | Meaning |
+|---|---|---|
+| steady on | green | connected and serving |
+| even blink, 250 ms on / 250 ms off | amber | not connected (associating, reconnecting) |
+| **two short blinks, then a pause** (100 ms on, 150 off, 100 on, ~1.5 s off) | blue | provisioner, waiting for credentials |
+| fast 5 Hz blink | white | identify request from a client, or the button pattern was recognized (just before the reboot) |
+| very fast flicker | red | erase hold armed — release to erase |
+| off | — | provisioning window expired; press the button to advertise again |
 
-Of the BLE boards only the WROOM has a plain-GPIO `led0` (GPIO2); the C6 clone
-and both S3 boards carry an addressable RGB LED that `status_led.c` does not
-drive, so on them the console is the indicator. The application logs every
+The application also logs every
 button press and release with its length (`app_prov: sw0 released after
 140 ms`), then what it made of the sequence ("not a gesture, ignored", "Button
 pattern: …", "Erase armed: …"), so you can check a gesture on the console.
@@ -596,9 +595,27 @@ whether the *device* is on the network — **blinking = not connected**
 (booting/associating/reconnecting), **steady = connected and serving**. So if the
 LED is steady but a collector can't read the device, the problem is the
 collector/network path, not the device. It uses the board's `led0` alias
-(WROOM: on-board LED on GPIO2, see the board `.overlay`); it's a no-op on boards
-without an LED (the S2 TFT shows the same state on-screen; the S3 NeoPixel is not
-yet wired up).
+(WROOM: on-board LED on GPIO2, see the board `.overlay`) or, on boards without
+one, an addressable RGB LED behind the `led-strip` alias, which also shows the
+state in colour (green connected, amber not connected): the ESP32-C6 (WS2812 on
+GPIO8, `lib/common/dts/rgb-led-esp32c6-gpio8.dtsi`) and the ESP32-S3-DevKitC-1
+(GPIO48 on board v1.0, GPIO38 on v1.1; `rgb-led-esp32s3-devkitc.dtsi`). It's a
+QT Py S3's NeoPixel comes from its upstream board devicetree (with a GPIO hog
+powering it). It's a no-op on boards without an LED (the S2 TFT shows the same
+state on-screen).
+
+**ESP32-CAM** (built as `esp32_devkitc/esp32/procpu`): the DevKitC overlays put
+`led0` on GPIO2, which is an SD card line on the CAM. Its status LED is the
+small red LED on the back of the module, on GPIO33 and active low; the red LED
+on the ESP32-CAM-MB USB base is its power LED. Add
+`lib/common/dts/esp32cam-status-led.overlay` to the application and, with
+`--sysbuild`, to the provisioner:
+
+```sh
+west build --sysbuild -b esp32_devkitc/esp32/procpu apps/snmp-agent -- \
+  -DEXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay \
+  -Dwifi-provisioner_EXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay
+```
 
 ## Stalls, liveness watchdog & diagnostics
 
@@ -1151,8 +1168,10 @@ time:
   a module variant (`..._wroom_n8.dtsi` and friends). Read the real part with
   `esptool flash-id` and correct `&flash0` in the overlay if they disagree.
 - **Is there really a `led0`?** Many modern boards have only a WS2812
-  addressable RGB LED, which the GPIO-based status indicator cannot drive. That
-  is fine — the indicator no-ops — but don't invent a GPIO for it.
+  addressable RGB LED. Don't invent a GPIO `led0` for it: give it a `led-strip`
+  alias instead (see `lib/common/dts/rgb-led-*.dtsi`, after Zephyr's
+  `samples/drivers/led/led_strip` overlays), and the status indicator drives it
+  in colour. Without either, the indicator no-ops.
 
 Then verify on the **data path**, not on association: a DHCP lease and a Wi-Fi
 "connected" log prove very little on their own, as the S2 demonstrates. Ping the
