@@ -22,6 +22,9 @@ if(CONFIG_TEDGE)
     src/tedge_c8y.c
     src/tedge_smartrest.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_REMOTE_ACCESS
+    src/tedge_remote_access.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA
     src/tedge_enroll.c
     src/tedge_pkcs7.c

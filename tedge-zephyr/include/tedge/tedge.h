@@ -22,6 +22,8 @@
 #ifndef TEDGE_TEDGE_H_
 #define TEDGE_TEDGE_H_
 
+#include <zephyr/net/net_ip.h> /* struct sockaddr, for remote-access targets */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -32,8 +34,6 @@ extern "C" {
 
 /** Set while the API is an outline that may change without notice. */
 #define TEDGE_API_UNSTABLE 1
-
-struct sockaddr;
 
 /** @brief The module's version (the contents of its VERSION file). */
 const char *tedge_version(void);

@@ -64,7 +64,7 @@ config TEDGE_FEATURE_AVAILABLE_LOG_UPLOAD
 
 config TEDGE_FEATURE_AVAILABLE_REMOTE_ACCESS
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_CONFIG
 	bool
@@ -336,6 +336,11 @@ config TEDGE_REMOTE_ACCESS
 	  passthrough) to a TCP target: the device itself or another host on
 	  its network, within the target policy below. Each session holds one
 	  TLS connection while it is open. Requires certificate authentication.
+	select TEDGE_HTTP
+	select WEBSOCKET_CLIENT
+	# websocket_connect() hashes Sec-WebSocket-Accept with PSA SHA-1 but
+	# does not select it; without this it fails with -EPROTO.
+	select PSA_WANT_ALG_SHA_1
 
 if TEDGE_REMOTE_ACCESS
 
@@ -356,11 +361,28 @@ endchoice
 
 config TEDGE_REMOTE_ACCESS_ALLOW_LIST
 	string "Allow-list"
-	depends on TEDGE_REMOTE_ACCESS_TARGETS_LIST
+	depends on TEDGE_REMOTE_ACCESS
 	default ""
 	help
 	  Comma-separated "host:port" entries, e.g.
 	  "192.168.1.20:22,127.0.0.1:23".
+
+config TEDGE_REMOTE_ACCESS_STACK_SIZE
+	int "Stack of each session's bridge thread"
+	depends on TEDGE_REMOTE_ACCESS
+	default 8192
+	help
+	  The session's TLS handshake runs on this thread, so it needs the
+	  same depth as the client thread. 4096 overflowed it (the fault
+	  shows as a jump to a garbage address).
+
+config TEDGE_REMOTE_ACCESS_TWIN_SESSIONS
+	bool "List the open sessions' targets in the twin data"
+	depends on TEDGE_REMOTE_ACCESS
+	default y
+	help
+	  The session count, the limit and the policy are always published;
+	  the targets are internal addresses, so they are optional.
 
 config TEDGE_REMOTE_ACCESS_MAX_SESSIONS
 	int "Maximum concurrent sessions"

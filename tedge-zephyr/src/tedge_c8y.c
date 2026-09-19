@@ -286,9 +286,27 @@ static void handle_operation(const char *line)
 			       "(CONFIG_TEDGE_FIRMWARE_UPDATE)");
 		return;
 	case 530:
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS)
+	{
+		char reason[112];
+
+		(void)tedge_c8y_publish_sr("501,c8y_RemoteAccessConnect");
+		if (tedge_ra_request(line, reason, sizeof(reason)) != 0) {
+			char quoted[128];
+
+			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
+			char sr[192];
+
+			snprintf(sr, sizeof(sr), "502,c8y_RemoteAccessConnect,%s",
+				 quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		}
+	}
+#else
 		op_unsupported("c8y_RemoteAccessConnect",
 			       "remote access is not built into this image "
 			       "(CONFIG_TEDGE_REMOTE_ACCESS)");
+#endif
 		return;
 	case 511:
 		snprintf(op_name, sizeof(op_name), "c8y_Command");
@@ -561,6 +579,10 @@ static void publish_supported_ops(void)
 	if (IS_ENABLED(CONFIG_TEDGE_RESTART)) {
 		n += snprintf(line + n, sizeof(line) - n, ",c8y_Restart");
 	}
+	if (IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS)) {
+		n += snprintf(line + n, sizeof(line) - n,
+			      ",c8y_RemoteAccessConnect");
+	}
 	for (int i = 0; i < OP_SLOTS && n < sizeof(line); i++) {
 		if (ops[i].name != NULL) {
 			n += snprintf(line + n, sizeof(line) - n, ",%s",
@@ -647,6 +669,16 @@ static int session_start(void)
 		 tedge_version(), FREE_FORM_TOPICS ? "c8y-mqtt-service" : "c8y-core-mqtt",
 		 id->firmware_name, id->firmware_version);
 	(void)publish_twin_impl("tedge_Agent", agent);
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS)
+	{
+		char ra[224];
+
+		/* State, not an event: a reboot must not leave a stale count. */
+		if (tedge_ra_twin(ra, sizeof(ra)) == 0) {
+			(void)tedge_publish_twin("tedge_RemoteAccess", ra);
+		}
+	}
+#endif
 	publish_health();
 
 #if defined(CONFIG_TEDGE_RESTART)
@@ -736,6 +768,44 @@ static int c8y_poll(int timeout_ms)
 #if defined(CONFIG_TEDGE_RESTART)
 	if (restart_requested) {
 		handle_restart();
+	}
+#endif
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS)
+	{
+		struct tedge_ra_event ev;
+		static int64_t twin_due;
+		char sr[224], quoted[160];
+
+		while (tedge_ra_poll_event(&ev) == 0) {
+			(void)tedge_sr_quote(ev.text, quoted, sizeof(quoted));
+			switch (ev.type) {
+			case TEDGE_RA_UP:
+				(void)tedge_c8y_publish_sr(
+					"503,c8y_RemoteAccessConnect");
+				snprintf(sr, sizeof(sr),
+					 "400,c8y_RemoteAccessOpened,%s", quoted);
+				break;
+			case TEDGE_RA_FAILED:
+				snprintf(sr, sizeof(sr),
+					 "502,c8y_RemoteAccessConnect,%s", quoted);
+				break;
+			default:
+				snprintf(sr, sizeof(sr),
+					 "400,c8y_RemoteAccessClosed,%s", quoted);
+				break;
+			}
+			(void)tedge_c8y_publish_sr(sr);
+			/* The seat is freed just after the event is posted. */
+			twin_due = k_uptime_get() + 1000;
+		}
+		if (twin_due != 0 && k_uptime_get() >= twin_due) {
+			char ra[224];
+
+			twin_due = 0;
+			if (tedge_ra_twin(ra, sizeof(ra)) == 0) {
+				(void)tedge_publish_twin("tedge_RemoteAccess", ra);
+			}
+		}
 	}
 #endif
 	if (tedge_auth_username() == NULL && jwt_at != 0 &&

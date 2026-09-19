@@ -136,3 +136,32 @@ top of the MQTT session.
   (the spike showed it fits), or stay at one until it is measured under load?
 - Does the reference Smart Function present `tedge_RemoteAccess` as a
   fragment on the managed object, a measurement, or both (P12)?
+
+## Results
+
+### First hardware run (C6, Modbus + client, 2026-09-20)
+
+SSH to the Raspberry Pi through the device: **first command answered in
+4.4 s**, 1 MB device → Mac in 34 s (**29 KB/s**, against 40–56 KB/s for the
+spike; the spike app carried larger net buffers). Both operations ended
+SUCCESSFUL, with `c8y_RemoteAccessOpened` / `c8y_RemoteAccessClosed` events
+carrying the target and the byte counts (1,004,673 B up, 3,654 B down for the
+transfer).
+
+**Three configuration bugs the first runs exposed**, all of them the module
+asking the application for too little:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `the cloud connection failed (-12)` at once | `NET_SOCKETS_TLS_MAX_CONTEXTS` is 1 by default: no TLS context for the tunnel beside MQTT | one context per session on top of MQTT, in the profiles and the board overlays |
+| `TLS to <tenant> failed (-12)` after the context fix | the 64 KB mbedTLS heap holds MQTT's 35 KB, leaving too little for a second handshake (52 KB peak) | 96 KB for MQTT + one tunnel, documented next to the option |
+| The device rebooted when the tunnel opened | the bridge thread's 4 KB stack overflowed: the TLS handshake runs on it (a jump to a garbage address) | `TEDGE_REMOTE_ACCESS_STACK_SIZE` defaults to 8192, as the spike used |
+
+Each failure was reported as a failed operation with its reason rather than
+leaving the operation pending, which is the behaviour the spec asks for.
+
+**One cloud-side observation:** an operation created just as the local
+`c8y remoteaccess server` shut down stayed EXECUTING. The device never
+received it (no request in its log), so the microservice had marked it
+EXECUTING itself. Nothing for the device to do, but it means a stuck
+EXECUTING operation is not proof that the device ignored it.

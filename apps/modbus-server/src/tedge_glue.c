@@ -20,6 +20,11 @@
 
 #include <tedge/tedge.h>
 
+#if defined(CONFIG_SHELL)
+#include <zephyr/shell/shell.h>
+#include <mbedtls/memory_buffer_alloc.h>
+#endif
+
 LOG_MODULE_REGISTER(tedge_glue, CONFIG_LOG_DEFAULT_LEVEL);
 
 static void on_state(enum tedge_state state, void *user_data)
@@ -70,6 +75,34 @@ static const struct tedge_hooks hooks = {
 	.restart_request = restart_request,
 	.reset = reset,
 };
+
+#if defined(CONFIG_SHELL)
+/* Test aid (task 8.3): the client's state and the TLS heap in use, so a
+ * reconnect cycle can be checked for leaks. */
+static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
+{
+	static const char *const names[] = {
+		"stopped",   "waiting-network", "waiting-time",
+		"awaiting-registration", "connecting", "connected", "updating",
+	};
+	enum tedge_state state = tedge_get_state();
+	size_t cur = 0, cur_blocks = 0, peak = 0, peak_blocks = 0;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	mbedtls_memory_buffer_alloc_cur_get(&cur, &cur_blocks);
+	mbedtls_memory_buffer_alloc_max_get(&peak, &peak_blocks);
+	shell_print(sh, "tedge state=%s tls_heap cur=%zu (%zu blocks) peak=%zu",
+		    ((size_t)state < ARRAY_SIZE(names)) ? names[state] : "?", cur,
+		    cur_blocks, peak);
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_tedge,
+	SHELL_CMD(diag, NULL, "client state and TLS heap", cmd_diag),
+	SHELL_SUBCMD_SET_END);
+SHELL_CMD_REGISTER(tedge, &sub_tedge, "thin-edge.io client", NULL);
+#endif /* CONFIG_SHELL */
 
 int tedge_glue_start(void)
 {

@@ -103,6 +103,26 @@ int tedge_c8y_publish_sr(const char *line);
 /** The latest JWT from s/dat, or an empty string. */
 const char *tedge_c8y_jwt(void);
 
+/* --- Remote access (tedge_remote_access.c) ------------------------------- */
+
+enum tedge_ra_event_type {
+	TEDGE_RA_UP,     /* the tunnel is up: report the operation successful */
+	TEDGE_RA_FAILED, /* it never came up: report it failed, with the text */
+	TEDGE_RA_CLOSED, /* an established tunnel ended: publish the event */
+};
+
+struct tedge_ra_event {
+	enum tedge_ra_event_type type;
+	char text[144];
+};
+
+/** Handle a "530,..." line: start a session, or fail with @p reason. */
+int tedge_ra_request(const char *line, char *reason, size_t rlen);
+/** Next result from a bridge thread; 0 when @p ev was filled. */
+int tedge_ra_poll_event(struct tedge_ra_event *ev);
+/** The tedge_RemoteAccess twin value as JSON. */
+int tedge_ra_twin(char *buf, size_t len);
+
 /* --- Onboarding (tedge_enroll.c / tedge_bootstrap.c) --------------------- */
 
 /**
