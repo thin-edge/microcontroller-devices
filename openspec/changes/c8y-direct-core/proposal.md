@@ -15,6 +15,9 @@ access, firmware update, telemetry) runs on.
   `include/tedge/tedge.h`, which nothing uses yet): init and start, a
   connection-state callback, identity (external ID, default `tedge-<MAC>`),
   and the hooks the host application needs (restart veto, platform reset).
+  New functions: `tedge_set_c8y_url()`, `tedge_set_bootstrap_credentials()`
+  and `tedge_publish_twin()`; not-yet-implemented calls return `-ENOTSUP`
+  (design.md D10).
   The module owns its thread, a bounded mbedTLS heap, its settings subtree
   (`tedge/`) and its TLS credential tags. It still depends on nothing in
   `lib/` or `apps/`.
@@ -44,7 +47,9 @@ access, firmware update, telemetry) runs on.
   and auth choices, `TEDGE_C8Y_URL`, `TEDGE_DEVICE_ID_PREFIX`,
   `TEDGE_HEAP_SIZE` and `TEDGE_THREAD_STACK_SIZE` become functional;
   `TEDGE_HEALTH` and `TEDGE_RESTART` stop being experimental. New:
-  `TEDGE_RECONNECT_BACKOFF_MAX_S` and `TEDGE_ENROLL_POLL_S`. The TLS record
+  `TEDGE_RECONNECT_BACKOFF_MAX_S`, `TEDGE_ENROLL_POLL_S`, `TEDGE_PSA_KEY_ID`,
+  `TEDGE_C8Y_CA_FILES`, `TEDGE_SNTP_SERVER`, `TEDGE_REQUIRED_INTERVAL_MIN`,
+  `TEDGE_BOOTSTRAP_USER` and `TEDGE_BOOTSTRAP_PASSWORD` (design.md D4–D6). The TLS record
   size stays Zephyr's global `MBEDTLS_SSL_MAX_CONTENT_LEN`: the profiles set
   16 KB, and 8 KB is a documented opt-in for the MQTT Service (P3).
 
