@@ -39,3 +39,6 @@
 };
 
 #include "../../../lib/common/dts/layout-esp32c6-4M.dtsi"
+
+/* Status LED: the WS2812 RGB LED on GPIO8. */
+#include "../../../lib/common/dts/rgb-led-esp32c6-gpio8.dtsi"
