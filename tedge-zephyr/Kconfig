@@ -42,7 +42,7 @@ config TEDGE_FEATURE_AVAILABLE_HEALTH
 
 config TEDGE_FEATURE_AVAILABLE_RESTART
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_FIRMWARE_UPDATE
 	bool
@@ -91,6 +91,28 @@ endchoice
 
 if TEDGE_TRANSPORT_C8Y
 
+# The application owns the network interface; these are what the client
+# itself needs. Everything else (socket counts, mbedTLS heap and record size,
+# PSA algorithms) is the application's to size: see the README and profiles.
+config TEDGE_C8Y_SELECTS
+	bool
+	default y
+	# The client needs the IP stack and sockets. The application still owns
+	# the interface: which L2, credentials, and when to connect.
+	select NETWORKING
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_IPV4
+	select NET_TCP
+	select NET_UDP if TEDGE_SNTP
+	select DNS_RESOLVER
+	select MQTT_LIB
+	select NET_SOCKETS
+	select NET_SOCKETS_SOCKOPT_TLS
+	select TLS_CREDENTIALS
+	select SETTINGS
+	select SNTP if TEDGE_SNTP
+
 config TEDGE_C8Y_URL
 	string "Cumulocity tenant host"
 	default ""
@@ -98,6 +120,43 @@ config TEDGE_C8Y_URL
 	  Host name of the Cumulocity tenant, e.g. "example.cumulocity.com",
 	  without a scheme. It can be overridden at runtime (settings), so a
 	  fleet build usually sets it once per tenant.
+
+config TEDGE_C8Y_CA_FILES
+	string "Trust anchors for the tenant (PEM files, space-separated)"
+	default "certs/godaddy-root-g2.pem"
+	help
+	  Paths relative to the module directory, or absolute. They are
+	  embedded and registered as the server trust anchors. The default is
+	  the root the *.cumulocity.com chains end in; point this at your own
+	  files for other instances.
+
+config TEDGE_SNTP
+	bool "Set the clock with SNTP when it is not already valid"
+	default y
+	help
+	  Certificates cannot be validated without the time. With this off,
+	  the application must set the realtime clock before the client
+	  connects.
+
+config TEDGE_SNTP_SERVER
+	string "SNTP server"
+	default "pool.ntp.org"
+	depends on TEDGE_SNTP
+
+config TEDGE_REQUIRED_INTERVAL_MIN
+	int "Required interval reported to Cumulocity (minutes)"
+	default 60
+	help
+	  Cumulocity marks the device unavailable when it has not sent
+	  anything for this long. 0 disables the report.
+
+config TEDGE_RECONNECT_BACKOFF_MAX_S
+	int "Longest wait between reconnect attempts (s)"
+	default 300
+	range 5 3600
+	help
+	  The wait starts at 3 s (a closed TLS connection holds its TCP
+	  context for a moment) and doubles up to this value, with jitter.
 
 choice TEDGE_C8Y_ENDPOINT
 	prompt "Cumulocity MQTT endpoint"
@@ -143,6 +202,42 @@ config TEDGE_AUTH_BOOTSTRAP
 	  need certificate authentication are unavailable.
 
 endchoice
+
+if TEDGE_AUTH_C8Y_CA
+
+config TEDGE_PSA_KEY_ID
+	hex "PSA key ID of the device key"
+	default 0x0007E571
+	range 0x00000001 0x3FFFFFFF
+	help
+	  Persistent key ID in PSA secure storage. It must not collide with
+	  the application's own keys, and must be at most PSA_KEY_ID_USER_MAX.
+
+config TEDGE_ENROLL_POLL_S
+	int "Seconds between enrollment attempts"
+	default 10
+	range 2 600
+	help
+	  While the device waits to be registered, it retries simpleenroll at
+	  this interval, backing off to 60 s.
+
+endif # TEDGE_AUTH_C8Y_CA
+
+if TEDGE_AUTH_BOOTSTRAP
+
+config TEDGE_BOOTSTRAP_USER
+	string "Bootstrap user (tenant/username)"
+	default ""
+	help
+	  The Cumulocity bootstrap credentials, usually set once per fleet in
+	  a git-ignored overlay. The application can also set them at runtime
+	  with tedge_set_bootstrap_credentials().
+
+config TEDGE_BOOTSTRAP_PASSWORD
+	string "Bootstrap password"
+	default ""
+
+endif # TEDGE_AUTH_BOOTSTRAP
 
 endif # TEDGE_TRANSPORT_C8Y
 
@@ -282,7 +377,10 @@ menu "Resources"
 
 config TEDGE_THREAD_STACK_SIZE
 	int "Client thread stack size"
-	default 4096
+	default 6144
+	help
+	  The measured peak is about 3.5 KB, including the mutual-TLS
+	  handshake and the first enrollment (c8y-direct-spikes).
 
 config TEDGE_THREAD_PRIORITY
 	int "Client thread priority"

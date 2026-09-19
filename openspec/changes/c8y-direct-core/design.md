@@ -289,10 +289,14 @@ firmware update will still add to the hooks.
 
 ## Open Questions
 
-- **Smart Function format and delivery (P12):** what the tenant owner's
-  `tedge_RemoteAccess` function looks like (source, trigger topic, output),
-  so the reference set can copy its shape, and whether functions can be
-  installed from a file or CLI.
+- **Smart Function format and delivery (P12):** the tenant owner's
+  `tedge_RemoteAccess` function is meant to write the payload to the device's
+  managed object under a `remoteAccess` fragment, but it is untested and the
+  fragment has not appeared (the managed object's `lastUpdated` predates the
+  device's publishes), so it probably has a bug. The reference set needs a
+  function that is verified end to end, plus a way to install one (file or
+  CLI). The fragment name the module documents should also be settled:
+  `remoteAccess` (the owner's choice) or the published `tedge_RemoteAccess`.
 - **Last will on the MQTT Service:** does it deliver an LWT to Smart
   Functions? This decides whether health "down" is possible without a
   heartbeat check.

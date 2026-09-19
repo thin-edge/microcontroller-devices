@@ -4,10 +4,11 @@
  * @file
  * @brief tedge-zephyr public API: thin-edge.io device management for Zephyr.
  *
- * @warning UNSTABLE. This is an outline of the integration contract between
- * the client and the application that hosts it. Only tedge_version() is
- * implemented. Everything else is declared so the shape can be reviewed,
- * and it will change as the features are built. Don't depend on it yet.
+ * @warning UNSTABLE while the features are being built. The lifecycle,
+ * onboarding, twin and operation calls below are implemented (change
+ * c8y-direct-core) and are meant to stay as they are; the ones marked
+ * "not implemented yet" return -ENOTSUP until their change lands, and may
+ * still change shape.
  *
  * Division of responsibilities:
  * - The application owns the network interface, the device identity, what
@@ -113,6 +114,13 @@ struct tedge_hooks {
 	bool (*remote_access_allow)(const struct tedge_remote_target *target,
 				    void *user_data);
 
+	/**
+	 * Reset the device, called for a restart the application allowed.
+	 * When it is NULL the client uses the platform's own full-system
+	 * reset. It must not return.
+	 */
+	void (*reset)(void *user_data);
+
 	/** Called periodically from each client thread, for a task watchdog. */
 	void (*progress)(void *user_data);
 
@@ -148,6 +156,19 @@ enum tedge_state tedge_get_state(void);
 /* ------------------------------------------------------------------------ */
 
 /**
+ * @brief Override the Cumulocity tenant host (default: CONFIG_TEDGE_C8Y_URL).
+ *
+ * Stored in settings, so it survives a reboot. Call before tedge_start().
+ */
+int tedge_set_c8y_url(const char *host);
+
+/**
+ * @brief Set the bootstrap credentials (CONFIG_TEDGE_AUTH_BOOTSTRAP), when
+ * they are not built in. Call before tedge_start(). Not stored in settings.
+ */
+int tedge_set_bootstrap_credentials(const char *user, const char *password);
+
+/**
  * @brief Copy the registration URL (external ID and one-time password
  * pre-filled) into @p buf, so the application can show it (console,
  * display, provisioning result).
@@ -157,7 +178,24 @@ enum tedge_state tedge_get_state(void);
 int tedge_registration_url(char *buf, size_t len);
 
 /* ------------------------------------------------------------------------ */
-/* Telemetry (CONFIG_TEDGE_TELEMETRY)                                        */
+/* Twin data                                                                 */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * @brief Publish @p json as the twin fragment @p fragment.
+ *
+ * The client keeps the value and republishes it after every reconnect, so
+ * a fragment is never left stale by a reboot. @p json must be a JSON object
+ * or value without the fragment name, e.g. "{\"state\":\"ok\"}".
+ * Passing NULL forgets the fragment.
+ *
+ * @return 0 when stored and queued, -ENOMEM if the client's heap or its
+ *         fragment table is full.
+ */
+int tedge_publish_twin(const char *fragment, const char *json);
+
+/* ------------------------------------------------------------------------ */
+/* Telemetry (CONFIG_TEDGE_TELEMETRY) - not implemented yet (-ENOTSUP)       */
 /* ------------------------------------------------------------------------ */
 
 /** @brief One value of a measurement. */
@@ -234,7 +272,7 @@ int tedge_operation_succeed(struct tedge_operation *op, const char *result);
 int tedge_operation_fail(struct tedge_operation *op, const char *reason);
 
 /* ------------------------------------------------------------------------ */
-/* Log and configuration types (CONFIG_TEDGE_LOG_UPLOAD, CONFIG_TEDGE_CONFIG) */
+/* Log and configuration types - not implemented yet (-ENOTSUP)              */
 /* ------------------------------------------------------------------------ */
 
 /**

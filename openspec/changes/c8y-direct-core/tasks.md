@@ -1,10 +1,10 @@
 ## 1. Module foundations (firmware)
 
-- [ ] 1.1 Add the D1 source layout to `tedge-zephyr/` (`src/tedge_core.c`, `tedge_c8y.c`, `tedge_smartrest.c`, `tedge_enroll.c`, `tedge_bootstrap.c`, `tedge_time.c`, `tedge_platform.c`, `tedge_internal.h`, `certs/`), compiled per Kconfig; keep `scripts/check-independence.py` passing
-- [ ] 1.2 Add the new Kconfig options (`TEDGE_RECONNECT_BACKOFF_MAX_S`, `TEDGE_ENROLL_POLL_S`, `TEDGE_PSA_KEY_ID`, `TEDGE_C8Y_CA_FILES`, `TEDGE_SNTP_SERVER`, `TEDGE_REQUIRED_INTERVAL_MIN`, `TEDGE_BOOTSTRAP_USER`/`_PASSWORD`), set the thread stack default to 6144, make `TEDGE_HEALTH` and `TEDGE_RESTART` selectable without `TEDGE_EXPERIMENTAL_FEATURES`, and have the module select what it needs (MQTT, sockets, TLS, SNTP, settings, PSA ITS). Add `tests/kconfig` cases for them
-- [ ] 1.3 Embed the trust anchors from `TEDGE_C8Y_CA_FILES` (default: Go Daddy Root G2) at `TEDGE_TLS_TAG_BASE + 0`, via a generated `.inc`
-- [ ] 1.4 Update `include/tedge/tedge.h` to D10: add `reset` to `tedge_hooks`, `tedge_set_c8y_url()`, `tedge_set_bootstrap_credentials()`, `tedge_publish_twin()`, and mark which change implements each declared-but-unimplemented function (they return `-ENOTSUP`)
-- [ ] 1.5 Implement `tedge_init`/`tedge_start`/`tedge_stop`/`tedge_get_state`: the client thread, the module `k_heap`, the API message queue and the `on_state`/`progress` hooks (D2, D3)
+- [x] 1.1 Add the D1 source layout to `tedge-zephyr/` (`src/tedge_core.c`, `tedge_c8y.c`, `tedge_smartrest.c`, `tedge_enroll.c`, `tedge_bootstrap.c`, `tedge_time.c`, `tedge_platform.c`, `tedge_internal.h`, `certs/`), compiled per Kconfig; keep `scripts/check-independence.py` passing
+- [x] 1.2 Add the new Kconfig options (`TEDGE_RECONNECT_BACKOFF_MAX_S`, `TEDGE_ENROLL_POLL_S`, `TEDGE_PSA_KEY_ID`, `TEDGE_C8Y_CA_FILES`, `TEDGE_SNTP_SERVER`, `TEDGE_REQUIRED_INTERVAL_MIN`, `TEDGE_BOOTSTRAP_USER`/`_PASSWORD`), set the thread stack default to 6144, make `TEDGE_HEALTH` and `TEDGE_RESTART` selectable without `TEDGE_EXPERIMENTAL_FEATURES`, and have the module select what it needs (MQTT, sockets, TLS, SNTP, settings, PSA ITS). Add `tests/kconfig` cases for them
+- [x] 1.3 Embed the trust anchors from `TEDGE_C8Y_CA_FILES` (default: Go Daddy Root G2) at `TEDGE_TLS_TAG_BASE + 0`, via a generated `.inc`
+- [x] 1.4 Update `include/tedge/tedge.h` to D10: add `reset` to `tedge_hooks`, `tedge_set_c8y_url()`, `tedge_set_bootstrap_credentials()`, `tedge_publish_twin()`, and mark which change implements each declared-but-unimplemented function (they return `-ENOTSUP`)
+- [x] 1.5 Implement `tedge_init`/`tedge_start`/`tedge_stop`/`tedge_get_state`: the client thread, the module `k_heap`, the API message queue and the `on_state`/`progress` hooks (D2, D3)
 
 ## 2. Connection (firmware)
 
