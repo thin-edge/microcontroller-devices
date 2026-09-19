@@ -54,4 +54,37 @@ const char *app_net_hostname(void);
  */
 void app_net_show_status(enum display_stage stage);
 
+/** Wi-Fi station credentials (WPA2-Personal, or open when psk_len is 0). */
+struct app_wifi_creds {
+	char ssid[33]; /* 32 bytes + NUL */
+	size_t ssid_len;
+	char psk[65];  /* 64 bytes + NUL */
+	size_t psk_len;
+};
+
+/**
+ * Resolve the credentials to join with: the stored entry (with
+ * CONFIG_APP_WIFI_CRED_STORE), else the compile-time CONFIG_APP_WIFI_SSID/PSK.
+ *
+ * @return 0 with @p out filled, or -ENOENT when no source has any.
+ */
+int app_wifi_creds_resolve(struct app_wifi_creds *out);
+
+/** The connectivity work queue (the sw0 monitors run on it). */
+struct k_work_q *app_net_workq(void);
+
+#if defined(CONFIG_APP_WIFI_PROVISIONER)
+/**
+ * Provisioner image: join with @p creds and wait for an IPv4 address.
+ * Connectivity recovery (reconnects, reachability, last-resort reboot) is
+ * suspended in this mode, so a failed attempt is not retried by net.c.
+ *
+ * @return 0 once an address is assigned; -ECONNREFUSED when the association
+ *         fails; -ETIMEDOUT when no address arrives within @p timeout. On
+ *         failure the station is disconnected again.
+ */
+int app_net_try_credentials(const struct app_wifi_creds *creds,
+			    k_timeout_t timeout);
+#endif
+
 #endif /* APP_NET_H_ */

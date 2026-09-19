@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * ESP32-S3-DevKitC-1 (N16R8): the provisioner layout, linked for and launched
+ * from prov_partition. Console on uart0 like the applications.
+ */
+#include "../../../lib/common/dts/layout-esp32s3-16M.dtsi"
+
+/ {
+	chosen {
+		zephyr,code-partition = &prov_partition;
+	};
+};

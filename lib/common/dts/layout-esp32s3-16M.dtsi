@@ -1,0 +1,75 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * MCUboot + Wi-Fi provisioner layout for 16 MB ESP32-S3 boards (bootloader at
+ * 0x0), e.g. the ESP32-S3-DevKitC-1 N16R8. Included by the board overlays of
+ * every app, of the provisioner, and of MCUboot (sysbuild/provisioning.cmake).
+ *
+ *   0x000000  mcuboot     64 KB  MCUboot
+ *   0x010000  sys         64 KB
+ *   0x020000  image-0   3072 KB  application, primary slot
+ *   0x320000  image-1   3072 KB  application, secondary slot (OTA)
+ *   0x620000  prov      2048 KB  Wi-Fi provisioner
+ *   0x820000  bootreq      4 KB  boot request (lib/common/boot_request.h)
+ *   0x830000  storage    192 KB  settings/NVS: credentials, identity record
+ *   0x860000  scratch    128 KB  MCUboot swap scratch
+ *   0x880000  coredump     4 KB
+ *   0x881000  (free, ~7.5 MB)
+ *
+ * Replaces the upstream AMP layout: the APP-CPU and LP-core slots are unused.
+ * A plain build without MCUboot ignores the slots and boots from 0x0.
+ */
+
+/delete-node/ &boot_partition;
+/delete-node/ &sys_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &slot0_appcpu_partition;
+/delete-node/ &slot1_appcpu_partition;
+/delete-node/ &slot0_lpcore_partition;
+/delete-node/ &slot1_lpcore_partition;
+/delete-node/ &storage_partition;
+/delete-node/ &scratch_partition;
+/delete-node/ &coredump_partition;
+
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;
+
+	partitions {
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x0 DT_SIZE_K(64)>;
+		};
+		sys_partition: partition@10000 {
+			label = "sys";
+			reg = <0x10000 DT_SIZE_K(64)>;
+		};
+		slot0_partition: partition@20000 {
+			label = "image-0";
+			reg = <0x20000 DT_SIZE_K(3072)>;
+		};
+		slot1_partition: partition@320000 {
+			label = "image-1";
+			reg = <0x320000 DT_SIZE_K(3072)>;
+		};
+		prov_partition: partition@620000 {
+			label = "prov";
+			reg = <0x620000 DT_SIZE_K(2048)>;
+		};
+		bootreq_partition: partition@820000 {
+			label = "bootreq";
+			reg = <0x820000 DT_SIZE_K(4)>;
+		};
+		storage_partition: partition@830000 {
+			label = "storage";
+			reg = <0x830000 DT_SIZE_K(192)>;
+		};
+		scratch_partition: partition@860000 {
+			label = "image-scratch";
+			reg = <0x860000 DT_SIZE_K(128)>;
+		};
+		coredump_partition: partition@880000 {
+			label = "coredump";
+			reg = <0x880000 DT_SIZE_K(4)>;
+		};
+	};
+};

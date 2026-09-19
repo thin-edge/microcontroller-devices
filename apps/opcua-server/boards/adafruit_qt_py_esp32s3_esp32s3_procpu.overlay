@@ -6,3 +6,10 @@
 &wifi {
 	status = "okay";
 };
+
+/* Flash size and layout: the board devicetree assumes an N8 (8 MB); the QT Py
+ * in hand is an N4R2 (4 MB). The shared layout declares the 4 MB and the
+ * MCUboot + Wi-Fi provisioner partitions (see the ESP32-C6 overlay for how a
+ * plain build uses them).
+ */
+#include "../../../lib/common/dts/layout-esp32s3-4M.dtsi"

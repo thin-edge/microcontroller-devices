@@ -4,6 +4,12 @@
 #include "display.h"
 #include "liveness.h"
 #include "status_led.h"
+#if defined(CONFIG_APP_PROV_HANDOFF)
+#include "prov_handoff.h"
+#endif
+#if defined(CONFIG_APP_WIFI_CRED_STORE)
+#include <zephyr/net/wifi_credentials.h>
+#endif
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -12,6 +18,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/net_event.h>
 #include <stdio.h>
+#include <string.h>
 
 #if defined(CONFIG_WIFI)
 #include <zephyr/net/wifi.h>
@@ -339,18 +346,111 @@ static void status_work_handler(struct k_work *work)
 	net_wq_reschedule(&status_work, K_SECONDS(3));
 }
 
+/* The provisioner image: the device is waiting for (or testing) credentials,
+ * so being offline is expected. Recovery is suspended and the LED shows the
+ * provisioning pattern instead of the connectivity state. */
+static const bool prov_mode = IS_ENABLED(CONFIG_APP_WIFI_PROVISIONER);
+
+#if defined(CONFIG_APP_WIFI_PROVISIONER)
+/* Outcome of app_net_try_credentials(), signalled from the event handlers. */
+static K_SEM_DEFINE(try_sem, 0, 1);
+static int try_result;
+static bool try_active;
+
+static void try_done(int result)
+{
+	if (try_active) {
+		try_active = false;
+		try_result = result;
+		k_sem_give(&try_sem);
+	}
+}
+#else
+static inline void try_done(int result)
+{
+	ARG_UNUSED(result);
+}
+#endif
+
 static void mark_connected(bool up)
 {
 	atomic_set(&connected, up ? 1 : 0);
-	status_led_set_connected(up);
+	if (!prov_mode) {
+		status_led_set_connected(up);
+	}
 	if (up) {
 		update_identity(); /* MAC (and unique hostname) are set by now */
 		current_ipv4 = read_iface_ipv4();
 		render_status(DISPLAY_STAGE_CONNECTED);
 		k_sem_give(&net_connected_sem);
+		try_done(0);
+#if defined(CONFIG_APP_PROV_HANDOFF)
+		app_prov_identity_update();
+#endif
 	} else {
 		render_status(DISPLAY_STAGE_WIFI_CONNECTING);
 	}
+}
+
+#if defined(CONFIG_APP_WIFI_CRED_STORE)
+static void stored_ssid_cb(void *cb_arg, const char *ssid, size_t ssid_len)
+{
+	struct app_wifi_creds *out = cb_arg;
+
+	if (out->ssid_len == 0 && ssid_len < sizeof(out->ssid)) {
+		memcpy(out->ssid, ssid, ssid_len);
+		out->ssid[ssid_len] = '\0';
+		out->ssid_len = ssid_len;
+	}
+}
+
+static int stored_creds(struct app_wifi_creds *out)
+{
+	struct wifi_credentials_personal c;
+
+	memset(out, 0, sizeof(*out));
+	wifi_credentials_for_each_ssid(stored_ssid_cb, out);
+	if (out->ssid_len == 0) {
+		return -ENOENT;
+	}
+	if (wifi_credentials_get_by_ssid_personal_struct(out->ssid, out->ssid_len,
+							 &c) != 0 ||
+	    c.password_len >= sizeof(out->psk)) {
+		memset(out, 0, sizeof(*out));
+		return -ENOENT;
+	}
+	memcpy(out->psk, c.password, c.password_len);
+	out->psk[c.password_len] = '\0';
+	out->psk_len = c.password_len;
+	memset(&c, 0, sizeof(c));
+	return 0;
+}
+#endif
+
+int app_wifi_creds_resolve(struct app_wifi_creds *out)
+{
+#if defined(CONFIG_APP_WIFI_CRED_STORE)
+	if (stored_creds(out) == 0) {
+		return 0;
+	}
+#endif
+	memset(out, 0, sizeof(*out));
+#if defined(CONFIG_APP_WIFI)
+	size_t ssid_len = strlen(CONFIG_APP_WIFI_SSID);
+	size_t psk_len = strlen(CONFIG_APP_WIFI_PSK);
+
+	if (ssid_len == 0 || ssid_len >= sizeof(out->ssid) ||
+	    psk_len >= sizeof(out->psk)) {
+		return -ENOENT;
+	}
+	memcpy(out->ssid, CONFIG_APP_WIFI_SSID, ssid_len + 1);
+	out->ssid_len = ssid_len;
+	memcpy(out->psk, CONFIG_APP_WIFI_PSK, psk_len + 1);
+	out->psk_len = psk_len;
+	return 0;
+#else
+	return -ENOENT;
+#endif
 }
 
 #if defined(CONFIG_NET_NATIVE_OFFLOADED_SOCKETS)
@@ -434,7 +534,7 @@ static void maybe_override_mac(void)
 #endif
 }
 
-static int wifi_connect(void)
+static int wifi_connect(const struct app_wifi_creds *creds)
 {
 	struct net_if *iface = net_if_get_first_wifi();
 	struct wifi_connect_req_params params = {0};
@@ -458,10 +558,10 @@ static int wifi_connect(void)
 	}
 #endif
 
-	params.ssid = (const uint8_t *)CONFIG_APP_WIFI_SSID;
-	params.ssid_length = strlen(CONFIG_APP_WIFI_SSID);
-	params.psk = (const uint8_t *)CONFIG_APP_WIFI_PSK;
-	params.psk_length = strlen(CONFIG_APP_WIFI_PSK);
+	params.ssid = (const uint8_t *)creds->ssid;
+	params.ssid_length = creds->ssid_len;
+	params.psk = (const uint8_t *)creds->psk;
+	params.psk_length = creds->psk_len;
 	params.security = params.psk_length ? WIFI_SECURITY_TYPE_PSK
 					    : WIFI_SECURITY_TYPE_NONE;
 	params.channel = WIFI_CHANNEL_ANY;
@@ -474,7 +574,7 @@ static int wifi_connect(void)
 		return -EINVAL;
 	}
 
-	LOG_INF("Connecting to Wi-Fi SSID \"%s\"...", CONFIG_APP_WIFI_SSID);
+	LOG_INF("Connecting to Wi-Fi SSID \"%s\"...", creds->ssid);
 	app_step(APP_CTX_NETWQ, "wifi-connect");
 
 	int rc = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
@@ -496,11 +596,17 @@ static void reconnect_handler(struct k_work *work)
 	ARG_UNUSED(work);
 	app_step(APP_CTX_NETWQ, "reconnect");
 	app_alive(APP_CTX_NETWQ); /* the queue reached this item: progress */
-	if (app_net_is_connected()) {
+	if (app_net_is_connected() || prov_mode) {
 		return;
 	}
 
-	if (wifi_connect() != 0) {
+	struct app_wifi_creds creds;
+
+	(void)app_wifi_creds_resolve(&creds);
+	int rc = wifi_connect(&creds);
+
+	memset(&creds, 0, sizeof(creds));
+	if (rc != 0) {
 		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 	}
 }
@@ -516,6 +622,10 @@ static void reconnect_handler(struct k_work *work)
 static void connectivity_watchdog(void)
 {
 	static uint32_t bad_ticks;
+
+	if (prov_mode) {
+		return; /* offline by design while waiting for credentials */
+	}
 
 	bool healthy = read_iface_ipv4() != 0; /* an IP is the minimum */
 
@@ -599,8 +709,11 @@ static void l4_event_handler(struct net_mgmt_event_callback *cb,
 		mark_connected(true);
 		break;
 	case NET_EVENT_L4_DISCONNECTED:
-		LOG_WRN("Network connectivity lost — scheduling reconnect");
 		mark_connected(false);
+		if (prov_mode) {
+			break;
+		}
+		LOG_WRN("Network connectivity lost — scheduling reconnect");
 		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 		break;
 	default:
@@ -617,18 +730,30 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
 		g_last_reason = status->disconn_reason;
+		mark_connected(false); /* update state + LED now, not only on L4 */
+		if (prov_mode) {
+			LOG_WRN("Wi-Fi disconnected (reason %d)",
+				status->disconn_reason);
+			try_done(-ECONNREFUSED);
+			return;
+		}
 		LOG_WRN("Wi-Fi disconnected (reason %d) — will reconnect",
 			status->disconn_reason);
-		mark_connected(false); /* update state + LED now, not only on L4 */
 		net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 	} else if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
 		if (status->status) {
 			g_last_reason = status->status;
+			render_status(DISPLAY_STAGE_ERROR);
+			if (prov_mode) {
+				LOG_WRN("Wi-Fi association failed (%d)",
+					status->status);
+				try_done(-ECONNREFUSED);
+				return;
+			}
 			LOG_WRN("Wi-Fi association failed (%d) — retrying",
 				status->status);
-			render_status(DISPLAY_STAGE_ERROR);
 			net_wq_reschedule(&reconnect_work, K_SECONDS(2));
 		} else {
 			LOG_INF("Wi-Fi associated; awaiting IP address");
@@ -655,8 +780,85 @@ int app_net_init(void)
 	app_diag_watch_work("status", &status_work);
 	app_diag_watch_work("reconn", &reconnect_work);
 
-	return wifi_connect();
+#if defined(CONFIG_APP_WIFI_PROVISIONER)
+	/* The provisioner joins only to test candidate credentials, through
+	 * app_net_try_credentials(). */
+	return 0;
+#else
+	struct app_wifi_creds creds;
+	bool have_creds = app_wifi_creds_resolve(&creds) == 0;
+
+#if defined(CONFIG_APP_PROV_HANDOFF)
+	if (!have_creds) {
+		app_prov_handoff_no_credentials(); /* reboots when it can */
+	}
+	app_prov_button_start();
+#endif
+
+	if (!have_creds) {
+		LOG_ERR("Wi-Fi SSID is empty — set APP_WIFI_SSID via a local "
+			"overlay (see overlay-wifi-credentials.conf.example)");
+		return -EINVAL;
+	}
+
+	int rc = wifi_connect(&creds);
+
+	memset(&creds, 0, sizeof(creds));
+	return rc;
+#endif
 }
+
+struct k_work_q *app_net_workq(void)
+{
+	return &net_wq;
+}
+
+#if defined(CONFIG_APP_WIFI_PROVISIONER)
+int app_net_try_credentials(const struct app_wifi_creds *creds,
+			    k_timeout_t timeout)
+{
+	struct net_if *iface = net_if_get_first_wifi();
+
+	k_sem_reset(&try_sem);
+	try_active = true;
+	int rc = wifi_connect(creds);
+
+	if (rc == 0) {
+		/* Success means an IPv4 address, not just association: the
+		 * events only wake this loop, the address decides. */
+		k_timepoint_t end = sys_timepoint_calc(timeout);
+		/* The ESP32 driver can report a spurious failure on the first
+		 * association after boot; only give up after a few. */
+		int attempts = 1;
+
+		rc = -ETIMEDOUT;
+		while (!sys_timepoint_expired(end)) {
+			if (k_sem_take(&try_sem, K_MSEC(500)) == 0 &&
+			    try_result != 0) {
+				if (attempts >= 3) {
+					rc = try_result;
+					break;
+				}
+				attempts++;
+				k_msleep(1000);
+				try_active = true;
+				(void)wifi_connect(creds);
+				continue;
+			}
+			if (read_iface_ipv4() != 0) {
+				rc = 0;
+				break;
+			}
+			try_active = true; /* re-arm after a wake-up */
+		}
+	}
+	try_active = false;
+	if (rc != 0 && iface != NULL) {
+		(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+	}
+	return rc;
+}
+#endif
 
 #else /* hardware with a wired/other interface and no explicit Wi-Fi */
 

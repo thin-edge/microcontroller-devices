@@ -22,6 +22,17 @@ zephyr_library_sources(display.c)
 # board `led0` alias; compiles to a no-op otherwise).
 zephyr_library_sources(status_led.c)
 
+# Wi-Fi provisioning support: the boot request that selects the provisioner
+# image, the identity record it names itself after, and the application-side
+# hand-off with its sw0 gesture classifier. The provisioner itself (Improv over
+# BLE) is its own application: apps/wifi-provisioner.
+zephyr_library_sources_ifdef(CONFIG_APP_BOOT_REQUEST boot_request.c)
+zephyr_library_sources_ifdef(CONFIG_APP_WIFI_CRED_STORE prov_identity.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PROV_HANDOFF
+  prov_handoff.c
+  button_gesture.c
+)
+
 # Liveness watchdog and health diagnostics (both off by default; the progress
 # hook app_alive() in liveness.h compiles to nothing without them).
 zephyr_library_sources_ifdef(CONFIG_APP_DIAG     diag.c)
