@@ -198,12 +198,20 @@ config APP_NET_WORKQ_PRIORITY
 	  server cannot starve connectivity recovery.
 
 config APP_STATUS_LED
-	bool "Show connectivity on a status LED (led0 alias)"
+	bool "Show connectivity on a status LED (led0 or led-strip alias)"
 	default y
 	help
-	  Blink an LED (board 'led0' alias) while not connected and hold it steady
-	  once connected, so an operator can tell at a glance whether the device is
-	  on the network. No-op on boards without a led0 alias and on native_sim.
+	  Blink an LED while not connected and hold it steady once connected, so
+	  an operator can tell at a glance whether the device is on the network;
+	  Wi-Fi provisioning adds further patterns. Drives the board's 'led0'
+	  alias (a plain GPIO LED) or, failing that, its 'led-strip' alias (an
+	  addressable RGB LED such as a WS2812, which also shows each state in
+	  its own colour). No-op on boards with neither and on native_sim.
+
+# An addressable status LED needs the LED strip subsystem; turn it on only
+# where the board devicetree provides one.
+configdefault LED_STRIP
+	default y if APP_STATUS_LED && $(dt_alias_enabled,led-strip)
 
 config APP_PING_TARGET
 	string "On-device ping target for the data-path diagnostic"
