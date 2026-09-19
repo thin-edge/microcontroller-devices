@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * ESP32-C6 (ESP32-C6-WROOM-1-N4): the provisioner layout, linked for and
+ * launched from prov_partition, with the console on USB-Serial-JTAG like the
+ * applications (see apps/modbus-server/boards/ for the console notes).
+ */
+#include "../../../lib/common/dts/layout-esp32c6-4M.dtsi"
+
+&usb_serial {
+	status = "okay";
+};
+
+/ {
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+		zephyr,code-partition = &prov_partition;
+	};
+};

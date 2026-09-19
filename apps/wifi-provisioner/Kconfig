@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Wi-Fi provisioner. Shared options come from the lib/common module.
+
+mainmenu "Wi-Fi Provisioner"
+
+menu "Wi-Fi provisioner"
+
+config APP_WIFI_PROV_WINDOW_S
+	int "Provisioning window (s)"
+	default 900
+	range 30 86400
+	help
+	  How long the provisioner advertises. When it expires and the
+	  application still has credentials (entered with the button pattern),
+	  it reboots back into the application; with no credentials it stops
+	  advertising until sw0 is pressed.
+
+config APP_WIFI_PROV_CONNECT_TIMEOUT_S
+	int "Seconds to wait for an IPv4 address when testing credentials"
+	default 30
+	range 5 120
+
+config APP_WIFI_PROV_REQUIRE_AUTH
+	bool "Require a sw0 press to authorize provisioning"
+	help
+	  Start in the Improv "authorization required" state and refuse Wi-Fi
+	  settings until sw0 is pressed on the device, which authorizes for 60 s.
+	  Proves physical presence, since the link is not encrypted.
+
+endmenu
+
+source "Kconfig.zephyr"

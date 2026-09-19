@@ -19,3 +19,9 @@
 		};
 	};
 };
+
+/* Flash layout: the MCUboot + Wi-Fi provisioner partitions, shared with
+ * MCUboot and the provisioner. A plain build (no --sysbuild) still boots from
+ * 0x1000 and only uses its storage partition.
+ */
+#include "../../../lib/common/dts/layout-esp32-4M.dtsi"

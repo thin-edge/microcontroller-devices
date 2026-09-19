@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * ESP32-S3-DevKitC-1 — flash size only.
+ * ESP32-S3-DevKitC-1 — flash size and layout.
  *
  * Console: **left as the board devicetree sets it**, i.e. `uart0` on the
  * board's UART port (the one marked UART, not the one marked USB). That port
@@ -27,15 +27,13 @@
  * declares an 8 MB part. The board in hand is an **N16R8** — `esptool flash-id`
  * reports 16 MB (manufacturer 0x1c, device 0x7118) on an ESP32-S3 rev v0.2 with
  * MAC 7c:0c:5f:5a:6e:b8, plus 8 MB of octal PSRAM that this firmware does not
- * use. Declare the real size. The partition table
- * (`partitions_0x0_amp_4M.dtsi`) lives entirely in the low 4 MB either way, so
- * this changes no layout; it just stops anything reasoning from `flash0` being
- * wrong about the part. On a genuine N8 board, drop this block.
+ * use. The shared layout (lib/common/dts/layout-esp32s3-16M.dtsi) declares the
+ * real size and replaces the upstream AMP partitions with the MCUboot + Wi-Fi
+ * provisioner layout, which MCUboot and the provisioner are built with too. A
+ * plain build (no --sysbuild) still boots from 0x0. It needs a 16 MB part.
  *
  * No `&wifi` node is enabled here: unlike the QT Py S3 and the S2 Feather, the
  * ESP32-S3-DevKitC board devicetree already sets it to "okay".
  */
 
-&flash0 {
-	reg = <0x0 DT_SIZE_M(16)>;
-};
+#include "../../../lib/common/dts/layout-esp32s3-16M.dtsi"

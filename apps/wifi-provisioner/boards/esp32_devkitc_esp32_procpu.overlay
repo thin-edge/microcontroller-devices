@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * ESP32-WROOM-32 DevKitC (classic ESP32, 4 MB): the provisioner layout, linked
+ * for and launched from prov_partition, and the status LED on GPIO2 that the
+ * applications use, so the provisioning pattern shows.
+ */
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include "../../../lib/common/dts/layout-esp32-4M.dtsi"
+
+/ {
+	aliases {
+		led0 = &status_led;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		status_led: led_0 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "Status LED";
+		};
+	};
+
+	chosen {
+		zephyr,code-partition = &prov_partition;
+	};
+};

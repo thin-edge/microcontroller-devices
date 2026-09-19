@@ -22,6 +22,7 @@
 
 #if defined(CONFIG_SOC_FAMILY_ESPRESSIF_ESP32)
 #include <esp_system.h>
+#include <esp_rom_sys.h>
 #endif
 
 LOG_MODULE_REGISTER(app_liveness, CONFIG_LOG_DEFAULT_LEVEL);
@@ -117,6 +118,13 @@ static void reaper_main(void *a, void *b, void *c)
 			app_ctx_name(ctx), ctx_timeout_ms(ctx) / 1000U,
 			app_step_get(ctx));
 		app_diag_dump_threads();
+#if defined(CONFIG_BT) && defined(CONFIG_SOC_FAMILY_ESPRESSIF_ESP32)
+		/* With Bluetooth running (the Wi-Fi provisioner), a CPU reset left
+		 * the ESP32-C6 hanging in MCUboot until a power cycle; reset the
+		 * whole digital system instead. The record above is in RTC
+		 * memory, which this reset keeps. */
+		esp_rom_software_reset_system();
+#endif
 		sys_reboot(SYS_REBOOT_COLD);
 	}
 }
