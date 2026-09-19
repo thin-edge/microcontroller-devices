@@ -24,7 +24,6 @@
 LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
 
 #define BOOTSTRAP_PORT   8883
-#define BOOTSTRAP_ID     "management/devicebootstrap"
 #define POLL_INTERVAL_MS 5000
 #define WINDOW_MS        (2 * 60 * 1000)
 
@@ -215,8 +214,10 @@ static int bootstrap_session(void)
 	mqtt_client_init(&client);
 	client.broker = &broker;
 	client.evt_cb = evt_cb;
-	client.client_id.utf8 = (const uint8_t *)BOOTSTRAP_ID;
-	client.client_id.size = strlen(BOOTSTRAP_ID);
+	/* The client ID is the device's external ID, not the bootstrap user:
+	 * that is how Cumulocity knows which registration is asking. */
+	client.client_id.utf8 = (const uint8_t *)tedge_identity()->external_id;
+	client.client_id.size = strlen(tedge_identity()->external_id);
 	client.protocol_version = MQTT_VERSION_3_1_1;
 	client.rx_buf = rx_buf;
 	client.rx_buf_size = sizeof(rx_buf);

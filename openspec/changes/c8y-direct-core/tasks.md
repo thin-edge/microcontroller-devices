@@ -54,8 +54,8 @@
 - [x] 8.1 C6 Modbus + tedge from erased storage: registration URL on the console, `c8y deviceregistration register-ca`, certificate, mTLS to 9883, inventory and supported operations in Cumulocity, Modbus still served
 - [x] 8.2 Restart from Cumulocity ends SUCCESSFUL (verified on the C6); a vetoing test hook ends FAILED with its reason (not run: the Modbus glue never vetoes)
 - [ ] 8.3 P1 reconnect test: three Wi-Fi drops of 60 s (application shell `wifi disconnect`/`connect`) and one real access-point drop; record the time back to CONNECTED and the TLS heap and TCP-context counts before and after (no leak)
-- [ ] 8.4 Core MQTT: the same C6 built with `TEDGE_C8Y_CORE_MQTT` (and once with bootstrap auth) connects, and the twin arrives as an inventory update
-- [ ] 8.5 S3-DevKitC-1 with the full profile (mbedTLS heap in PSRAM): enroll, connect, restart
+- [x] 8.4 Core MQTT: the same C6 built with `TEDGE_C8Y_CORE_MQTT` (and once with bootstrap auth) connects, and the twin arrives as an inventory update
+- [x] 8.5 S3-DevKitC-1 with the full profile (mbedTLS heap in PSRAM): enroll, connect, restart
 - [ ] 8.6 Footprint: extend `scripts/measure_tedge.sh` to the module builds (C6 Modbus with and without `TEDGE`, S3, `samples/minimal`) and record the table in `tedge-zephyr/README.md`
 
 ## 9. Documentation and wrap-up

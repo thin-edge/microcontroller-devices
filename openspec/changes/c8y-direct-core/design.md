@@ -305,3 +305,36 @@ firmware update will still add to the hooks.
 - **Registration URL delivery:** the BLE provisioner's Improv result and the
   SoftAP success page could both carry it; that's a provisioner change after
   this one.
+
+## Results
+
+### Hardware verification (2026-09-19/20)
+
+**ESP32-C6, Modbus + client (tasks 8.1, 8.2, 8.4).**
+
+| Step | Result |
+|---|---|
+| Enrollment from erased storage | key generated, registration URL shown by the application, certificate stored 4 s after `register-ca`, no reboot needed |
+| MQTT Service (9883), mutual TLS | connected in 7.6 s (first connect), 3.3 s after a restart |
+| Cumulocity | name, `c8y_SupportedOperations: [c8y_Restart]`, `responseInterval: 60` |
+| Restart from the cloud | SUCCESSFUL; the reset hook (`boot_request_reboot`) avoided the MCUboot hang (P2); the marker survived the reboot and was reported after reconnecting |
+| Core MQTT (8883) with the same certificate | connected in 3.4 s; `tedge_Agent` arrived as a **direct inventory update** on the managed object |
+| Bootstrap onboarding (`tedge-boote8f60afc320c`) | registration went to PENDING_ACCEPTANCE, was accepted, credentials stored, reconnected as `t…/device_tedge-boote8f60afc320c` in 11 s total, inventory and twin as above |
+| `CONFIG_TEDGE=n` | identical text/data/bss to a build without the module; only 4 bytes differ, inside the application's build-timestamp string |
+
+**ESP32-S3-DevKitC-1, Modbus + client, TLS heap in PSRAM (task 8.5).** The
+96 KB mbedTLS heap sits at 0x3c0a0000 (PSRAM) and 139 KB of internal libc
+heap is left. Enrollment, the 9883 connection (4.9 s first, 2.4 s after the
+restart) and a cloud restart (SUCCESSFUL) all behaved as on the C6.
+
+**Two findings:**
+- **The bootstrap session's MQTT client ID must be the device's external
+  ID**, not the bootstrap user. With `management/devicebootstrap` as the
+  client ID the registration stayed WAITING_FOR_CONNECTION forever, because
+  Cumulocity matches the registration by client ID. Fixed.
+- **The managed object's `type` comes from whoever creates the device.**
+  `register-ca` creates it as `thin-edge.io`, and the client's later `100`
+  does not change it; a device the client creates itself (bootstrap) gets
+  the type the client sends (`thin-edge.io-zephyr-modbus`). If the type
+  matters, the client has to set it as an inventory update, which is a
+  decision for the twin work.
