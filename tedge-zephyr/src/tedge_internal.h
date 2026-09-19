@@ -83,6 +83,19 @@ int tedge_sr_template(const char *line);
 /** Quote @p in for use as a SmartREST field (adds the surrounding quotes). */
 int tedge_sr_quote(const char *in, char *out, size_t len);
 
+/* --- Helpers (unit-tested on native_sim) --------------------------------- */
+
+/** Seconds to wait before the next connect attempt after @p current. */
+uint32_t tedge_backoff_next(uint32_t current, uint32_t max);
+
+/**
+ * Take the first certificate out of a base64 PKCS#7 certs-only structure.
+ * @p clean and @p der are scratch buffers the caller owns.
+ */
+int tedge_pkcs7_first_cert(const char *b64, char *clean, size_t clean_cap,
+			   uint8_t *der, size_t der_cap, uint8_t *out,
+			   size_t cap, size_t *out_len);
+
 /* --- Transport internals ------------------------------------------------- */
 
 /** Publish one SmartREST line on s/us (QoS 1). */

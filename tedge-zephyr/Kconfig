@@ -211,6 +211,9 @@ if TEDGE_AUTH_C8Y_CA
 config TEDGE_ENROLL_SELECTS
 	bool
 	default y
+	# The device key lives in PSA ITS. The application chooses the ITS
+	# store (a Kconfig choice, so the module cannot select it); see the
+	# README and the profiles.
 	select SECURE_STORAGE
 	select HTTP_CLIENT
 	select MBEDTLS_X509_CSR_WRITE_C

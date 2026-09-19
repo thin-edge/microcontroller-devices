@@ -287,24 +287,6 @@ static bool wait_for_network(void)
 /* Client thread                                                             */
 /* ------------------------------------------------------------------------ */
 
-static uint32_t backoff_next(uint32_t current)
-{
-	uint32_t next = (current == 0) ? BACKOFF_MIN_S : current * 2;
-	uint32_t max = CONFIG_TEDGE_RECONNECT_BACKOFF_MAX_S;
-
-	if (next > max) {
-		next = max;
-	}
-	/* ±20% jitter, so a fleet doesn't reconnect in lockstep. */
-	int32_t spread = (int32_t)(next / 5);
-
-	if (spread > 0) {
-		next = (uint32_t)((int32_t)next - spread +
-				  (int32_t)(sys_rand32_get() % (2 * spread + 1)));
-	}
-	return MAX(next, (uint32_t)BACKOFF_MIN_S);
-}
-
 static void client_thread(void *a, void *b, void *c)
 {
 	const struct tedge_transport *transport = tedge_transport_get();
@@ -332,7 +314,8 @@ static void client_thread(void *a, void *b, void *c)
 		tedge_set_state(TEDGE_STATE_CONNECTING);
 		rc = transport->connect();
 		if (rc != 0) {
-			backoff = backoff_next(backoff);
+			backoff = tedge_backoff_next(backoff,
+						     CONFIG_TEDGE_RECONNECT_BACKOFF_MAX_S);
 			LOG_WRN("connect failed (%d); retrying in %u s", rc,
 				backoff);
 			uint32_t got = k_event_wait(&events, EV_STOP | EV_NET_DOWN,
@@ -371,7 +354,8 @@ static void client_thread(void *a, void *b, void *c)
 			break;
 		}
 		LOG_WRN("session ended (%d)", rc);
-		backoff = backoff_next(backoff);
+		backoff = tedge_backoff_next(backoff,
+						     CONFIG_TEDGE_RECONNECT_BACKOFF_MAX_S);
 		LOG_INF("reconnecting in %u s", backoff);
 		(void)k_event_wait(&events, EV_STOP, false, K_SECONDS(backoff));
 	}

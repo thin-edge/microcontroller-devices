@@ -16,12 +16,16 @@ if(CONFIG_TEDGE)
     src/tedge_core.c
     src/tedge_platform.c
     src/tedge_time.c
+    src/tedge_backoff.c
   )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_TRANSPORT_C8Y
     src/tedge_c8y.c
     src/tedge_smartrest.c
   )
-  zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA src/tedge_enroll.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA
+    src/tedge_enroll.c
+    src/tedge_pkcs7.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_BOOTSTRAP src/tedge_bootstrap.c)
   zephyr_library_compile_definitions(TEDGE_VERSION_STRING="${TEDGE_VERSION}")
 

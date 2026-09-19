@@ -314,64 +314,6 @@ static int https_post(const char *path, const char *auth, const char *body)
 /* PKCS#7 (certs-only) -> the DER certificate                                */
 /* ------------------------------------------------------------------------ */
 
-static int unwrap_pkcs7(const char *b64, uint8_t *out, size_t cap,
-			size_t *out_len)
-{
-	size_t n = 0, der_len;
-	unsigned char *p, *end, *cert;
-	size_t len;
-	int ret;
-	char *clean = bufs->csr_body; /* free by now; 1 KB is enough */
-	const size_t clean_cap = sizeof(bufs->csr_body);
-
-	for (const char *s = b64; *s != '\0' && n < clean_cap - 1; s++) {
-		if (*s != '\r' && *s != '\n' && *s != ' ') {
-			clean[n++] = *s;
-		}
-	}
-	clean[n] = '\0';
-	ret = mbedtls_base64_decode(bufs->der, sizeof(bufs->der), &der_len,
-				    (const unsigned char *)clean, n);
-	if (ret != 0) {
-		return -EINVAL;
-	}
-
-	p = bufs->der;
-	end = bufs->der + der_len;
-#define STEP(tag)                                                              \
-	do {                                                                   \
-		ret = mbedtls_asn1_get_tag(&p, end, &len, (tag));              \
-		if (ret != 0) {                                                \
-			return -EBADMSG;                                       \
-		}                                                              \
-	} while (0)
-	/* ContentInfo ::= SEQUENCE { contentType OID, [0] EXPLICIT content } */
-	STEP(MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-	STEP(MBEDTLS_ASN1_OID);
-	p += len;
-	STEP(MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 0);
-	/* SignedData ::= SEQUENCE { version, digestAlgorithms SET,
-	 *   encapContentInfo SEQUENCE, certificates [0] IMPLICIT ... } */
-	STEP(MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-	STEP(MBEDTLS_ASN1_INTEGER);
-	p += len;
-	STEP(MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SET);
-	p += len;
-	STEP(MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-	p += len;
-	STEP(MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 0);
-	cert = p; /* the first Certificate, header included */
-	STEP(MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-#undef STEP
-	len += p - cert;
-	if (len > cap) {
-		return -ENOMEM;
-	}
-	memcpy(out, cert, len);
-	*out_len = len;
-	return 0;
-}
-
 /* ------------------------------------------------------------------------ */
 /* TLS credentials                                                           */
 /* ------------------------------------------------------------------------ */
@@ -453,7 +395,10 @@ static int enroll_once(void)
 		LOG_DBG("not registered yet (HTTP %u)", resp_status);
 		return -EAGAIN;
 	}
-	ret = unwrap_pkcs7(bufs->resp, cert_der, sizeof(cert_der), &cert_der_len);
+	ret = tedge_pkcs7_first_cert(bufs->resp, bufs->csr_body,
+				     sizeof(bufs->csr_body), bufs->der,
+				     sizeof(bufs->der), cert_der,
+				     sizeof(cert_der), &cert_der_len);
 	if (ret != 0) {
 		LOG_ERR("could not read the certificate from the reply (%d)", ret);
 		return ret;

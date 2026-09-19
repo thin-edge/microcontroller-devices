@@ -31,10 +31,10 @@
 
 ## 5. Unit and configuration tests
 
-- [ ] 5.1 `tests/unit` (ztest, `native_sim`): SmartREST parsing and CSV quoting
-- [ ] 5.2 PKCS#7 unwrap against a fixture from the spike's captured `simpleenroll` reply
-- [ ] 5.3 Back-off sequence, twin topic/payload builders and inventory-update fallback
-- [ ] 5.4 CI: run the unit tests and the extended `tests/kconfig` cases in `.github/workflows/tedge-zephyr.yml`
+- [x] 5.1 `tests/unit` (ztest, `native_sim`): SmartREST parsing and CSV quoting
+- [x] 5.2 PKCS#7 unwrap against a fixture from the spike's captured `simpleenroll` reply
+- [x] 5.3 Back-off sequence, twin topic/payload builders and inventory-update fallback
+- [x] 5.4 CI: run the unit tests and the extended `tests/kconfig` cases in `.github/workflows/tedge-zephyr.yml`
 
 ## 6. Integrations (firmware)
 

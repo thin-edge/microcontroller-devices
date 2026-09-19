@@ -24,3 +24,28 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 tedge-zephyr/scripts/check-independence.py
+
+  unit:
+    name: Unit tests and Kconfig rules
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/zephyr-build:latest
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Set up the Zephyr workspace
+        run: |
+          west init -l app
+          west update --narrow -o=--depth=1
+          west zephyr-export
+      - name: Unit tests (native_sim)
+        working-directory: app
+        run: |
+          west build -b native_sim/native/64 tedge-zephyr/tests/unit \
+            -d ../build-unit --pristine
+          ../build-unit/zephyr/zephyr.exe
+      - name: Kconfig dependency rules
+        working-directory: app
+        run: bash tedge-zephyr/tests/kconfig/check-kconfig.sh ../build-kconfig
