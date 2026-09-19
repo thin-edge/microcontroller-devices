@@ -20,7 +20,8 @@
 # BOARDS overrides the boards. TLS_HEAP (bytes) and TLS_RECORD (bytes)
 # override CONFIG_MBEDTLS_HEAP_SIZE / CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN for
 # every step, to see what fits with production-like sizes instead of the
-# spike's 96 KB measuring heap. Needs overlay-wifi-credentials.conf and
+# spike's 96 KB measuring heap. EXTRA_BASE (';'-separated overlays) is added
+# to every step, e.g. apps/c8y-spike/overlay-psram-s3.conf. Needs overlay-wifi-credentials.conf and
 # c8y-spike.local.conf at the repo root (git-ignored).
 set -u
 export ZEPHYR_SDK_INSTALL_DIR=${ZEPHYR_SDK_INSTALL_DIR:-/opt/toolchains/zephyr-sdk-1.0.1}
@@ -28,7 +29,7 @@ BOARDS=${BOARDS:-"esp32c6_devkitc/esp32c6/hpcore esp32s3_devkitc/esp32s3/procpu 
 OUT=${OUT:-build_measure_tedge}
 A=/ws/app/apps/c8y-spike
 mkdir -p "$OUT"
-BASE="/ws/app/overlay-wifi-credentials.conf"
+BASE="/ws/app/overlay-wifi-credentials.conf${EXTRA_BASE:+;$EXTRA_BASE}"
 
 # step name : overlays added on top of the previous step
 STEPS=(

@@ -489,6 +489,7 @@ archived.
 | P10 | **No safe local shell target.** Zephyr's `shell_telnet` binds `INADDR_ANY` (an unauthenticated shell on the LAN), mirrors logs into the session, and doesn't offer echo (fixed in the spike by the bridge offering WILL ECHO/SGA). Loopback (`NET_LOOPBACK`) broke outbound SNTP here. | Remote access to the device's own shell is a headline use case. | Spike F (6.7). | A shell backend fed directly by the remote-access WebSocket (no TCP listener), or a loopback-only listener. Investigate the loopback/SNTP interaction. |
 | P11 | **Remote-access throughput is 40–56 KB/s.** | Fine for SSH and config work; slow for bulk copies (10 MB in 3–4 min). | Spike F (6.6). | Larger bridge buffers, batching several TCP reads per WebSocket frame, and measuring where the time goes. |
 | P12 | **Unknowns for D10.** Does the MQTT Service keep retained messages for subscribers or Smart Functions? Which reference Smart Functions (twin, health, events, alarms, measurements) does tedge-zephyr ship, where, and how are they installed? How do they tell the device apart (topic, or client identity)? | D10 relies on them for anything beyond telemetry to appear in Cumulocity. | Discussion after section 7. | Check retained behaviour on the MQTT Service; write the reference functions starting with twin → inventory; prototype `tedge_RemoteAccess` (task 6.9). |
+| P13 | **Remote access on the classic ESP32 (WROOM) is slow and can stall:** ~4–17 KB/s, and one SSH key exchange stalled with no error, after the net-buffer fix. | The WROOM is the obvious cheap "enabler", but a stalling tunnel looks like a cloud fault. | Section 8 follow-up. | Check whether it tracks the classic-ESP32 network stalls seen with the OPC-UA/SNMP apps; try the default Wi-Fi dynamic buffers with the TLS heap trimmed elsewhere; measure TCP window and retransmits. |
 
 ## Spike results
 
@@ -544,8 +545,10 @@ features by `text`.
 carry it):
 - the shell with its 10 KB stack (B), and the 10 KB re-enroll and 8 KB
   OTA/bridge thread stacks;
-- the network buffers raised under the wrong hypothesis in Spike B (RX 128 ×
-  128 B, 24/64 packets and buffers);
+- the network buffers raised in Spike B (RX 128 × 128 B, 24/64 packets and
+  buffers). The hypothesis that raised them was wrong, but some headroom is
+  needed: at the boards' 32/24 buffers the WROOM's tunnel exhausted the TX
+  pool (see the follow-up below);
 - the 16 KB log buffer (C);
 - 4 KB HTTP response and 1–2 KB CSR/PEM/certificate work buffers;
 - the 12 KB MQTT thread stack (the measured peak is ~3 KB);
@@ -567,9 +570,80 @@ nearly all of it.
 | Board | Direct transport profile | Notes |
 |---|---|---|
 | ESP32-C6 | **full** (`profiles/full.conf`), one tunnel | Fits the 1280 KB slot at 73%. RAM fits the spike app even with its overheads; next to OPC-UA (256 KB budget) it needs the lean production client and a right-sized TLS heap (~92 KB for MQTT + one HTTPS/WSS). With 8 KB buffers, two parallel tunnels become possible. |
-| ESP32-S3-DevKitC-1 (N16R8) | **full**, with the TLS heap and buffers in **PSRAM** | Internal DRAM runs out at +C even with a 56 KB TLS heap. The board has 8 MB of octal PSRAM that the build doesn't use; putting the mbedTLS heap and the bridge/HTTP buffers there is the first thing to try. |
+| ESP32-S3-DevKitC-1 (N16R8) | **full**, with the mbedTLS heap in **PSRAM** (verified, see below) | Without PSRAM, internal DRAM runs out at +C. With `overlay-psram-s3.conf` the full A+B+C+F build links with a 96 KB TLS heap and 43.9 KB of libc heap left (95 KB with Wi-Fi/net in PSRAM too); enrollment, remote access and a firmware update all passed on hardware. |
 | QT Py ESP32-S3 (N4R2) | as S3, with 2 MB PSRAM | Not measured. |
-| ESP32-WROOM-32 | **minimal at most**, and not next to OPC-UA | Only A (TLS + MQTT) links: 33 KB of libc heap left with 8 KB records and a 40 KB TLS heap, 17 KB with 16 KB records, with no protocol app. OPC-UA needs ~70 KB, so the WROOM is a **gateway-transport** device (thin-edge.io child device, no TLS), or direct-minimal only with the light Modbus/SNMP apps. No firmware download over HTTPS, no remote access. |
+| ESP32-WROOM-32 | **remote-access enabler** (no protocol app, no OTA, no shell), or gateway transport next to OPC-UA | A+C+F runs with a 56 KB TLS heap and 8 KB records once the Wi-Fi heap is trimmed (see below), with 2.8 KB of libc heap left: nothing else fits beside it. Remote access works but is slow (~4–17 KB/s) and stalled once (P13). No HTTPS firmware download next to MQTT (B needs a second TLS session's RAM). Next to OPC-UA only the gateway transport (thin-edge.io child device, no TLS) fits. |
+
+### Section 8 follow-up: PSRAM on the S3, the WROOM as a remote-access enabler (2026-09-19)
+
+**S3-DevKitC-1 with PSRAM.** Zephyr 4.4.2's S3 linker script already places
+`.mbedtls_heap*` in PSRAM (`.ext_ram.data`, under `CONFIG_ESP_SPIRAM`), so
+`apps/c8y-spike/overlay-psram-s3.conf` only sets `ESP_SPIRAM`, octal mode,
+`SPIRAM_TYPE_ESPPSRAM64` and `MBEDTLS_HEAP_CUSTOM_SECTION`. The board overlay
+declares the 8 MB `psram0` (no effect without `ESP_SPIRAM`).
+
+| Step (96 KB TLS heap in PSRAM) | image | text | libc heap left |
+|---|---|---|---|
+| base | 582 KB (18%) | 493,384 | 196,940 |
+| + A | 726 KB (23%) | 611,156 | 157,812 |
+| + B | 739 KB (23%) | 665,928 | 105,180 |
+| + C | 807 KB (25%) | 681,132 | 62,956 |
+| + F | 809 KB (25%) | 695,516 | **43,932** |
+| + F, and `ESP32_WIFI_NET_ALLOC_SPIRAM` | 809 KB | | **94,972** |
+
+On hardware (full A+B+C+F, `_mbedtls_heap` at 0x3c0b0000):
+- PSRAM detected (8 MB AP octal, 40 MHz). Enrolled as `tedge-7c0c5f5a6eb8`
+  (certificate 2.8 s after registration), mTLS to 9883 in 1.8 s: **no
+  slower than internal RAM** (1.9 s before). TLS heap 51.8 KB peak / 34.8 KB
+  connected, identical to the C6. MQTT stack peak 3.3 KB, including the first
+  enrollment.
+- Remote access to the Pi's SSH: MQTT + tunnel 86.2 KB peak / 69.2 KB
+  connected (as the C6); 2 MB each way at ~51 and ~66 KB/s by the device's
+  counters.
+- Firmware update 0.0.1 → 0.1.0 (`zephyr-c8y-spike` 0.1.0-s3): 790 KB in
+  ~12 s while the TLS heap was in PSRAM and the flash was written (cache
+  disabled during writes: no problem seen), swap ~19 s, confirmed after
+  reaching Cumulocity, operation SUCCESSFUL.
+
+Not yet tried: `ESP32_WIFI_NET_ALLOC_SPIRAM` at runtime (it builds), and a
+long soak.
+
+**WROOM-32 as a "thin-edge.io light" remote-access enabler** (no protocol
+app, no OTA, no shell; `overlay-enabler-wroom.conf`, 8 KB records):
+
+| Build | Result |
+|---|---|
+| A+F, 56 KB TLS heap | links, libc 3.7 KB |
+| A+C+F, 56 KB TLS heap | dram0 overflow 8.5 KB |
+| A+C+F, + Wi-Fi heap trimmed (`HEAP_MEM_POOL_IGNORE_MIN`, 44 KB system heap, 16/16 Wi-Fi dynamic RX/TX buffers) | **links, libc 2.8 KB** |
+
+`dram0` holds the system heap (56.5 KB, of which 51.2 KB is
+`HEAP_MEM_POOL_ADD_SIZE_ESP_WIFI`, not user-settable), the TLS heap and the
+TLS contexts. Thread stacks and net buffers sit in SRAM1 `.noinit`
+(`ESP32_REGION_1_NOINIT`), so shrinking them doesn't help `dram0`. The C
+shell diagnostics (re-enroll, bench, 10 KB stack) are now built only with
+`CONFIG_SHELL`.
+
+On hardware (`tedge-3c71bf10c2e4`, formerly an OPC-UA board on the Pi):
+- Enrolled, mTLS to 9883 in 2.2 s, TLS heap 35.4 KB peak / 18.4 KB connected;
+  MQTT stack 3.55 KB of 6 KB including the enrollment.
+- Tunnel to the Pi's SSH: TLS heap **53.4 KB peak of 57.3 KB** (3.9 KB
+  margin) / 36.4 KB connected; WSS upgrade 2.2 s.
+- At the board's 32 RX / 24 TX net buffers, SSH through the tunnel exhausted
+  the TX pool (`Data buffer allocation failed`, `TCP failed to allocate
+  buffer in retransmission`); the tunnel stalled and the MQTT session dropped
+  (it reconnected by itself). With 64/64 buffers and 16/16 packets: 5 of 5
+  logins in ~4 s, no allocation failures, MQTT kept up.
+- Throughput stays poor: 500 KB into the LAN in 130 s (~4 KB/s), earlier
+  runs ~17 KB/s out, and one session stalled in the SSH key exchange with no
+  error logged (P13).
+
+**Verdict.** The S3 runs the full client with PSRAM and loses nothing
+measurable. The WROOM can be a remote-access-only enabler for interactive
+SSH/telnet to LAN hosts, but only just: no room for anything else, a 4 KB TLS
+margin, and slow, sometimes stalling transfers on the classic ESP32's Wi-Fi.
+It's a demo-grade option, not a product recommendation; the C6 or an S3 is
+the enabler to recommend.
 
 ### Section 7: cloud-side verification (2026-09-19)
 

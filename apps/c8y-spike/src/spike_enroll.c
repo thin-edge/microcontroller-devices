@@ -490,6 +490,11 @@ int spike_enroll_run(char *id_out, size_t id_len)
 /* simplereenroll (task 5.6) and the shell                                   */
 /* ------------------------------------------------------------------------ */
 
+/* Diagnostics driven from the shell (spike-b). Without it, as in the WROOM
+ * enabler build, they and their 10 KB thread stack are left out.
+ */
+#if defined(CONFIG_SHELL)
+
 K_THREAD_STACK_DEFINE(reenroll_stack, 10240);
 static struct k_thread reenroll_thread;
 
@@ -625,3 +630,5 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_enroll,
 	SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(enroll, &sub_enroll, "Spike C: Cumulocity CA enrollment", NULL);
+
+#endif /* CONFIG_SHELL */
