@@ -57,7 +57,7 @@
 - [x] 6.6 Measure on the C6: heap per session with MQTT connected, interactive SSH latency, `scp` throughput for 10 MB, and the session cap (a second connect while one is open is refused). Repeat the latency check on the S3-DevKitC-1 (not repeated: the S3 is parked; the latency is dominated by the network path)
 - [x] 6.7 Local target: Zephyr `shell_telnet` bound to loopback, reached through the Telnet endpoint, and not reachable from the LAN directly (reached via the device's own IP; loopback broke SNTP and shell_telnet can't bind loopback, so it WAS reachable from the LAN; see P10)
 - [x] 6.8 Failure cases: Pi powered off (connect fails, operation failed), Wi-Fi drop mid-session (tunnel closes and heap returns to baseline), user closes the browser tab (bridge exits) (unreachable target and client close done; Wi-Fi drop deferred with P1)
-- [ ] 6.9 (later, D10) Prototype `tedge_RemoteAccess` twin data on `te/device/<id>///twin/tedge_RemoteAccess` (at connect and on tunnel open/close), and write a Smart Function that maps it to the managed object
+- [x] 6.9 (later, D10) Prototype `tedge_RemoteAccess` twin data on `te/device/<id>///twin/tedge_RemoteAccess` (at connect and on tunnel open/close), and write a Smart Function that maps it to the managed object
 
 ## 7. Cloud-side verification (host side)
 

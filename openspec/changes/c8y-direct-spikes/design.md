@@ -827,6 +827,32 @@ batching are the obvious first optimisation.
   - **Design rule:** a device-side remote shell must start the telnet
     negotiation itself.
 
+**`tedge_RemoteAccess` twin data (6.9, D10).** `spike_ra_twin()` builds the
+value, and the MQTT thread publishes it on
+`te/device/<id>///twin/tedge_RemoteAccess` (QoS 1) at every connect and
+about 1 s after a tunnel opens, fails or closes. The bridge frees its seat
+just after it posts the event, so the publish waits one pass. On the C6
+(`tedge-e8f60afc320c`):
+
+```
+connect:  {"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}
+open:     {"maxSessions":1,"activeSessions":1,"freeSessions":0,"policy":"lan",
+           "sessions":[{"target":"192.168.68.72:22","since":"2026-09-19T20:34:55Z"}]}
+closed:   {"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}
+```
+
+- `freeSessions` (added at the tenant owner's request) is `maxSessions`
+  minus the seats taken from an accepted `530` until the bridge has cleaned
+  up. `activeSessions` counts established tunnels only.
+- `CONFIG_SPIKE_RA_TWIN_SESSIONS` controls the target list (internal
+  addresses). Core MQTT builds send `{"tedge_RemoteAccess":…}` as a direct
+  inventory update instead (built, not run).
+- The tenant owner wrote a Smart Function for the topic and confirmed it
+  works through three sessions of their own; the device published open and
+  close for each. It does not write a `tedge_RemoteAccess` fragment onto the
+  managed object, so how the reference function should present the data
+  (fragment, measurement or both) is still part of P12.
+
 **Zephyr findings.**
 - **`websocket_connect()` needs PSA SHA-1** for `Sec-WebSocket-Accept`
   but doesn't select it. Without `PSA_WANT_ALG_SHA_1` it fails with `-EPROTO`
