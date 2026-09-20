@@ -24,3 +24,11 @@ scripts/soak/runs/
 # Per-app / per-module out-of-tree build directories
 apps/*/build*/
 lib/*/build*/
+
+# Credentials must never be committed. These were tracked once despite the
+# files themselves saying "(git-ignored)"; see the removal commit.
+credentials/
+**/credentials/
+*.key
+*.csr
+*.pem.local

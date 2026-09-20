@@ -1,0 +1,555 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/**
+ * @file
+ * @brief tedge-zephyr public API: thin-edge.io device management for Zephyr.
+ *
+ * @warning UNSTABLE while the features are being built. The lifecycle,
+ * onboarding, twin and operation calls below are implemented (change
+ * c8y-direct-core) and are meant to stay as they are; the ones marked
+ * "not implemented yet" return -ENOTSUP until their change lands, and may
+ * still change shape.
+ *
+ * Division of responsibilities:
+ * - The application owns the network interface, the device identity, what
+ *   telemetry to send, and the task watchdog.
+ * - The client owns its threads, a bounded heap, the settings subtree
+ *   "tedge/" and TLS credential tags from CONFIG_TEDGE_TLS_TAG_BASE.
+ *
+ * Unless stated otherwise, functions return 0 on success or a negative errno.
+ */
+
+#ifndef TEDGE_TEDGE_H_
+#define TEDGE_TEDGE_H_
+
+#include <zephyr/net/net_ip.h> /* struct sockaddr, for remote-access targets */
+#include <zephyr/toolchain.h>
+
+#include <errno.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** Set while the API is an outline that may change without notice. */
+#define TEDGE_API_UNSTABLE 1
+
+/** @brief The module's version (the contents of its VERSION file). */
+const char *tedge_version(void);
+
+/* ------------------------------------------------------------------------ */
+/* Lifecycle and state                                                       */
+/* ------------------------------------------------------------------------ */
+
+/** @brief Client states, reported through tedge_hooks::on_state. */
+enum tedge_state {
+	TEDGE_STATE_STOPPED,
+	/** No IPv4 address yet; waiting for the application's network. */
+	TEDGE_STATE_WAITING_NETWORK,
+	/** Waiting for the clock (SNTP), needed to validate certificates. */
+	TEDGE_STATE_WAITING_TIME,
+	/** Waiting for the operator to register the device (CA onboarding). */
+	TEDGE_STATE_AWAITING_REGISTRATION,
+	TEDGE_STATE_CONNECTING,
+	TEDGE_STATE_CONNECTED,
+	/** A firmware update is downloading or waiting for its test boot. */
+	TEDGE_STATE_UPDATING,
+};
+
+/**
+ * @brief Device identity. Any NULL field takes the documented default.
+ */
+struct tedge_identity {
+	/** Default: "<CONFIG_TEDGE_DEVICE_ID_PREFIX>-<MAC address>". */
+	const char *external_id;
+	/** Default: the external ID. */
+	const char *name;
+	/** Default: CONFIG_TEDGE_DEVICE_TYPE. */
+	const char *type;
+	/** Firmware reported to the cloud. Default: the application's name. */
+	const char *firmware_name;
+	/** Default: the application's version (APP_VERSION_STRING). */
+	const char *firmware_version;
+};
+
+/**
+ * @brief Remote-access target, passed to tedge_hooks::remote_access_allow.
+ */
+struct tedge_remote_target {
+	const struct sockaddr *addr;
+	uint16_t port;
+};
+
+/**
+ * @brief Callbacks into the application. Every member is optional.
+ *
+ * Hooks run on the client's thread. They must return promptly and must not
+ * call back into the client.
+ */
+struct tedge_hooks {
+	/** State changed, for example to drive a status LED. */
+	void (*on_state)(enum tedge_state state, void *user_data);
+
+	/**
+	 * The cloud asked for a restart. Prepare for it and return 0 to allow
+	 * it, or return a negative errno and write a reason to veto it.
+	 * The client never reboots without calling this first.
+	 */
+	int (*restart_request)(char *reason, size_t reason_len, void *user_data);
+
+	/**
+	 * The new firmware image is running and connected. Return 0 if the
+	 * application is healthy, so the image can be confirmed. Any other
+	 * value leaves it unconfirmed, and MCUboot reverts it on the next reset.
+	 * Requires CONFIG_TEDGE_FIRMWARE_UPDATE.
+	 */
+	int (*firmware_confirm_check)(void *user_data);
+
+	/**
+	 * Narrows the Kconfig remote-access target policy. Return true to
+	 * allow a target that the policy already allows. Requires
+	 * CONFIG_TEDGE_REMOTE_ACCESS.
+	 */
+	bool (*remote_access_allow)(const struct tedge_remote_target *target,
+				    void *user_data);
+
+	/**
+	 * Reset the device, called for a restart the application allowed.
+	 * When it is NULL the client uses the platform's own full-system
+	 * reset. It must not return.
+	 */
+	void (*reset)(void *user_data);
+
+	/** Called periodically from each client thread, for a task watchdog. */
+	void (*progress)(void *user_data);
+
+	void *user_data;
+};
+
+/**
+ * @brief Initialise the client. Call once, before tedge_start().
+ *
+ * @param identity Device identity, or NULL for all defaults. The client
+ *                 copies it.
+ * @param hooks    Application callbacks, or NULL. The client keeps the
+ *                 pointer, so it must stay valid.
+ */
+int tedge_init(const struct tedge_identity *identity,
+	       const struct tedge_hooks *hooks);
+
+/**
+ * @brief Start the client thread. It waits for the network, then connects.
+ *
+ * It may be called before the network is up.
+ */
+int tedge_start(void);
+
+/** @brief Disconnect and stop the client thread. */
+int tedge_stop(void);
+
+/** @brief Current state. */
+enum tedge_state tedge_get_state(void);
+
+/* ------------------------------------------------------------------------ */
+/* Onboarding (CONFIG_TEDGE_AUTH_C8Y_CA)                                     */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * @brief Override the Cumulocity tenant host (default: CONFIG_TEDGE_C8Y_URL).
+ *
+ * Stored in settings, so it survives a reboot. Call before tedge_start().
+ */
+int tedge_set_c8y_url(const char *host);
+
+/**
+ * @brief Set the bootstrap credentials (CONFIG_TEDGE_AUTH_BOOTSTRAP), when
+ * they are not built in. Call before tedge_start(). Not stored in settings.
+ */
+int tedge_set_bootstrap_credentials(const char *user, const char *password);
+
+/**
+ * @brief Copy the registration URL (external ID and one-time password
+ * pre-filled) into @p buf, so the application can show it (console,
+ * display, provisioning result).
+ *
+ * @return URL length, -ENOENT if the device is already enrolled.
+ */
+int tedge_registration_url(char *buf, size_t len);
+
+/* ------------------------------------------------------------------------ */
+/* Twin data                                                                 */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * @brief Publish @p json as the twin fragment @p fragment.
+ *
+ * The client keeps the value and republishes it after every reconnect, so
+ * a fragment is never left stale by a reboot. @p json must be a JSON object
+ * or value without the fragment name, e.g. "{\"state\":\"ok\"}".
+ * Passing NULL forgets the fragment.
+ *
+ * @return 0 when stored and queued, -ENOMEM if the client's heap or its
+ *         fragment table is full.
+ */
+int tedge_publish_twin(const char *fragment, const char *json);
+
+/* ------------------------------------------------------------------------ */
+/* Telemetry (CONFIG_TEDGE_TELEMETRY)                                        */
+/*                                                                           */
+/* Every call builds its message there and then and returns: nothing waits   */
+/* on the network, and any thread may call. Messages the client cannot send  */
+/* yet wait in a small RAM buffer (CONFIG_TEDGE_TELEMETRY_BUFFER_BYTES).     */
+/* Without the feature the calls are still there and return -ENOTSUP, so an  */
+/* application builds either way.                                            */
+/* ------------------------------------------------------------------------ */
+
+/** @brief One value of a measurement. */
+struct tedge_measurement_value {
+	/** Series name, e.g. "temperature". */
+	const char *series;
+	double value;
+	/** Unit, e.g. "C". May be NULL. */
+	const char *unit;
+};
+
+enum tedge_alarm_severity {
+	TEDGE_ALARM_CRITICAL,
+	TEDGE_ALARM_MAJOR,
+	TEDGE_ALARM_MINOR,
+	TEDGE_ALARM_WARNING,
+};
+
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_TELEMETRY)
+/* Telemetry is not built in: the calls exist so an application compiles,
+ * and cost one instruction each. */
+static inline int tedge_publish_measurement(const char *type,
+					    const struct tedge_measurement_value *values,
+					    size_t count, int64_t timestamp_ms)
+{
+	ARG_UNUSED(type); ARG_UNUSED(values); ARG_UNUSED(count);
+	ARG_UNUSED(timestamp_ms);
+	return -ENOTSUP;
+}
+
+static inline int tedge_publish_event(const char *type, const char *text,
+				      int64_t timestamp_ms)
+{
+	ARG_UNUSED(type); ARG_UNUSED(text); ARG_UNUSED(timestamp_ms);
+	return -ENOTSUP;
+}
+
+static inline int tedge_raise_alarm(const char *type,
+				    enum tedge_alarm_severity severity,
+				    const char *text)
+{
+	ARG_UNUSED(type); ARG_UNUSED(severity); ARG_UNUSED(text);
+	return -ENOTSUP;
+}
+
+static inline int tedge_clear_alarm(const char *type)
+{
+	ARG_UNUSED(type);
+	return -ENOTSUP;
+}
+
+static inline uint32_t tedge_telemetry_dropped(void)
+{
+	return 0;
+}
+#else
+/**
+ * @brief Publish a measurement of @p type made of @p count values.
+ *
+ * @param timestamp_ms Unix time in ms, or 0 for "now".
+ * @return 0 when queued, -ENOMEM if the client's buffer is full.
+ */
+int tedge_publish_measurement(const char *type,
+			      const struct tedge_measurement_value *values,
+			      size_t count, int64_t timestamp_ms);
+
+/** @brief Publish an event. */
+int tedge_publish_event(const char *type, const char *text,
+			int64_t timestamp_ms);
+
+/** @brief Raise (or update) the alarm of @p type. */
+int tedge_raise_alarm(const char *type, enum tedge_alarm_severity severity,
+		      const char *text);
+
+/** @brief Clear the alarm of @p type. */
+int tedge_clear_alarm(const char *type);
+
+/**
+ * @brief How many messages the client has dropped because its buffer was
+ * full, since boot. The client reports this in its health measurement; an
+ * application that must not lose data can watch it too.
+ */
+uint32_t tedge_telemetry_dropped(void);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_TELEMETRY */
+
+/* ------------------------------------------------------------------------ */
+/* Custom operations                                                         */
+/* ------------------------------------------------------------------------ */
+
+/** Opaque handle for an operation in progress. */
+struct tedge_operation;
+
+/**
+ * @brief Handler for an application-defined operation.
+ *
+ * Called on the client's thread with the operation already marked as
+ * executing. Finish it with tedge_operation_succeed() or
+ * tedge_operation_fail(), now or later from another thread.
+ */
+typedef void (*tedge_operation_handler_t)(struct tedge_operation *op,
+					  void *user_data);
+
+/**
+ * @brief Register an operation the application implements.
+ *
+ * The operation is advertised as supported. @p name is the cloud's operation
+ * name (for Cumulocity, the fragment, e.g. "c8y_Command").
+ */
+int tedge_register_operation(const char *name,
+			     tedge_operation_handler_t handler,
+			     void *user_data);
+
+/** @brief The operation's raw payload (SmartREST CSV or JSON). */
+const char *tedge_operation_payload(const struct tedge_operation *op);
+
+/** @brief Report success, with an optional result string. */
+int tedge_operation_succeed(struct tedge_operation *op, const char *result);
+
+/** @brief Report failure with a reason. */
+int tedge_operation_fail(struct tedge_operation *op, const char *reason);
+
+/* ------------------------------------------------------------------------ */
+/* Log types (CONFIG_TEDGE_LOG_UPLOAD)                                       */
+/*                                                                           */
+/* A log type is a callback, not a file: the client asks the application to  */
+/* produce the log when the cloud requests it, and the application writes it */
+/* through the sink it is given. Nothing needs a filesystem, and no log is   */
+/* ever held whole in RAM.                                                   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * @brief Sink the application writes file contents into. It returns 0, or
+ * a negative errno that the application must pass back to abort.
+ */
+typedef int (*tedge_write_fn)(void *ctx, const void *data, size_t len);
+
+/** @brief Log request filters (0 or NULL = unset). */
+struct tedge_log_request {
+	int64_t date_from_ms;
+	int64_t date_to_ms;
+	const char *search_text;
+	uint32_t max_lines;
+};
+
+/** @brief Produces a log of one type by writing it through @p write. */
+typedef int (*tedge_log_reader_t)(const struct tedge_log_request *req,
+				  tedge_write_fn write, void *ctx,
+				  void *user_data);
+
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_LOG_UPLOAD)
+/* Log upload is not built in: the call exists so an application compiles. */
+static inline int tedge_register_log_type(const char *type,
+					  tedge_log_reader_t reader,
+					  void *user_data)
+{
+	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(user_data);
+	return -ENOTSUP;
+}
+#else
+/**
+ * @brief Add a log type to the ones the device offers.
+ *
+ * The reader is called on the client's upload thread, possibly twice for one
+ * request (once to measure, once to send), so it must produce the same log
+ * both times as far as it can.
+ *
+ * @return 0, -ENOSPC when the client has no free log-type slot, or -ENOTSUP
+ *         when log upload is not built in.
+ */
+int tedge_register_log_type(const char *type, tedge_log_reader_t reader,
+			    void *user_data);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_LOG_UPLOAD */
+
+/* ------------------------------------------------------------------------ */
+/* Parameters (CONFIG_TEDGE_PARAMETERS)                                      */
+/*                                                                           */
+/* The settings an operator may change from the cloud. The application       */
+/* declares them once, as a const table: a name, a type, a default and the   */
+/* limits of what the value may hold. The client stores them, validates      */
+/* every change against the declaration, reports the current values as twin  */
+/* state, and tells the application when a change was accepted.              */
+/*                                                                           */
+/* There is deliberately no configuration-file API: no snapshot reader, no   */
+/* chunked writer, no upload and no download. A device with no filesystem    */
+/* has nothing to put in a file, and a blob is something an operator can     */
+/* neither read nor validate. See openspec c8y-direct-parameters.            */
+/* ------------------------------------------------------------------------ */
+
+/** @brief What a parameter holds. */
+enum tedge_param_type {
+	TEDGE_PARAM_TYPE_BOOL,
+	TEDGE_PARAM_TYPE_INT,
+	TEDGE_PARAM_TYPE_STRING,
+	/** A string, restricted to a fixed list of allowed values. */
+	TEDGE_PARAM_TYPE_ENUM,
+};
+
+/**
+ * @brief One declared parameter. Build these with the TEDGE_PARAM_* macros
+ * rather than by hand: they put each value in the right union member.
+ */
+struct tedge_parameter {
+	const char *name;
+	const char *description;
+	enum tedge_param_type type;
+	union {
+		bool b;
+		int32_t i;
+		const char *s;
+	} def;
+	/** TEDGE_PARAM_TYPE_INT: the inclusive range. */
+	int32_t min;
+	int32_t max;
+	/** TEDGE_PARAM_TYPE_STRING: the longest value accepted, excluding the NUL. */
+	uint16_t max_len;
+	/** TEDGE_PARAM_TYPE_ENUM: the allowed values, NULL-terminated. */
+	const char *const *allowed;
+};
+
+/** @cond INTERNAL_HIDDEN */
+#define TEDGE_PARAM_LIST(...) __VA_ARGS__
+/** @endcond */
+
+/** @brief Declare a boolean parameter. */
+#define TEDGE_PARAM_BOOL(_name, _default, _desc)                              \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_BOOL, .def.b = (_default),            \
+	}
+
+/** @brief Declare an integer parameter, accepted within [@p _min, @p _max]. */
+#define TEDGE_PARAM_INT(_name, _default, _min, _max, _desc)                   \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_INT, .def.i = (_default),             \
+		.min = (_min), .max = (_max),                                  \
+	}
+
+/** @brief Declare a string parameter of at most @p _max_len characters. */
+#define TEDGE_PARAM_STRING(_name, _default, _max_len, _desc)                  \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_STRING, .def.s = (_default),          \
+		.max_len = (_max_len),                                         \
+	}
+
+/**
+ * @brief Declare an enumerated parameter.
+ *
+ * @p _values is a parenthesised list of string literals, and @p _default
+ * must be one of them:
+ *
+ *     TEDGE_PARAM_ENUM("profile", "normal", ("normal", "quiet", "boost"),
+ *                      "Operating profile")
+ */
+#define TEDGE_PARAM_ENUM(_name, _default, _values, _desc)                     \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_ENUM, .def.s = (_default),            \
+		.allowed = (const char *const[]){ TEDGE_PARAM_LIST _values,    \
+						  NULL },                      \
+	}
+
+/**
+ * @brief Called once after a change has been validated and stored.
+ *
+ * Read the new values with tedge_parameter_get_*(). Return 0 to accept the
+ * change, or a negative errno and a reason to refuse it — the client then
+ * puts back the values the device was running and fails the operation with
+ * the reason. It runs on the client's thread, so it must return promptly.
+ */
+typedef int (*tedge_parameters_changed_t)(const char *set, char *reason,
+					  size_t reason_len, void *user_data);
+
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_PARAMETERS)
+/* Parameters are not built in: the calls exist so an application compiles. */
+static inline int tedge_declare_parameters(const char *set,
+					   const struct tedge_parameter *params,
+					   size_t count,
+					   tedge_parameters_changed_t on_change,
+					   void *user_data)
+{
+	ARG_UNUSED(set); ARG_UNUSED(params); ARG_UNUSED(count);
+	ARG_UNUSED(on_change); ARG_UNUSED(user_data);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_bool(const char *set, const char *name,
+					   bool *out)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_int(const char *set, const char *name,
+					  int32_t *out)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_string(const char *set, const char *name,
+					     char *out, size_t len)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out); ARG_UNUSED(len);
+	return -ENOTSUP;
+}
+#else
+/**
+ * @brief Declare the set of parameters the cloud may change.
+ *
+ * Call it before tedge_start(). @p params must stay valid for the life of
+ * the program — it is meant to be a file-scope `static const` table, so it
+ * costs flash and no RAM.
+ *
+ * @p set names the set, and is the one name the cloud knows it by: the twin
+ * fragment, the schema's identifier and the operation are all named after
+ * it. Each parameter starts at its declared default, which anything already
+ * stored then replaces.
+ *
+ * @return 0, -EEXIST when the set is already declared, -ENOSPC when there
+ *         is no free slot (CONFIG_TEDGE_PARAMETERS_MAX), -EINVAL when the
+ *         declaration is not self-consistent (a default outside its own
+ *         range or absent from its own allowed values, a duplicate name),
+ *         or -ENOTSUP when parameters are not built in.
+ */
+int tedge_declare_parameters(const char *set,
+			     const struct tedge_parameter *params,
+			     size_t count, tedge_parameters_changed_t on_change,
+			     void *user_data);
+
+/**
+ * @brief Read the current value of a declared parameter.
+ *
+ * @return 0, -ENOENT when the set or the name was never declared, or
+ *         -EINVAL when the parameter is not of that type.
+ */
+int tedge_parameter_get_bool(const char *set, const char *name, bool *out);
+int tedge_parameter_get_int(const char *set, const char *name, int32_t *out);
+/** @p out is always NUL-terminated; -ENOMEM when @p len is too small. */
+int tedge_parameter_get_string(const char *set, const char *name, char *out,
+			       size_t len);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_PARAMETERS */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* TEDGE_TEDGE_H_ */

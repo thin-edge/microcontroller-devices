@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# tedge-zephyr: thin-edge.io device-management client for Zephyr applications.
+name: tedge
+build:
+  cmake: .
+  kconfig: Kconfig
+samples:
+  - samples
+tests:
+  - tests

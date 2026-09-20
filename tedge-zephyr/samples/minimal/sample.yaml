@@ -1,0 +1,17 @@
+sample:
+  name: tedge-zephyr minimal
+  description: Smallest application that includes the tedge-zephyr module
+common:
+  tags: tedge
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "tedge-zephyr [0-9]+\\.[0-9]+\\.[0-9]+"
+tests:
+  sample.tedge.minimal:
+    integration_platforms:
+      - native_sim/native/64
+    platform_allow:
+      - native_sim/native/64
+      - esp32c6_devkitc/esp32c6/hpcore

@@ -27,10 +27,15 @@ Cumulocity are **not** involved in this primary phase.
   protocol), serving device/sensor data to an external client.
 - **Phase 2: Additional protocols / sources.**
   Extend beyond OPC-UA to other industry protocols as source options.
-- **Phase 3 (exploratory, later): Light thin-edge.io on Zephyr.**
-  Only after the earlier phases are fulfilled — explore a lightweight thin-edge.io
-  variant on Zephyr that could connect to Cumulocity directly. This is a stretch
-  goal, not a Phase 1 requirement.
+- **Phase 3 (started 2026-09-19): tedge-zephyr, a device-management client.**
+  A thin-edge.io client shipped as a **reusable Zephyr module** that any user's
+  Zephyr application can include. The OPC-UA, Modbus and SNMP apps here serve
+  as example user applications. It provides device-management features:
+  remote access (including to other hosts on the LAN), firmware update,
+  telemetry, log retrieval and configuration. It connects **directly to
+  Cumulocity** first, and later also **through a thin-edge.io gateway** as a
+  child device. See
+  [Phase 3 roadmap](#phase-3-roadmap-device-management-client) below.
 
 ## Goals
 
@@ -99,6 +104,134 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
   `west build -b <board> apps/<protocol>`. Today: `apps/opcua-server` (OPC-UA,
   env sim), `apps/modbus-server` (Modbus TCP on port 502, pump sim) and
   `apps/snmp-agent` (SNMPv2c on UDP 161 + traps on 162, switch sim).
+- `tedge-zephyr/` — (Phase 3) the thin-edge.io device-management client, a
+  standalone Zephyr module (`tedge`) for *any* Zephyr application. It never
+  depends on `lib/` or `apps/`, and it will move into its own repository. Apps
+  here opt in with `CONFIG_TEDGE` and keep their glue code in `apps/<app>/src/`.
+
+## Phase 3 roadmap: device management client
+
+### A module for any application
+
+The client lives in `tedge-zephyr/`, a self-contained Zephyr module named
+`tedge`:
+
+- **Namespaced:** the API is `tedge_*` and Kconfig is `CONFIG_TEDGE_*`.
+- **Self-contained:** it depends only on Zephyr and MCUboot, and never on
+  this repo's `lib/`.
+- **Portable:** it is laid out so it can move into its own repository and
+  west project later without changing its files.
+- **The host application owns** connectivity, identity, telemetry and the
+  watchdog.
+- **The module owns** its threads, a bounded heap, its settings subtree
+  (`tedge/`) and its TLS credential tags.
+- **Hooks** let the application register custom operations and log types,
+  declare the parameters the cloud may change, veto a restart, add
+  firmware-confirm checks, and narrow remote-access targets.
+
+In this repo, the glue between `lib/common` and the module lives in each app.
+
+### Two transports, one feature set
+
+| | Direct to Cumulocity (first) | Via a thin-edge.io gateway (later) |
+|---|---|---|
+| Connection | MQTTS to the Cumulocity **MQTT Service** (:9883) with a CA certificate: SmartREST 2.0 for operations, free-form `te/` topics for state and telemetry, mapped by Cumulocity Smart Functions. Core MQTT (:8883) for basic-auth devices and as the fallback while SmartREST on the MQTT Service is in Public Preview | Plain MQTT to the gateway's broker (`te/device/<id>//…`), HTTP to its file transfer service, discovered via mDNS `_thin-edge_mqtt._tcp` |
+| Device owns | TLS, time (SNTP), authentication, the cloud protocol | Only thin-edge.io JSON; the gateway does the rest |
+| Fits (measured) | ESP32-C6; ESP32-S3 with the TLS heap in PSRAM; the WROOM only as a remote-access-only device. One TLS session: 52 KB heap peak / 35 KB connected with 16 KB records | Every board, including the WROOM running OPC-UA |
+| Prior art | None; this is new | `thin-edge/rpi-pico-client` (MicroPython), `thin-edge/freertos-esp32-client` (ESP-IDF) |
+
+The feature handlers live in the module and talk to a small transport
+interface, so the gateway transport comes without a rewrite. Telemetry sent on free-form topics uses thin-edge.io's `te/` JSON shape,
+so both transports share one payload format.
+
+### Every feature is optional at build time
+
+Each device-management feature is its own Kconfig option. The transport and
+the authentication method are Kconfig choices. A board with little RAM or
+flash builds only what it can afford:
+
+- a disabled feature costs no flash, RAM, threads or TLS sessions;
+- the device advertises only the operations compiled into it;
+- invalid combinations (for example firmware update without MCUboot) fail at
+  configure time.
+
+The cost of each feature is measured per board and app and documented. Each
+board has a default profile that fits it. From the spikes:
+
+| Board | Profile (direct transport) |
+|---|---|
+| ESP32-C6 (4 MB) | `full`: every feature, one tunnel; 73–75% of the 1280 KB slot |
+| ESP32-S3-DevKitC-1 (N16R8) | `full`, with the mbedTLS heap in the 8 MB PSRAM (verified on hardware, no slowdown) |
+| ESP32-WROOM-32 | `remote-access-enabler` on its own (no protocol app, no firmware update); slow tunnels. Next to OPC-UA: gateway transport only |
+
+TLS records default to 16 KB; 8 KB saves 16 KB per session on the MQTT
+Service but leaves only ~2 KB of margin over today's certificate chain.
+
+### Remote access: the MCU as a gateway into its LAN
+
+This is the headline feature. Cumulocity Cloud Remote Access (SSH, VNC, Telnet,
+passthrough) is tunnelled over a device-initiated WebSocket (WSS) and bridged by
+the MCU to a TCP target. The target can be the MCU itself (for example a
+loopback telnet shell, OPC-UA or Modbus), or **another host on its network**,
+such as SSH to a Raspberry Pi, PLC or HMI next to it. A brownfield site
+therefore gets remote access to its machines with nothing more than a Wi-Fi MCU.
+The thin-edge.io gateway can't offer this for child devices, which makes it
+the strongest reason for the direct transport.
+
+- **Targets:** a build-time policy (own subnets by default, an allow-list, or
+  local only), which the app can narrow further.
+- **Audit:** every tunnel opens and closes as an event naming the target.
+- **Limits:** a capped number of sessions (default 1, about one TLS session
+  each). The feature requires CA-certificate authentication: the WebSocket
+  authenticates with a JWT from `s/uat`, which basic-auth devices don't get.
+- **Measured:** SSH to a LAN host through a C6 answers in 5.6 s, echoes in
+  ~100 ms and moves 40–56 KB/s. Fine for interactive use; bulk transfers
+  need tuning.
+- **Local shell:** Zephyr's `shell_telnet` listens on the LAN without
+  authentication, so the device's own shell needs a backend fed straight by
+  the tunnel.
+
+### Onboarding
+
+- **Primary: the Cumulocity CA.**
+  - The device generates its key on the device, plus a one-time password and
+    a pre-filled registration URL.
+  - The operator registers the device from that URL.
+  - The device enrolls through EST `simpleenroll` and connects with mTLS.
+  - It renews through `simplereenroll` with a Bearer JWT (mTLS alone is
+    refused).
+  - Verified on the C6, S3 and WROOM. The private key is only obfuscated at
+    rest and sits in RAM while connected, which is acceptable for
+    development but needs flash encryption and opaque TLS keys before real
+    deployments.
+- **Fallback:** basic-auth credentials obtained via the Cumulocity bootstrap
+  user. The client must create the device (`100`) before subscribing, or its
+  first session misses operations.
+- **Delivery:** the BLE Wi-Fi provisioner returns the registration URL as the
+  Improv RPC result. The provisioner stores only the one-time password; all
+  crypto stays in the application image. The tenant URL comes from a per-fleet
+  Kconfig default, overridable from the shell. A SoftAP/captive-portal
+  provisioner works too (Spike E: 71% of the `prov` partition against 92%
+  for BLE, AP+STA credential test, the iPhone's portal sheet opens by
+  itself). It becomes a supported alternative once it shows a success page,
+  requires authorization and is checked on Android.
+
+### Order
+
+| Step | Change | Content |
+|---|---|---|
+| P0 | `c8y-direct-spikes` (done 2026-09-19: go) | TLS/MQTT Service cost, OTA into `slot1`, CA enrollment, remote-access tunnel to a LAN host, module skeleton, footprint table |
+| P1 | `c8y-direct-core` (done 2026-09-20) | The `tedge-zephyr` module and public API; onboarding (CA and bootstrap), connection with reconnect and back-off, inventory, restart (full-system reset hook), availability, state on `te/` topics with reference Smart Functions; one protocol app and `samples/minimal` integrated |
+| P2 | `c8y-direct-remote-access` (done 2026-09-20) | **Remote access**: WSS bridge to LAN hosts and local services under the target policy, session cap, audit events, capacity as twin data |
+| P3 | `c8y-direct-firmware-update` (done 2026-09-20) | Firmware update: confirmed only after the new image reaches Cumulocity and passes the app's checks; MCUboot rolls back otherwise |
+| P4 | `c8y-direct-telemetry` (done 2026-09-20) | Telemetry (free-form, `te/`-shaped) and device-health measurements, buffered through an outage with the time each reading was taken |
+| P5 | `c8y-direct-diagnostics` (done 2026-09-20) | Diagnostics: an allow-listed shell command (nothing runs by default), log upload from callbacks with the client's own RAM ring, and the last crash dump in the format Zephyr's tooling reads |
+| P6 | `c8y-direct-cert-renewal` (done 2026-09-20) | Certificate renewal: the client renews before expiry, publishes the expiry as twin data and alarms if renewal keeps failing |
+| P7 | `c8y-direct-parameters` (done 2026-09-20) | Typed device parameters the cloud can see and change (Cumulocity Parameter Update, as thin-edge.io's parameter plugin does), not configuration files; the client declares a set for itself too, so a device is adjustable in the field whatever its application does |
+| P8 | `gateway-transport` (proposed) | Gateway transport: a thin-edge.io child device with no TLS, no certificate and no cloud token, reusing the P1–P7 handlers |
+| — | separate small change | Full-system reset in `lib/common` (`liveness.c`, `net.c`): a CPU reset hangs MCUboot on the C6 |
+| — | — | Move `tedge-zephyr` into its own repository once the P1 API has settled |
+| later | — | Device profiles, WROOM tuning, "software" via LLEXT or Wasm |
 
 ## Open questions
 
@@ -107,4 +240,13 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
 - Is Zephyr's Wi-Fi support mature enough on each target, or should Pico W be
   descoped?
 - Which data/sensor sources to model in the initial address space.
-- How to supply Wi-Fi credentials without committing secrets.
+- How to supply Wi-Fi credentials without committing secrets. (Answered by BLE
+  provisioning, `ble-wifi-provisioning`.)
+- Phase 3: the spikes answered U1–U12 (go/no-go table in
+  `openspec/changes/archive/2026-09-19-c8y-direct-spikes/design.md`; SoftAP verified on iOS
+  only). The
+  open problems P1–P13 there carry into `c8y-direct-core`, notably reconnect
+  after a network drop (P1), the C6 reset hang (P2) and key protection (P9).
+- Phase 3: free-form telemetry is turned into measurements by Cumulocity
+  Smart Functions. Which reference functions tedge-zephyr ships, and how
+  they're installed, is open (P12).

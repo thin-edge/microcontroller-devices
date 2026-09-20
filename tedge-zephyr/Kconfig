@@ -1,0 +1,762 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# tedge-zephyr: thin-edge.io device-management client.
+#
+# Every feature is its own option, so an image carries only what the board can
+# afford. Features that are not implemented yet are listed but cannot be
+# selected: each depends on a hidden TEDGE_FEATURE_AVAILABLE_<X> gate that is
+# only set once the feature lands (or, for development and spikes, by
+# TEDGE_EXPERIMENTAL_FEATURES).
+
+menuconfig TEDGE
+	bool "thin-edge.io device management client (tedge-zephyr)"
+	help
+	  Build the tedge-zephyr client into the application. With this off,
+	  the module adds no code, RAM, threads, sockets or TLS sessions.
+
+if TEDGE
+
+# The client's own kernel needs, whatever the transport.
+config TEDGE_KERNEL_SELECTS
+	bool
+	default y
+	select EVENTS
+
+config TEDGE_EXPERIMENTAL_FEATURES
+	bool "Allow selecting features that are not implemented yet"
+	select EXPERIMENTAL
+	help
+	  Development and spikes only. Makes every feature option selectable,
+	  including the ones with no implementation in this module yet, so that
+	  an application can prototype them and the dependency rules can be
+	  tested. Never enable this in a release image.
+
+# --- Implementation gates (hidden) -----------------------------------------
+# Each flips to "default y" when its feature is implemented in this module.
+
+config TEDGE_FEATURE_AVAILABLE_GATEWAY
+	bool
+	default y if TEDGE_EXPERIMENTAL_FEATURES
+
+config TEDGE_FEATURE_AVAILABLE_TELEMETRY
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_HEALTH
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_RESTART
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_FIRMWARE_UPDATE
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_SHELL_COMMAND
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_LOG_UPLOAD
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_REMOTE_ACCESS
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_PARAMETERS
+	bool
+	default y
+
+config TEDGE_FEATURE_AVAILABLE_CERT_RENEWAL
+	bool
+	default y
+
+# --- Transport ----------------------------------------------------------------
+
+choice TEDGE_TRANSPORT
+	prompt "Transport"
+	default TEDGE_TRANSPORT_C8Y
+
+config TEDGE_TRANSPORT_C8Y
+	bool "Direct to Cumulocity"
+	help
+	  The device connects to Cumulocity itself over MQTT/TLS. It owns time
+	  synchronisation, TLS, authentication and the cloud protocol.
+
+config TEDGE_TRANSPORT_GATEWAY
+	bool "Via a thin-edge.io gateway"
+	depends on TEDGE_FEATURE_AVAILABLE_GATEWAY
+	help
+	  The device is a child device of a thin-edge.io gateway on the local
+	  network and speaks the thin-edge.io MQTT API to it.
+
+endchoice
+
+if TEDGE_TRANSPORT_C8Y
+
+# The application owns the network interface; these are what the client
+# itself needs. Everything else (socket counts, mbedTLS heap and record size,
+# PSA algorithms) is the application's to size: see the README and profiles.
+config TEDGE_C8Y_SELECTS
+	bool
+	default y
+	# The client needs the IP stack and sockets. The application still owns
+	# the interface: which L2, credentials, and when to connect.
+	select NETWORKING
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_IPV4
+	select NET_TCP
+	select NET_UDP if TEDGE_SNTP
+	select DNS_RESOLVER
+	select MQTT_LIB
+	select MQTT_LIB_TLS
+	select MBEDTLS
+	select NET_SOCKETS
+	select NET_SOCKETS_SOCKOPT_TLS
+	select TLS_CREDENTIALS
+	select SETTINGS
+	select SNTP if TEDGE_SNTP
+
+config TEDGE_C8Y_URL
+	string "Cumulocity tenant host"
+	default ""
+	help
+	  Host name of the Cumulocity tenant, e.g. "example.cumulocity.com",
+	  without a scheme. It can be overridden at runtime (settings), so a
+	  fleet build usually sets it once per tenant.
+
+config TEDGE_C8Y_CA_FILES
+	string "Trust anchors for the tenant (PEM files, space-separated)"
+	default "certs/godaddy-root-g2.pem"
+	help
+	  Paths relative to the module directory, or absolute. They are
+	  embedded and registered as the server trust anchors. The default is
+	  the root the *.cumulocity.com chains end in; point this at your own
+	  files for other instances.
+
+config TEDGE_SNTP
+	bool "Set the clock with SNTP when it is not already valid"
+	default y
+	help
+	  Certificates cannot be validated without the time. With this off,
+	  the application must set the realtime clock before the client
+	  connects.
+
+config TEDGE_SNTP_SERVER
+	string "SNTP server"
+	default "pool.ntp.org"
+	depends on TEDGE_SNTP
+
+config TEDGE_C8Y_OPERATION_JSON
+	bool "Receive operations with their id (devicecontrol/notifications)"
+	default y
+	help
+	  Cumulocity's SmartREST operation statuses (501, 502, 503) name a
+	  fragment and act on the oldest operation in that state, not on the
+	  one the device is working on. An operation left executing by a reset
+	  therefore absorbs the results of every operation after it.
+
+	  With this on, the client receives operations as JSON on
+	  devicecontrol/notifications, where the operation id is, and reports
+	  every status with 504, 505 and 506, which name the operation.
+
+	  Turn it off for a tenant or a transport that does not serve that
+	  topic; the client then uses s/ds and the older templates.
+
+config TEDGE_C8Y_PAYLOAD_BYTES
+	int "Largest message the client accepts"
+	default 2048 if TEDGE_C8Y_OPERATION_JSON
+	default 1024
+	range 512 8192
+	help
+	  An operation's JSON carries a delivery log beside its own fields, so
+	  it needs more room than a SmartREST line. A message larger than this
+	  is dropped with a warning naming its size.
+
+config TEDGE_REQUIRED_INTERVAL_MIN
+	int "Required interval reported to Cumulocity (minutes)"
+	default 60
+	help
+	  Cumulocity marks the device unavailable when it has not sent
+	  anything for this long. 0 disables the report.
+
+config TEDGE_RECONNECT_BACKOFF_MAX_S
+	int "Longest wait between reconnect attempts (s)"
+	default 300
+	range 5 3600
+	help
+	  The wait starts at 3 s (a closed TLS connection holds its TCP
+	  context for a moment) and doubles up to this value, with jitter.
+
+choice TEDGE_C8Y_ENDPOINT
+	prompt "Cumulocity MQTT endpoint"
+	default TEDGE_C8Y_MQTT_SERVICE
+
+config TEDGE_C8Y_MQTT_SERVICE
+	bool "MQTT Service (port 9883): SmartREST and free-form topics"
+	# The MQTT Service refuses basic auth for devices, so basic-auth
+	# (bootstrap) builds use Core MQTT. Drop this line once it accepts
+	# basic auth.
+	depends on TEDGE_AUTH_C8Y_CA
+	help
+	  One connection carries device management (SmartREST 2.0) and
+	  free-form telemetry. SmartREST on the MQTT Service needs the tenant
+	  feature mqtt-service.smartrest (Public Preview). Requires
+	  certificate authentication.
+
+config TEDGE_C8Y_CORE_MQTT
+	bool "Core MQTT (port 8883): SmartREST only"
+	help
+	  The generally available endpoint. Telemetry is sent as SmartREST
+	  measurements. Works with both authentication methods, and is the
+	  endpoint basic-auth (bootstrap) builds use.
+
+endchoice
+
+choice TEDGE_AUTH
+	prompt "Authentication"
+	default TEDGE_AUTH_C8Y_CA
+
+config TEDGE_AUTH_C8Y_CA
+	bool "x.509 certificate from the Cumulocity CA"
+	help
+	  The device generates its key, a one-time password and a registration
+	  URL, enrolls through EST (simpleenroll) once registered, and connects
+	  with mutual TLS.
+
+config TEDGE_AUTH_BOOTSTRAP
+	bool "Basic authentication via the bootstrap user"
+	help
+	  The device obtains device credentials through the Cumulocity bootstrap
+	  user once it is accepted in the device registration UI. Features that
+	  need certificate authentication are unavailable.
+
+endchoice
+
+if TEDGE_AUTH_C8Y_CA
+
+# Enrollment needs a key in PSA storage, a CSR writer and an HTTPS client.
+config TEDGE_ENROLL_SELECTS
+	bool
+	default y
+	# The device key lives in PSA ITS. The application chooses the ITS
+	# store (a Kconfig choice, so the module cannot select it); see the
+	# README and the profiles.
+	select SECURE_STORAGE
+	select HTTP_CLIENT
+	select MBEDTLS_X509_CSR_WRITE_C
+	select MBEDTLS_PEM_WRITE_C
+	select MBEDTLS_PK_WRITE_C
+	select MBEDTLS_BASE64_C
+	select MBEDTLS_ASN1_PARSE_C
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_EXPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_IMPORT
+	select PSA_WANT_ALG_ECDSA
+	select PSA_WANT_ALG_SHA_256
+
+config TEDGE_PSA_KEY_ID
+	hex "PSA key ID of the device key"
+	default 0x0007E571
+	range 0x00000001 0x3FFFFFFF
+	help
+	  Persistent key ID in PSA secure storage. It must not collide with
+	  the application's own keys, and must be at most PSA_KEY_ID_USER_MAX.
+
+config TEDGE_ENROLL_POLL_S
+	int "Seconds between enrollment attempts"
+	default 10
+	range 2 600
+	help
+	  While the device waits to be registered, it retries simpleenroll at
+	  this interval, backing off to 60 s.
+
+endif # TEDGE_AUTH_C8Y_CA
+
+if TEDGE_AUTH_BOOTSTRAP
+
+config TEDGE_BOOTSTRAP_USER
+	string "Bootstrap user (tenant/username)"
+	default ""
+	help
+	  The Cumulocity bootstrap credentials, usually set once per fleet in
+	  a git-ignored overlay. The application can also set them at runtime
+	  with tedge_set_bootstrap_credentials().
+
+config TEDGE_BOOTSTRAP_PASSWORD
+	string "Bootstrap password"
+	default ""
+
+endif # TEDGE_AUTH_BOOTSTRAP
+
+endif # TEDGE_TRANSPORT_C8Y
+
+# --- Identity -------------------------------------------------------------------
+
+config TEDGE_DEVICE_ID_PREFIX
+	string "Default external ID prefix"
+	default "tedge"
+	help
+	  Unless the application sets an external ID, the device uses
+	  "<prefix>-<MAC address>".
+
+config TEDGE_DEVICE_TYPE
+	string "Default device type"
+	default "thin-edge.io-zephyr"
+
+# --- Features -------------------------------------------------------------------
+
+menu "Features"
+
+config TEDGE_TELEMETRY
+	bool "Telemetry (measurements, events, alarms)"
+	depends on TEDGE_FEATURE_AVAILABLE_TELEMETRY
+	help
+	  tedge_publish_measurement(), tedge_publish_event() and the alarm
+	  functions. The application decides what to send and when.
+
+if TEDGE_TELEMETRY
+
+config TEDGE_TELEMETRY_BUFFER_BYTES
+	int "Bytes held for telemetry that cannot be sent yet"
+	default 2048
+	range 256 65536
+	help
+	  Messages wait here while the device is offline and are sent oldest
+	  first on reconnect. When it is full the oldest measurement is
+	  dropped and counted; events and alarms are kept. The buffer is RAM,
+	  so a reboot loses what it held.
+
+endif # TEDGE_TELEMETRY
+
+config TEDGE_HEALTH
+	bool "Device health measurements"
+	depends on TEDGE_FEATURE_AVAILABLE_HEALTH
+	help
+	  The client's own vital signs: uptime, its free heap, how much
+	  telemetry it dropped, and the last reset reason. What the
+	  application knows about the device is the application's to publish.
+	select TEDGE_TELEMETRY
+	select HWINFO
+	# The free-heap figure comes from the kernel's heap statistics.
+	select SYS_HEAP_RUNTIME_STATS
+
+config TEDGE_HEALTH_INTERVAL_S
+	int "Seconds between health measurements"
+	default 900
+	range 30 86400
+	depends on TEDGE_HEALTH
+
+config TEDGE_RESTART
+	bool "Restart operation"
+	depends on TEDGE_FEATURE_AVAILABLE_RESTART
+
+config TEDGE_FIRMWARE_UPDATE
+	bool "Firmware update"
+	depends on TEDGE_FEATURE_AVAILABLE_FIRMWARE_UPDATE
+	depends on BOOTLOADER_MCUBOOT
+	select TEDGE_HTTP
+	help
+	  Downloads a signed image into the secondary slot, boots it for test
+	  and confirms it only when the cloud is reachable and the
+	  application's checks pass; MCUboot reverts it otherwise. Requires an
+	  MCUboot (sysbuild) build of the application.
+	select IMG_MANAGER
+	# MCUBOOT_IMG_MANAGER is a Kconfig choice, so it cannot be selected;
+	# it is the default for an MCUboot build, which this feature requires.
+	select STREAM_FLASH
+	select IMG_ERASE_PROGRESSIVELY
+	select FLASH
+	select FLASH_MAP
+
+if TEDGE_FIRMWARE_UPDATE
+
+config TEDGE_FIRMWARE_STACK_SIZE
+	int "Stack of the download thread"
+	default 8192
+	help
+	  The download's TLS handshake runs on this thread, as the
+	  remote-access bridge's does on its own.
+
+config TEDGE_FIRMWARE_CONFIRM_AFTER_CONNECT
+	bool "Confirm a test-booted image once it reaches the cloud"
+	default y
+	help
+	  With this off, an image stays unconfirmed until the application
+	  confirms it, and any reset rolls it back. The application's
+	  firmware-check hook is consulted either way.
+
+config TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S
+	int "Seconds a test-booted image has to confirm itself"
+	default 900
+	range 0 86400
+	help
+	  A new image that cannot reach the cloud never confirms, and nothing
+	  else would reset the device: the network is up, so the
+	  application's connectivity watchdog sees nothing wrong. When this
+	  many seconds pass without a confirmation, the client resets the
+	  device so the bootloader can roll the image back. 0 disables it,
+	  leaving the rollback to whatever else resets the device.
+
+config TEDGE_FIRMWARE_PROGRESS
+	bool "Publish download progress on a free-form topic"
+	default y
+	depends on TEDGE_C8Y_MQTT_SERVICE
+	help
+	  te/device/<id>///progress/firmware, at most once (QoS 0): a stream
+	  of hints, so a lost message costs nothing. Core MQTT has no
+	  free-form topics and publishes none.
+
+config TEDGE_FIRMWARE_PROGRESS_PERCENT
+	int "Percentage step between progress messages"
+	default 10
+	range 1 50
+	depends on TEDGE_FIRMWARE_PROGRESS
+
+endif # TEDGE_FIRMWARE_UPDATE
+
+config TEDGE_SHELL_COMMAND
+	bool "Shell command operation"
+	depends on TEDGE_FEATURE_AVAILABLE_SHELL_COMMAND
+	depends on SHELL
+	select SHELL_BACKEND_DUMMY
+	help
+	  Runs an allow-listed Zephyr shell command sent from the cloud and
+	  returns its output. The command runs in-process against a capture
+	  backend, not a shell on the network, and nothing runs until
+	  TEDGE_SHELL_COMMAND_ALLOW_LIST says what may.
+
+if TEDGE_SHELL_COMMAND
+
+config TEDGE_SHELL_COMMAND_ALLOW_LIST
+	string "Commands the cloud may run (comma-separated prefixes)"
+	default ""
+	help
+	  For example "kernel uptime,net iface,tedge diag". A request must
+	  begin with one of these and may add arguments; anything that could
+	  chain a second command is refused whatever this says.
+
+	  Empty, the default, refuses every command: compiling the feature in
+	  is not the same as consenting to run something. What is safe to
+	  expose depends on what else is in the image, which only you know.
+
+config TEDGE_SHELL_COMMAND_TIMEOUT_S
+	int "Seconds before a command is reported as timed out"
+	default 30
+	range 1 600
+	help
+	  Zephyr cannot interrupt a running shell command, so the operation
+	  fails but the thread stays busy until the command returns. Keep
+	  commands that can block for ever off the allow-list.
+
+config TEDGE_SHELL_COMMAND_OUTPUT_BYTES
+	int "Output kept from a command"
+	default 512
+	range 64 4096
+	help
+	  What the command printed, as far as this many bytes. The result
+	  reported to Cumulocity is one SmartREST field and is shorter still;
+	  a command with a lot to say belongs behind a log type.
+
+config TEDGE_SHELL_COMMAND_STACK_SIZE
+	int "Stack of the thread a command runs on"
+	default 4096
+
+endif # TEDGE_SHELL_COMMAND
+
+config TEDGE_LOG_UPLOAD
+	bool "Log upload"
+	depends on TEDGE_FEATURE_AVAILABLE_LOG_UPLOAD
+	select TEDGE_HTTP
+	select LOG
+	select LOG_OUTPUT
+	help
+	  Answers the cloud's request for a log file. The client keeps its own
+	  recent log in RAM and offers it without the application doing
+	  anything; the application can add log types of its own, each a
+	  callback that writes the log when it is asked for.
+
+if TEDGE_LOG_UPLOAD
+
+config TEDGE_LOG_RING_BYTES
+	int "The client's own log kept in RAM"
+	default 2048
+	range 256 16384
+	help
+	  A ring in the module's heap holding the most recent log lines of the
+	  whole image, oldest whole line dropped when it is full. It does not
+	  survive a reboot; that is what the crash dump is for.
+
+config TEDGE_LOG_TYPE_SLOTS
+	int "Log types the client can hold"
+	default 4
+	range 1 16
+	help
+	  The client's own log, the crash dump when it is built in, and the
+	  application's own types.
+
+config TEDGE_LOG_UPLOAD_MAX_BYTES
+	int "Most bytes one request may send"
+	default 8192
+	range 512 262144
+	help
+	  A longer log is cut, with a line saying so, rather than refused.
+	  Nothing of this size is held in RAM: the log is streamed as it is
+	  produced.
+
+config TEDGE_COREDUMP
+	bool "Offer the last crash dump as a log"
+	depends on ARCH_SUPPORTS_COREDUMP
+	select DEBUG_COREDUMP
+	help
+	  On a fatal error Zephyr writes a dump to the coredump partition;
+	  after the reset the client offers it as the log type "coredump", in
+	  the format zephyr/scripts/coredump/coredump_serial_log_parser.py
+	  reads, and erases it once the cloud has it.
+
+	  The backend is a Kconfig choice, so this cannot select it: the
+	  application sets CONFIG_DEBUG_COREDUMP_BACKEND_FLASH_PARTITION=y and
+	  its board needs a "coredump_partition" (every layout in this
+	  repository has one).
+
+config TEDGE_LOG_UPLOAD_STACK_SIZE
+	int "Stack of the upload thread"
+	default 8192
+	help
+	  Two TLS handshakes run on this thread — the identity lookup and the
+	  upload itself — which is why it needs as much as the download and
+	  the remote-access bridge. 4096 overflows during the handshake, and
+	  on a board without CONFIG_HW_STACK_PROTECTION that shows up as an
+	  illegal instruction rather than a stack-overflow message.
+
+endif # TEDGE_LOG_UPLOAD
+
+config TEDGE_REMOTE_ACCESS
+	bool "Remote access (tunnel to the device and its network)"
+	depends on TEDGE_FEATURE_AVAILABLE_REMOTE_ACCESS
+	depends on TEDGE_TRANSPORT_C8Y && TEDGE_AUTH_C8Y_CA
+	help
+	  Bridges Cumulocity Cloud Remote Access sessions (SSH, VNC, Telnet,
+	  passthrough) to a TCP target: the device itself or another host on
+	  its network, within the target policy below. Each session holds one
+	  TLS connection while it is open. Requires certificate authentication.
+	select TEDGE_HTTP
+	select WEBSOCKET_CLIENT
+	# websocket_connect() hashes Sec-WebSocket-Accept with PSA SHA-1 but
+	# does not select it; without this it fails with -EPROTO.
+	select PSA_WANT_ALG_SHA_1
+
+if TEDGE_REMOTE_ACCESS
+
+choice TEDGE_REMOTE_ACCESS_TARGETS
+	prompt "Allowed remote-access targets"
+	default TEDGE_REMOTE_ACCESS_TARGETS_LAN
+
+config TEDGE_REMOTE_ACCESS_TARGETS_LAN
+	bool "Hosts on the device's own IPv4 subnets"
+
+config TEDGE_REMOTE_ACCESS_TARGETS_LIST
+	bool "Only host:port pairs in an allow-list"
+
+config TEDGE_REMOTE_ACCESS_TARGETS_LOCAL
+	bool "Only the device itself"
+
+endchoice
+
+config TEDGE_REMOTE_ACCESS_ALLOW_LIST
+	string "Allow-list"
+	depends on TEDGE_REMOTE_ACCESS
+	default ""
+	help
+	  Comma-separated "host:port" entries, e.g.
+	  "192.168.1.20:22,127.0.0.1:23".
+
+config TEDGE_REMOTE_ACCESS_STACK_SIZE
+	int "Stack of each session's bridge thread"
+	depends on TEDGE_REMOTE_ACCESS
+	default 8192
+	help
+	  The session's TLS handshake runs on this thread, so it needs the
+	  same depth as the client thread. 4096 overflowed it (the fault
+	  shows as a jump to a garbage address).
+
+config TEDGE_REMOTE_ACCESS_TWIN_SESSIONS
+	bool "List the open sessions' targets in the twin data"
+	depends on TEDGE_REMOTE_ACCESS
+	default y
+	help
+	  The session count, the limit and the policy are always published;
+	  the targets are internal addresses, so they are optional.
+
+config TEDGE_REMOTE_ACCESS_MAX_SESSIONS
+	int "Maximum concurrent sessions"
+	range 1 4
+	default 1
+
+config TEDGE_REMOTE_ACCESS_BUF_SIZE
+	int "Bridge buffer size per direction (bytes)"
+	range 512 16384
+	default 2048
+
+config TEDGE_REMOTE_ACCESS_IDLE_TIMEOUT_S
+	int "Close a session after this many idle seconds (0 = never)"
+	default 900
+
+endif # TEDGE_REMOTE_ACCESS
+
+config TEDGE_PARAMETERS
+	bool "Parameters"
+	depends on TEDGE_FEATURE_AVAILABLE_PARAMETERS
+	help
+	  Settings an operator may change from the cloud. The application
+	  declares a named set of typed parameters with their defaults and
+	  limits; the client stores them, validates every change against the
+	  declaration, and reports the current values as twin state. Nothing
+	  is uploaded or downloaded, so this needs no HTTP client and no
+	  filesystem.
+
+if TEDGE_PARAMETERS
+
+config TEDGE_PARAMETERS_MAX
+	int "Maximum declared parameters, across all sets"
+	default 16
+	range 1 100
+	help
+	  One current value is kept in RAM per declared parameter. The
+	  declaration itself is the application's const data and costs
+	  nothing here. Cumulocity accepts at most 100 parameters in one
+	  change.
+
+config TEDGE_PARAMETERS_SELF
+	bool "Offer the client's own tunables as a parameter set"
+	default y
+	help
+	  Declares a set named "tedge" holding the few client settings that
+	  are worth revisiting on a device already in the field: how much it
+	  logs, how often it reports its own health, the availability window
+	  Cumulocity judges it by, and whether the cloud may tunnel to it.
+	  Every application gets these without writing a line, and its own
+	  parameters live in a set of its own. Raising the log level takes
+	  effect immediately only with CONFIG_LOG_RUNTIME_FILTERING;
+	  otherwise it applies at the next boot.
+
+config TEDGE_PARAMETERS_SCHEMA
+	bool "Print the JSON Schema of a declared set"
+	default y
+	depends on SHELL
+	help
+	  Adds "tedge params schema", which prints what has to be registered
+	  in the tenant's Digital Twin Manager for a set. It is generated
+	  from the same table the client validates against, so the two cannot
+	  drift. Costs text; turn it off once the sets are registered.
+
+endif # TEDGE_PARAMETERS
+
+config TEDGE_CERT_RENEWAL
+	bool "Certificate renewal"
+	depends on TEDGE_FEATURE_AVAILABLE_CERT_RENEWAL
+	depends on TEDGE_TRANSPORT_C8Y && TEDGE_AUTH_C8Y_CA
+	help
+	  Renews the device certificate through EST (simplereenroll) before it
+	  expires. A device whose certificate has expired cannot be reached at
+	  all, so this is what keeps a fleet manageable over years.
+	select TEDGE_HTTP
+	select MBEDTLS_X509_CRT_PARSE_C
+
+if TEDGE_CERT_RENEWAL
+
+config TEDGE_CERT_RENEW_BEFORE_DAYS
+	int "Renew when this many days of lifetime are left"
+	default 30
+	range 1 3650
+	help
+	  The margin covers a device that is offline for a while: it has this
+	  long to come back and renew before the certificate expires.
+
+config TEDGE_CERT_RENEW_ALARM_DAYS
+	int "Raise an alarm when this many days are left and renewal failed"
+	default 7
+	range 0 3650
+	help
+	  0 raises no alarm. Otherwise the device raises a critical alarm
+	  naming the expiry date, and clears it once a renewal succeeds.
+
+config TEDGE_CERT_RENEW_CHECK_HOURS
+	int "Hours between certificate checks"
+	default 24
+	range 1 168
+	help
+	  The check parses the stored certificate; it costs no network
+	  traffic. Checks are spread within the interval so that a fleet does
+	  not renew all at once.
+
+endif # TEDGE_CERT_RENEWAL
+
+endmenu
+
+# Shared HTTPS client and token handling, pulled in by the file-transfer
+# features (firmware update, log upload, configuration management). Every
+# call authenticates with a fresh Bearer JWT and only on the tenant's own
+# domain.
+config TEDGE_HTTP
+	bool
+	select HTTP_CLIENT
+	select NET_SOCKETS
+	select NET_SOCKETS_SOCKOPT_TLS
+	select DNS_RESOLVER
+
+if TEDGE_HTTP
+
+config TEDGE_HTTP_MAX_REDIRECTS
+	int "HTTP redirects to follow"
+	default 3
+	range 0 10
+	help
+	  The JWT is never sent to a host outside the tenant's domain, so a
+	  redirect off it drops the token rather than the request.
+
+endif # TEDGE_HTTP
+
+# --- Resources ------------------------------------------------------------------
+
+menu "Resources"
+
+config TEDGE_THREAD_STACK_SIZE
+	int "Client thread stack size"
+	default 6144
+	help
+	  The measured peak is about 3.5 KB, including the mutual-TLS
+	  handshake and the first enrollment (c8y-direct-spikes).
+
+config TEDGE_THREAD_PRIORITY
+	int "Client thread priority"
+	default 10
+	help
+	  Preemptible priority of the client's threads. Keep it below (a higher
+	  number than) the application's time-critical threads.
+
+config TEDGE_HEAP_SIZE
+	int "Client heap size (bytes)"
+	default 16384
+	help
+	  The client allocates only from this heap, never from the
+	  application's, so its memory use is bounded and predictable.
+
+config TEDGE_TLS_TAG_BASE
+	hex "First TLS credential tag used by the client"
+	default 0x7465
+	help
+	  The client uses tags from this value upwards (one per credential
+	  set). Choose a base that doesn't overlap the application's own tags.
+
+endmenu
+
+module = TEDGE
+module-str = tedge
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # TEDGE

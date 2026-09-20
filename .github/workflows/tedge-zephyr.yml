@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Checks for the tedge-zephyr module. It must stay self-contained so it can
+# move into its own repository unchanged.
+name: tedge-zephyr
+
+on:
+  pull_request:
+    paths:
+      - "tedge-zephyr/**"
+      - ".github/workflows/tedge-zephyr.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tedge-zephyr/**"
+
+jobs:
+  independence:
+    name: Module is self-contained
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 tedge-zephyr/scripts/check-independence.py
+      - run: python3 tedge-zephyr/scripts/check-secrets.py
+
+  unit:
+    name: Unit tests and Kconfig rules
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/zephyr-build:latest
+      options: --user root
+    env:
+      # The image registers the SDK in the *non-root* user's CMake package
+      # registry (~/.cmake/packages/Zephyr-sdk), and this job runs as root,
+      # so find_package(Zephyr-sdk) comes up empty: "Could not find a
+      # package configuration file provided by Zephyr-sdk". Pointing at the
+      # directory that holds zephyr-sdk-<version> lets CMake find it
+      # whatever version :latest happens to carry.
+      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Set up the Zephyr workspace
+        run: |
+          west init -l app
+          west update --narrow -o=--depth=1
+          west zephyr-export
+      - name: Unit tests (native_sim)
+        working-directory: app
+        run: |
+          west build -b native_sim/native/64 tedge-zephyr/tests/unit \
+            -d ../build-unit --pristine
+          ../build-unit/zephyr/zephyr.exe
+      - name: Kconfig dependency rules
+        working-directory: app
+        run: bash tedge-zephyr/tests/kconfig/check-kconfig.sh ../build-kconfig

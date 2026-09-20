@@ -14,6 +14,9 @@
 #include "net.h"
 #include "display.h"
 #include "modbus_server.h"
+#if defined(CONFIG_TEDGE)
+#include "tedge_glue.h"
+#endif
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -49,6 +52,11 @@ int main(void)
 		return 0;
 	}
 	LOG_INF("Modbus TCP server running on port %d", CONFIG_APP_MODBUS_PORT);
+
+#if defined(CONFIG_TEDGE)
+	/* Device management runs alongside the protocol server. */
+	(void)tedge_glue_start();
+#endif
 
 	return 0;
 }

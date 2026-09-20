@@ -21,6 +21,15 @@ config APP_WIFI_PROV_CONNECT_TIMEOUT_S
 	default 30
 	range 5 120
 
+config APP_WIFI_PROV_SOFTAP
+	bool "SoftAP captive portal instead of Improv over BLE (spike)"
+	depends on ESP32_WIFI_AP_STA_MODE
+	help
+	  c8y-direct-spikes, Spike E: an open access point "<hostname>-setup"
+	  with DHCP, a catch-all DNS responder and an HTTP form, instead of
+	  the Improv Wi-Fi BLE service. Use overlay-softap.conf and
+	  softap.overlay.
+
 config APP_WIFI_PROV_REQUIRE_AUTH
 	bool "Require a sw0 press to authorize provisioning"
 	help

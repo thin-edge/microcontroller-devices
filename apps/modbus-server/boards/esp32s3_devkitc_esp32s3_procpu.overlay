@@ -40,3 +40,9 @@
 
 /* Status LED: the WS2812 RGB LED. */
 #include "../../../lib/common/dts/rgb-led-esp32s3-devkitc.dtsi"
+
+/* The board's 8 MB octal PSRAM. Declaring it does not enable it: that takes
+ * CONFIG_ESP_SPIRAM (see the _tedge board overlay). */
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};

@@ -16,6 +16,9 @@
 
 #if defined(CONFIG_APP_OPCUA_SERVER)
 #include "opcua_server.h"
+#if defined(CONFIG_TEDGE)
+#include "tedge_glue.h"
+#endif
 #endif
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
@@ -56,6 +59,15 @@ int main(void)
 #else
 	LOG_INF("OPC-UA server disabled (CONFIG_APP_OPCUA_SERVER=n) — "
 		"connectivity skeleton only");
+#endif
+
+#if defined(CONFIG_TEDGE)
+	/* Device management runs alongside the protocol server. */
+	if (tedge_glue_start() == 0) {
+#if defined(CONFIG_TEDGE_TELEMETRY)
+		tedge_glue_start_telemetry();
+#endif
+	}
 #endif
 
 	return 0;
