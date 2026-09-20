@@ -96,6 +96,11 @@ The public API SHALL let the host application:
 - observe the client's state (for example to drive a status LED);
 - optionally report liveness progress to the application's watchdog.
 
+Every one of these calls SHALL be present whether or not the feature behind
+it is built in: a call belonging to a feature that is absent SHALL return
+"not supported", so that an application compiles against the API once and
+chooses its features in Kconfig.
+
 The module SHALL NOT call `sys_reboot()` without first giving the application's
 restart hook the chance to respond.
 
@@ -134,6 +139,19 @@ restart hook the chance to respond.
   declines it
 - **THEN** the client does not reboot and marks the operation as failed with the
   reason returned by the hook
+
+#### Scenario: Application adds a log type
+
+- **WHEN** the application registers a log type and the cloud asks for it
+- **THEN** the client asks the application to produce it and makes the result
+  retrievable from the cloud
+
+#### Scenario: Registering against a feature that is not built in
+
+- **WHEN** an application that registers a log type is built without log
+  upload
+- **THEN** it still compiles and links, and the registration returns "not
+  supported"
 
 ### Requirement: Example integrations
 

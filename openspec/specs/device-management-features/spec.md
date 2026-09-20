@@ -56,7 +56,8 @@ capabilities of features compiled into the running image. This covers supported
 operations, log types and configuration types. When it receives an operation for
 a feature that is not compiled in, the device SHALL mark that operation as
 failed with a reason that names the missing feature. It SHALL NOT ignore the
-operation or leave it pending.
+operation or leave it pending, and this SHALL hold for every operation the
+device does not handle, including ones it has never heard of.
 
 #### Scenario: Firmware update advertises itself and the running version
 
@@ -73,6 +74,18 @@ operation or leave it pending.
 
 - **WHEN** the device receives an operation whose feature is not compiled in
 - **THEN** it marks the operation as failed with a reason naming the feature
+
+#### Scenario: Log types reflect the image
+
+- **WHEN** an image with log upload connects
+- **THEN** it advertises the log types it can actually produce, and an image
+  without the feature advertises none
+
+#### Scenario: An unrecognised operation
+
+- **WHEN** the device receives an operation it has no handler for at all
+- **THEN** it marks the operation as failed with a reason, rather than
+  leaving it pending in the cloud
 
 ### Requirement: Feature dependencies are enforced at configure time
 
