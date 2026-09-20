@@ -111,6 +111,42 @@ image, for devices that want a longer probation.
 `IMG_ERASE_PROGRESSIVELY` (the spike needed progressive erase to keep the
 download from stalling).
 
+### D8: The same version is refused
+
+A `515` whose name and version match the running image SHALL be failed at
+once with a reason, before anything is downloaded (decided with the tenant
+owner, 2026-09-20). Re-installing the running image costs a 900 KB download
+and ~40 s of downtime for no change, and an operator who wants that can
+install a different version or erase the device. The check uses the version
+MCUboot reports for the running image, not the marker.
+
+### D9: Progress on a free-form topic, QoS 0
+
+Progress is published to `te/device/<id>///progress/firmware` at QoS 0
+(decided with the tenant owner, 2026-09-20): it is a stream of hints, not
+state, so losing one costs nothing and it must not sit in a queue behind
+device-management traffic.
+
+```json
+{"name":"zephyr-modbus-server","version":"0.3.0","phase":"downloading",
+ "percent":45,"bytes":405504,"total":898378}
+```
+
+Cumulocity serves binaries **chunked**, so there is no `Content-Length` and
+no percentage to report: progress then carries `bytes` only, every 128 KB.
+When a server does send a length (a plain file host), `percent` is included
+and the step is `TEDGE_FIRMWARE_PROGRESS_PERCENT` (default 10).
+
+Phases: `downloading` (never more than one message a second), then `installing` (the test boot is
+requested; the device is about to go offline for the swap), then `done` or
+`failed` with a `reason`. A tenant maps the topic with a Smart Function, the
+same way as the twin data.
+
+Core MQTT has no free-form topics, so a Core MQTT build publishes no
+progress; the operation's `501`/`503`/`502` still tell the story. The option
+`TEDGE_FIRMWARE_PROGRESS` (default y with the MQTT Service) turns it off for
+devices on a metered link.
+
 ## Risks / Trade-offs
 
 - [The device is offline for the swap (P7)] → the downtime is in the `501`
@@ -135,7 +171,31 @@ download from stalling).
 
 ## Open Questions
 
-- Should the client refuse a `515` whose version equals the running version,
-  or install it anyway (Cumulocity allows re-installing)?
-- Is a progress report (`c8y_Firmware` progress, or an event per 25%) worth
-  the traffic on a 900 KB download that takes 11 s?
+- None outstanding; the two questions above were answered on 2026-09-20.
+
+## Results
+
+### First hardware run (C6, Modbus + client, 2026-09-20)
+
+| Check | Result |
+|---|---|
+| Install 0.3.0 from Cumulocity | SUCCESSFUL: 887 KB downloaded in 28 s, swap, confirmed 14 s after the reboot, ~105 s end to end |
+| The inventory afterwards | `c8y_Firmware` shows the running version, read from MCUboot's header, not the requested one |
+| Install the running version | FAILED, "zephyr-modbus-server 0.6.0 is already running"; nothing downloaded, no reboot |
+| Install an older version (0.6.0 → 0.4.0) | SUCCESSFUL: downgrades are allowed, only the *same* version is refused |
+| Progress | `te/device/<id>///progress/firmware` at QoS 0: `downloading` every 128 KB, then `installing`, then `done` |
+
+**Three findings, all fixed:**
+
+1. **A refusal must publish `501` first.** Cumulocity's `502` fails the
+   oldest *executing* operation, so an operation refused straight out of
+   PENDING never left that state. The client now reports `501` for every
+   firmware operation it receives, then `502` with the reason if it refuses.
+   This also cleared a queue of operations that had piled up.
+2. **No percentage for a Cumulocity download.** The binary is chunked, so
+   `Content-Length` is absent; progress reports `bytes` every 128 KB instead,
+   and `percent` only when a server provides a length.
+3. **The version to compare is MCUboot's,** not the application's
+   `APP_VERSION_STRING`: an image built from the same source with a different
+   signed version must still be installable. The client reads the running
+   version from the image header, and logs it at every connect.

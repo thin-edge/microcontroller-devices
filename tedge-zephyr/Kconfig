@@ -52,7 +52,7 @@ config TEDGE_FEATURE_AVAILABLE_RESTART
 
 config TEDGE_FEATURE_AVAILABLE_FIRMWARE_UPDATE
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_SHELL_COMMAND
 	bool
@@ -313,6 +313,52 @@ config TEDGE_FIRMWARE_UPDATE
 	  and confirms it only when the cloud is reachable and the
 	  application's checks pass; MCUboot reverts it otherwise. Requires an
 	  MCUboot (sysbuild) build of the application.
+	select IMG_MANAGER
+	# MCUBOOT_IMG_MANAGER is a Kconfig choice, so it cannot be selected;
+	# it is the default for an MCUboot build, which this feature requires.
+	select STREAM_FLASH
+	select IMG_ERASE_PROGRESSIVELY
+	select FLASH
+	select FLASH_MAP
+
+if TEDGE_FIRMWARE_UPDATE
+
+config TEDGE_FIRMWARE_STACK_SIZE
+	int "Stack of the download thread"
+	default 8192
+	help
+	  The download's TLS handshake runs on this thread, as the
+	  remote-access bridge's does on its own.
+
+config TEDGE_FIRMWARE_CONFIRM_AFTER_CONNECT
+	bool "Confirm a test-booted image once it reaches the cloud"
+	default y
+	help
+	  With this off, an image stays unconfirmed until the application
+	  confirms it, and any reset rolls it back. The application's
+	  firmware-check hook is consulted either way.
+
+config TEDGE_FIRMWARE_MAX_REDIRECTS
+	int "HTTP redirects to follow"
+	default 3
+	range 0 10
+
+config TEDGE_FIRMWARE_PROGRESS
+	bool "Publish download progress on a free-form topic"
+	default y
+	depends on TEDGE_C8Y_MQTT_SERVICE
+	help
+	  te/device/<id>///progress/firmware, at most once (QoS 0): a stream
+	  of hints, so a lost message costs nothing. Core MQTT has no
+	  free-form topics and publishes none.
+
+config TEDGE_FIRMWARE_PROGRESS_PERCENT
+	int "Percentage step between progress messages"
+	default 10
+	range 1 50
+	depends on TEDGE_FIRMWARE_PROGRESS
+
+endif # TEDGE_FIRMWARE_UPDATE
 
 config TEDGE_SHELL_COMMAND
 	bool "Shell command operation"

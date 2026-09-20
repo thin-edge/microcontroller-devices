@@ -70,6 +70,41 @@ is stored exactly as sent.
 - **THEN** the stored image matches what was sent, and the bootloader accepts
   it
 
+### Requirement: Installing the version already running is refused
+
+The client SHALL fail a firmware operation whose name and version match the
+image that is running, with a reason saying so, and SHALL NOT download
+anything or reboot.
+
+#### Scenario: The same version is offered again
+
+- **WHEN** an operator installs the version the device is already running
+- **THEN** the operation fails with a reason naming the version, and the
+  device keeps running undisturbed
+
+### Requirement: The device reports the progress of an update
+
+When it has free-form topics available, the client SHALL publish the
+progress of an update as unreliable messages (at-most-once) on a documented
+topic, carrying the name, version, phase and how much has been transferred.
+It SHALL report a percentage only when the server states the length of the
+transfer, and the number of bytes otherwise.
+Progress messages SHALL be rate-limited, and SHALL NOT be published on
+transports without free-form topics, where the operation status is the only
+report. Losing a progress message SHALL have no effect on the update.
+
+#### Scenario: An operator watches a download
+
+- **WHEN** a device is downloading an image
+- **THEN** it publishes progress messages naming the phase and how much has
+  arrived, spaced by the configured step
+
+#### Scenario: The device is about to swap
+
+- **WHEN** the download is finished and the test boot is requested
+- **THEN** a progress message says the device is installing, before it goes
+  offline for the bootloader swap
+
 ### Requirement: The running firmware version is visible in the cloud
 
 The client SHALL report the name and version of the image that is actually

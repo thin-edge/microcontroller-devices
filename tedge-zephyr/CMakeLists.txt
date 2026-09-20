@@ -22,6 +22,10 @@ if(CONFIG_TEDGE)
     src/tedge_c8y.c
     src/tedge_smartrest.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE
+    src/tedge_firmware.c
+    src/tedge_http_download.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_REMOTE_ACCESS
     src/tedge_remote_access.c
     src/tedge_ra_allow_list.c

@@ -103,6 +103,57 @@ int tedge_c8y_publish_sr(const char *line);
 /** The latest JWT from s/dat, or an empty string. */
 const char *tedge_c8y_jwt(void);
 
+/* --- Downloads (tedge_http_download.c) ----------------------------------- */
+
+/** Receives each body segment as the parser reports it. */
+typedef int (*tedge_sink_fn)(const void *data, size_t len, void *user_data);
+
+struct tedge_download {
+	const char *url;
+	/** Bearer token, sent to the tenant's own hosts only. May be NULL. */
+	const char *token;
+	tedge_sink_fn sink;
+	void (*progress)(int64_t written, void *user_data);
+	void *user_data;
+	int timeout_ms;
+	int64_t written; /* out */
+	int64_t total;   /* out: Content-Length, 0 when the server omits it */
+};
+
+int tedge_download(struct tedge_download *req);
+/** True when @p host is the tenant or inside its parent domain. */
+bool tedge_url_is_tenant(const char *host);
+/** Resolve a redirect target against the URL it came from. */
+int tedge_url_resolve(const char *base, const char *location, char *out,
+		      size_t len);
+
+/* --- Firmware update (tedge_firmware.c) ---------------------------------- */
+
+enum tedge_fw_event_type {
+	TEDGE_FW_REBOOTING, /* downloaded; the device is about to swap */
+	TEDGE_FW_INSTALLED, /* the new image confirmed itself */
+	TEDGE_FW_REVERTED,  /* MCUboot rolled it back */
+	TEDGE_FW_FAILED,    /* the update failed, with the reason */
+};
+
+struct tedge_fw_event {
+	enum tedge_fw_event_type type;
+	char text[144];
+};
+
+/** Handle a "515,..." line: start an update, or fail with @p reason. */
+int tedge_fw_request(const char *line, char *reason, size_t rlen);
+/** Next result from the download thread; 0 when @p ev was filled. */
+int tedge_fw_poll_event(struct tedge_fw_event *ev);
+/** Confirm a test boot, or report a rollback. Called once per session. */
+void tedge_fw_on_connected(void);
+/** The running image's version, from MCUboot's header. */
+int tedge_fw_running_version(char *buf, size_t len);
+/** Text for the operation while the device installs and swaps. */
+const char *tedge_fw_downtime_hint(void);
+/** Publish @p json on the free-form progress topic (QoS 0); no-op on Core MQTT. */
+int tedge_c8y_publish_progress(const char *kind, const char *json);
+
 /* --- Remote access (tedge_remote_access.c) ------------------------------- */
 
 enum tedge_ra_event_type {
@@ -150,6 +201,7 @@ const char *tedge_auth_password(void);
 #define TEDGE_KEY_BOOTSTRAP_USER TEDGE_SETTINGS_ROOT "/bootstrap/user"
 #define TEDGE_KEY_BOOTSTRAP_PASS TEDGE_SETTINGS_ROOT "/bootstrap/pass"
 #define TEDGE_KEY_RESTART        TEDGE_SETTINGS_ROOT "/restart"
+#define TEDGE_KEY_FIRMWARE       TEDGE_SETTINGS_ROOT "/firmware"
 
 /* --- TLS credential tags ------------------------------------------------- */
 

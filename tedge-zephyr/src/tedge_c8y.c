@@ -281,9 +281,33 @@ static void handle_operation(const char *line)
 #endif
 		return;
 	case 515:
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	{
+		char reason[128];
+		char sr[224];
+		char quoted[160];
+
+		/* 501 first, always: Cumulocity's 502 fails the oldest
+		 * *executing* operation, so an operation refused straight from
+		 * PENDING would never leave that state. */
+		(void)tedge_c8y_publish_sr("501,c8y_Firmware");
+		if (tedge_fw_request(line, reason, sizeof(reason)) != 0) {
+			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
+			snprintf(sr, sizeof(sr), "502,c8y_Firmware,%s", quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		} else {
+			(void)tedge_sr_quote(tedge_fw_downtime_hint(), quoted,
+					     sizeof(quoted));
+			snprintf(sr, sizeof(sr), "400,c8y_FirmwareUpdateStarted,%s",
+				 quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		}
+	}
+#else
 		op_unsupported("c8y_Firmware",
 			       "firmware update is not built into this image "
 			       "(CONFIG_TEDGE_FIRMWARE_UPDATE)");
+#endif
 		return;
 	case 530:
 #if defined(CONFIG_TEDGE_REMOTE_ACCESS)
@@ -355,6 +379,7 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 		return;
 	}
 	if (strcmp(topic, "s/ds") == 0) {
+		LOG_DBG("s/ds: %.60s", payload);
 		handle_operation(payload);
 	}
 }
@@ -583,6 +608,9 @@ static void publish_supported_ops(void)
 		n += snprintf(line + n, sizeof(line) - n,
 			      ",c8y_RemoteAccessConnect");
 	}
+	if (IS_ENABLED(CONFIG_TEDGE_FIRMWARE_UPDATE)) {
+		n += snprintf(line + n, sizeof(line) - n, ",c8y_Firmware");
+	}
 	for (int i = 0; i < OP_SLOTS && n < sizeof(line); i++) {
 		if (ops[i].name != NULL) {
 			n += snprintf(line + n, sizeof(line) - n, ",%s",
@@ -617,6 +645,21 @@ static int publish_twin_impl(const char *fragment, const char *json)
 		LOG_INF("twin %s: %s", fragment, json);
 	}
 	return rc;
+}
+
+/* Progress: free-form topic, at most once. Nothing on Core MQTT, which has
+ * no free-form topics; the operation status is the report there. */
+int tedge_c8y_publish_progress(const char *kind, const char *json)
+{
+	char topic[128];
+
+	if (!FREE_FORM_TOPICS) {
+		return -ENOTSUP;
+	}
+	snprintf(topic, sizeof(topic), "te/device/%s///progress/%s", device_id,
+		 kind);
+	LOG_DBG("progress/%s: %s", kind, json);
+	return publish(topic, json, MQTT_QOS_0_AT_MOST_ONCE);
 }
 
 static void publish_health(void)
@@ -666,6 +709,21 @@ static int session_start(void)
 		(void)publish("s/uat", "", MQTT_QOS_0_AT_MOST_ONCE);
 	}
 
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	{
+		char ver[24] = "";
+		char fw[96];
+
+		if (tedge_fw_running_version(ver, sizeof(ver)) == 0) {
+			LOG_INF("firmware: running %s %s", id->firmware_name, ver);
+			snprintf(fw, sizeof(fw), "115,%s,%s", id->firmware_name,
+				 ver);
+			(void)tedge_c8y_publish_sr(fw);
+		} else {
+			LOG_WRN("firmware: cannot read the running version");
+		}
+	}
+#endif
 	snprintf(agent, sizeof(agent),
 		 "{\"name\":\"tedge-zephyr\",\"version\":\"%s\","
 		 "\"transport\":\"%s\",\"firmware\":\"%s %s\"}",
@@ -684,6 +742,10 @@ static int session_start(void)
 #endif
 	publish_health();
 
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	/* Confirm a test boot, or report an image MCUboot rolled back. */
+	tedge_fw_on_connected();
+#endif
 #if defined(CONFIG_TEDGE_RESTART)
 	if (restart_pending_after_boot) {
 		(void)tedge_c8y_publish_sr("503,c8y_Restart");
@@ -771,6 +833,38 @@ static int c8y_poll(int timeout_ms)
 #if defined(CONFIG_TEDGE_RESTART)
 	if (restart_requested) {
 		handle_restart();
+	}
+#endif
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	{
+		struct tedge_fw_event ev;
+		char sr[224], quoted[160];
+
+		while (tedge_fw_poll_event(&ev) == 0) {
+			(void)tedge_sr_quote(ev.text, quoted, sizeof(quoted));
+			switch (ev.type) {
+			case TEDGE_FW_INSTALLED: {
+				char fw[96];
+
+				snprintf(fw, sizeof(fw), "115,%s,%s",
+					 tedge_identity()->firmware_name, ev.text);
+				(void)tedge_c8y_publish_sr(fw);
+				(void)tedge_c8y_publish_sr("503,c8y_Firmware");
+				continue;
+			}
+			case TEDGE_FW_REBOOTING:
+				snprintf(sr, sizeof(sr),
+					 "400,c8y_FirmwareInstalling,%s", quoted);
+				break;
+			case TEDGE_FW_REVERTED:
+			case TEDGE_FW_FAILED:
+			default:
+				snprintf(sr, sizeof(sr), "502,c8y_Firmware,%s",
+					 quoted);
+				break;
+			}
+			(void)tedge_c8y_publish_sr(sr);
+		}
 	}
 #endif
 #if defined(CONFIG_TEDGE_REMOTE_ACCESS)
