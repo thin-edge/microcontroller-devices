@@ -45,6 +45,7 @@ static K_EVENT_DEFINE(events);
 #define EV_NET_DOWN BIT(1)
 #define EV_STOP     BIT(2)
 #define EV_WAKE     BIT(3)
+#define EV_RECONNECT BIT(4)
 
 static struct net_mgmt_event_callback l4_cb;
 static char c8y_host[80];
@@ -219,6 +220,11 @@ int tedge_publish_twin(const char *fragment, const char *json)
 	return rc;
 }
 
+void tedge_request_reconnect(void)
+{
+	k_event_post(&events, EV_RECONNECT | EV_WAKE);
+}
+
 void tedge_twin_republish(void)
 {
 	const struct tedge_transport *t = tedge_transport_get();
@@ -332,9 +338,19 @@ static void client_thread(void *a, void *b, void *c)
 		tedge_twin_republish();
 
 		/* Service the session until it ends. */
+		k_event_clear(&events, EV_RECONNECT);
 		while (!(k_event_test(&events, EV_STOP))) {
 			if (k_event_test(&events, EV_NET_DOWN)) {
 				rc = -ENETDOWN;
+				break;
+			}
+			if (k_event_test(&events, EV_RECONNECT)) {
+				/* Something replaced a credential; the new one
+				 * only takes effect on a new TLS session. */
+				k_event_clear(&events, EV_RECONNECT);
+				LOG_INF("reconnecting to pick up a new "
+					"credential");
+				rc = 0;
 				break;
 			}
 			rc = transport->poll(1000);

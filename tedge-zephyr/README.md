@@ -159,6 +159,37 @@ Phases are `downloading`, `installing`, `done` and `failed` (with a
 `reason`). The size comes from a `Range: bytes=0-` request, because
 Cumulocity serves binaries chunked and sends no `Content-Length`.
 
+### Certificate renewal
+
+A device whose certificate has expired cannot be reached at all: no
+operations, no remote access, no firmware update. `CONFIG_TEDGE_CERT_RENEWAL`
+keeps that from happening.
+
+- The client reads the expiry from its own certificate and renews through
+  the CA's re-enrollment endpoint once fewer than
+  `CONFIG_TEDGE_CERT_RENEW_BEFORE_DAYS` (default 30) remain. The margin is
+  what covers a device that is offline for a while.
+- The same key is kept; only the certificate changes. The renewal takes
+  about 4 s on an ESP32-C6, and the client reconnects straight away so the
+  new certificate is in use (the old one is still valid at that point).
+- A renewal that fails changes nothing: the device keeps working on its
+  current certificate and tries again hourly.
+- `te/device/<id>///twin/tedge_Certificate` carries the expiry on every
+  connect, so certificate health is a query rather than an investigation:
+
+```json
+{"expires":"2027-09-20T08:04:46Z","daysRemaining":364,"renewals":1}
+```
+
+- If renewal keeps failing and fewer than
+  `CONFIG_TEDGE_CERT_RENEW_ALARM_DAYS` (default 7) remain, the device raises
+  a critical `c8y_CertificateExpiring` alarm naming the date, and clears it
+  when a renewal succeeds.
+
+**If a device does miss its window**, its certificate is no longer accepted
+and it has to be onboarded again, with a new registration and one-time
+password. That is why the alarm exists.
+
 ### Security limitations
 
 - The device key is stored in PSA ITS, encrypted with a key derived from the

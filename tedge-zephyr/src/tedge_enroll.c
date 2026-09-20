@@ -184,7 +184,28 @@ static void log_registration_hint(void)
 /* CSR                                                                       */
 /* ------------------------------------------------------------------------ */
 
-static int make_csr(void)
+static int make_csr_internal(void);
+
+/* Shared with renewal: build a CSR for the device key into the shared
+ * buffer, and post it to an EST endpoint. */
+int tedge_est_make_csr(char *out, size_t len)
+{
+	int ret;
+
+	if (bufs == NULL) {
+		bufs = tedge_alloc(sizeof(*bufs));
+		if (bufs == NULL) {
+			return -ENOMEM;
+		}
+	}
+	ret = make_csr_internal();
+	if (ret == 0 && out != NULL) {
+		snprintf(out, len, "%s", bufs->csr_body);
+	}
+	return ret;
+}
+
+static int make_csr_internal(void)
 {
 	mbedtls_x509write_csr csr;
 	mbedtls_pk_context pk;
@@ -365,6 +386,57 @@ static int register_credentials(void)
 /* Enrollment                                                                */
 /* ------------------------------------------------------------------------ */
 
+/* Shared with renewal: POST the CSR in the shared buffer to @p path with
+ * @p auth, and unwrap the certificate from the reply into @p out.
+ */
+int tedge_est_request(const char *path, const char *auth, uint8_t *out,
+		      size_t cap, size_t *out_len)
+{
+	int ret;
+
+	if (bufs == NULL) {
+		return -EINVAL;
+	}
+	ret = https_post(path, auth, bufs->csr_body);
+	if (ret != 0) {
+		return ret;
+	}
+	if (resp_status != 200) {
+		LOG_WRN("EST %s: the server answered %u", path, resp_status);
+		return -EACCES;
+	}
+	return tedge_pkcs7_first_cert(bufs->resp, bufs->csr_body,
+				      sizeof(bufs->csr_body), bufs->der,
+				      sizeof(bufs->der), out, cap, out_len);
+}
+
+/* Shared with renewal: drop the transient buffers once a flow is done. */
+void tedge_est_release(void)
+{
+	tedge_free(bufs);
+	bufs = NULL;
+}
+
+/* Shared with renewal: store a new certificate and use it from now on. */
+int tedge_credentials_replace(const uint8_t *der, size_t len)
+{
+	if (len == 0 || len > sizeof(cert_der)) {
+		return -EINVAL;
+	}
+	memcpy(cert_der, der, len);
+	cert_der_len = len;
+	(void)settings_save_one(TEDGE_KEY_ENROLL_CERT, cert_der, cert_der_len);
+	credentials_ready = false; /* re-register under the same tag */
+	return register_credentials();
+}
+
+/* The certificate in use, for the expiry check. */
+const uint8_t *tedge_credentials_cert(size_t *len)
+{
+	*len = cert_der_len;
+	return (cert_der_len > 0) ? cert_der : NULL;
+}
+
 static int enroll_once(void)
 {
 	char basic[128];
@@ -442,7 +514,7 @@ int tedge_auth_prepare(char *id_out, size_t id_len)
 	tedge_set_state(TEDGE_STATE_AWAITING_REGISTRATION);
 	log_registration_hint();
 
-	ret = make_csr();
+	ret = make_csr_internal();
 	deadline = k_uptime_get() + ENROLL_WINDOW_MS;
 	while (ret == 0 && k_uptime_get() < deadline) {
 		ret = enroll_once();

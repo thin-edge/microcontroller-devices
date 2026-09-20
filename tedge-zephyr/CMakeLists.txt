@@ -27,6 +27,10 @@ if(CONFIG_TEDGE)
     src/tedge_http_download.c
     src/tedge_url.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_CERT_RENEWAL
+    src/tedge_cert_renew.c
+    src/tedge_cert_decision.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_REMOTE_ACCESS
     src/tedge_remote_access.c
     src/tedge_ra_allow_list.c

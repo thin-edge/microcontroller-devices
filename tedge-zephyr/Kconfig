@@ -72,7 +72,7 @@ config TEDGE_FEATURE_AVAILABLE_CONFIG
 
 config TEDGE_FEATURE_AVAILABLE_CERT_RENEWAL
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 # --- Transport ----------------------------------------------------------------
 
@@ -469,7 +469,39 @@ config TEDGE_CERT_RENEWAL
 	depends on TEDGE_TRANSPORT_C8Y && TEDGE_AUTH_C8Y_CA
 	help
 	  Renews the device certificate through EST (simplereenroll) before it
-	  expires.
+	  expires. A device whose certificate has expired cannot be reached at
+	  all, so this is what keeps a fleet manageable over years.
+	select TEDGE_HTTP
+	select MBEDTLS_X509_CRT_PARSE_C
+
+if TEDGE_CERT_RENEWAL
+
+config TEDGE_CERT_RENEW_BEFORE_DAYS
+	int "Renew when this many days of lifetime are left"
+	default 30
+	range 1 3650
+	help
+	  The margin covers a device that is offline for a while: it has this
+	  long to come back and renew before the certificate expires.
+
+config TEDGE_CERT_RENEW_ALARM_DAYS
+	int "Raise an alarm when this many days are left and renewal failed"
+	default 7
+	range 0 3650
+	help
+	  0 raises no alarm. Otherwise the device raises a critical alarm
+	  naming the expiry date, and clears it once a renewal succeeds.
+
+config TEDGE_CERT_RENEW_CHECK_HOURS
+	int "Hours between certificate checks"
+	default 24
+	range 1 168
+	help
+	  The check parses the stored certificate; it costs no network
+	  traffic. Checks are spread within the interval so that a fleet does
+	  not renew all at once.
+
+endif # TEDGE_CERT_RENEWAL
 
 endmenu
 

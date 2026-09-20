@@ -17,5 +17,6 @@ target_sources(app PRIVATE
   ../../src/tedge_pkcs7.c
   ../../src/tedge_ra_allow_list.c
   ../../src/tedge_url.c
+  ../../src/tedge_cert_decision.c
 )
 target_include_directories(app PRIVATE ../../include ../../src)

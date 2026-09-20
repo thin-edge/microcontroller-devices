@@ -746,6 +746,15 @@ static int session_start(void)
 	/* Confirm a test boot, or report an image MCUboot rolled back. */
 	tedge_fw_on_connected();
 #endif
+#if defined(CONFIG_TEDGE_CERT_RENEWAL)
+	{
+		char cert[160];
+
+		if (tedge_cert_twin(cert, sizeof(cert)) == 0) {
+			(void)tedge_publish_twin("tedge_Certificate", cert);
+		}
+	}
+#endif
 #if defined(CONFIG_TEDGE_RESTART)
 	if (restart_pending_after_boot) {
 		(void)tedge_c8y_publish_sr("503,c8y_Restart");
@@ -904,6 +913,10 @@ static int c8y_poll(int timeout_ms)
 			}
 		}
 	}
+#endif
+#if defined(CONFIG_TEDGE_CERT_RENEWAL)
+	/* Renew the certificate while there is still plenty of time. */
+	tedge_cert_renew_tick();
 #endif
 	if (tedge_auth_username() == NULL && jwt_at != 0 &&
 	    k_uptime_get() - jwt_at > JWT_REFRESH_MS) {

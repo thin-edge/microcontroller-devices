@@ -264,6 +264,56 @@ ZTEST(tedge_url, test_resolve_redirect)
 ZTEST_SUITE(tedge_url, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
+/* Certificate renewal                                                       */
+/* ------------------------------------------------------------------------ */
+
+#define BEFORE_DAYS 30
+#define ALARM_DAYS  7
+
+static enum tedge_cert_action act(int days, bool renewed)
+{
+	return tedge_cert_action(days, BEFORE_DAYS, ALARM_DAYS, renewed);
+}
+
+ZTEST(tedge_cert, test_plenty_of_time)
+{
+	zassert_equal(act(365, false), TEDGE_CERT_WAIT);
+	zassert_equal(act(31, false), TEDGE_CERT_WAIT);
+}
+
+ZTEST(tedge_cert, test_inside_the_margin)
+{
+	zassert_equal(act(30, false), TEDGE_CERT_RENEW);
+	zassert_equal(act(8, false), TEDGE_CERT_RENEW);
+	/* Expiring today still means renew, not give up. */
+	zassert_equal(act(0, false), TEDGE_CERT_RENEW);
+}
+
+ZTEST(tedge_cert, test_after_a_failed_attempt)
+{
+	/* Inside the margin but not yet urgent: try again quietly. */
+	zassert_equal(act(20, true), TEDGE_CERT_RETRY);
+	/* Close to expiry and still failing: tell the operator. */
+	zassert_equal(act(7, true), TEDGE_CERT_ALARM);
+	zassert_equal(act(0, true), TEDGE_CERT_ALARM);
+}
+
+ZTEST(tedge_cert, test_nothing_to_judge)
+{
+	/* No clock yet, or no certificate: decide nothing. */
+	zassert_equal(act(-1, false), TEDGE_CERT_WAIT);
+	zassert_equal(act(-1, true), TEDGE_CERT_WAIT);
+}
+
+ZTEST(tedge_cert, test_alarm_can_be_disabled)
+{
+	zassert_equal(tedge_cert_action(2, BEFORE_DAYS, 0, true),
+		      TEDGE_CERT_RETRY);
+}
+
+ZTEST_SUITE(tedge_cert, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
 /* PKCS#7 (the enrollment reply)                                             */
 /* ------------------------------------------------------------------------ */
 

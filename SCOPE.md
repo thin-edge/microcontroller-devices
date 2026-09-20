@@ -226,7 +226,7 @@ the strongest reason for the direct transport.
 | P3 | `c8y-direct-firmware-update` (done 2026-09-20) | Firmware update: confirmed only after the new image reaches Cumulocity and passes the app's checks; MCUboot rolls back otherwise |
 | P4 | — | Telemetry (free-form, `te/`-shaped) and device-health measurements |
 | P5 | — | Diagnostics: shell command (allow-listed), log upload (RAM ring buffer, coredump, health) |
-| P6 | — | Certificate renewal (before any real deployment) |
+| P6 | `c8y-direct-cert-renewal` (done 2026-09-20) | Certificate renewal: the client renews before expiry, publishes the expiry as twin data and alarms if renewal keeps failing |
 | P7 | — | Configuration management (settings-backed parameters) |
 | P8 | — | Gateway transport: thin-edge.io child device, reusing P1–P7 handlers |
 | — | separate small change | Full-system reset in `lib/common` (`liveness.c`, `net.c`): a CPU reset hangs MCUboot on the C6 |

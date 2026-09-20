@@ -57,6 +57,9 @@ void tedge_free(void *p);
 const char *tedge_c8y_host(void);
 int tedge_c8y_host_set(const char *host);
 
+/** Ask the client to drop this session and connect again (a new credential). */
+void tedge_request_reconnect(void);
+
 /** Republish every stored twin fragment (after a reconnect). */
 void tedge_twin_republish(void);
 
@@ -199,6 +202,38 @@ int tedge_ra_twin(char *buf, size_t len);
  * Writes the external ID (which enrollment may decide) to @p id_out.
  */
 int tedge_auth_prepare(char *id_out, size_t id_len);
+
+/* --- EST, shared by enrollment and renewal ------------------------------- */
+
+/** Build a CSR for the device key; @p out may be NULL to keep it internal. */
+int tedge_est_make_csr(char *out, size_t len);
+/** POST the CSR to @p path and unwrap the certificate from the reply. */
+int tedge_est_request(const char *path, const char *auth, uint8_t *out,
+		      size_t cap, size_t *out_len);
+/** Free the transient buffers a CSR/EST flow used. */
+void tedge_est_release(void);
+/** Store @p der as the device certificate and use it for TLS from now on. */
+int tedge_credentials_replace(const uint8_t *der, size_t len);
+/** The certificate in use, or NULL before enrollment. */
+const uint8_t *tedge_credentials_cert(size_t *len);
+
+/* --- Certificate renewal (tedge_cert_renew.c) ---------------------------- */
+
+/** What the client should do about the certificate right now. */
+enum tedge_cert_action {
+	TEDGE_CERT_WAIT,  /* plenty of life left, or nothing to judge yet */
+	TEDGE_CERT_RENEW, /* inside the margin: renew now */
+	TEDGE_CERT_RETRY, /* a renewal failed; try again before long */
+	TEDGE_CERT_ALARM, /* failing and close to expiry: tell the operator */
+};
+
+enum tedge_cert_action tedge_cert_action(int days_left, int renew_before_days,
+					 int alarm_days, bool renewed);
+
+/** Check the certificate's age and renew it when it is due. */
+void tedge_cert_renew_tick(void);
+/** The tedge_Certificate twin value as JSON. */
+int tedge_cert_twin(char *buf, size_t len);
 
 /** Basic-auth user and password for the MQTT client, or NULL for mutual TLS. */
 const char *tedge_auth_username(void);
