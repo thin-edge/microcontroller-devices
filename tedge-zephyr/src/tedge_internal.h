@@ -124,6 +124,36 @@ struct tedge_download {
 };
 
 int tedge_download(struct tedge_download *req);
+
+/* --- Uploads (tedge_http_upload.c) --------------------------------------- */
+
+/** Writes the body through @p sink. Used twice per upload: once to measure
+ * it, once to send it, so it should produce the same bytes both times. */
+typedef int (*tedge_producer_fn)(tedge_sink_fn sink, void *sink_ctx,
+				 void *user_data);
+
+struct tedge_upload {
+	const char *url;
+	/** Bearer token, sent to the tenant's own hosts only. May be NULL. */
+	const char *token;
+	const char *content_type;
+	/** Names the file in Cumulocity's UI. May be NULL. */
+	const char *filename;
+	/** The body, either whole in memory... */
+	const char *payload;
+	/** ...or written by a producer. Exactly @p length bytes are sent:
+	 *  a producer that stops early is padded, one that overruns is cut. */
+	tedge_producer_fn producer;
+	void *user_data;
+	size_t length;
+	int timeout_ms;
+	/** out: the Location header, when the caller wants it. */
+	char *location;
+	size_t location_len;
+	int status; /* out */
+};
+
+int tedge_upload(struct tedge_upload *req);
 /** Redirect targets can be ~1 KB (a release asset). */
 #define TEDGE_URL_MAX  1152
 #define TEDGE_HOST_MAX 128
@@ -136,6 +166,56 @@ bool tedge_url_is_tenant(const char *host);
 /** Resolve a redirect target against the URL it came from. */
 int tedge_url_resolve(const char *base, const char *location, char *out,
 		      size_t len);
+
+/* --- Log upload (tedge_log_upload.c, tedge_log_ring.c) ------------------- */
+
+struct tedge_log_event {
+	int rc;          /* 0 when the log reached the cloud */
+	char url[160];   /* where it landed */
+	char reason[96]; /* why it did not */
+};
+
+/** Start sending the log a "522,…" line asks for. */
+int tedge_log_request(const char *line, char *reason, size_t rlen);
+/** Next result from the upload thread, or -ENOMSG. */
+int tedge_log_poll_event(struct tedge_log_event *ev);
+/** Builds "118,<type>,…"; returns 0 when the image offers no log type. */
+size_t tedge_log_types_line(char *out, size_t len);
+/** Registers the client's own log; called once at startup. */
+void tedge_log_upload_init(void);
+
+/** The client's own log, kept in RAM (tedge_log_ring.c). */
+void tedge_log_ring_write(const uint8_t *data, size_t len);
+size_t tedge_log_ring_read(size_t offset, uint8_t *out, size_t len);
+size_t tedge_log_ring_size(void);
+uint32_t tedge_log_ring_dropped(void);
+
+/* --- Crash dumps (tedge_coredump.c) -------------------------------------- */
+
+/** Offers a stored dump as a log type; called once at startup. */
+void tedge_coredump_init(void);
+/** The dump reached the cloud and may be erased. */
+void tedge_coredump_taken(void);
+
+/* --- Shell command (tedge_shell_cmd.c) ----------------------------------- */
+
+#if defined(CONFIG_TEDGE_SHELL_COMMAND)
+struct tedge_shell_event {
+	int rc; /* 0 when the command ran and returned success */
+	char output[CONFIG_TEDGE_SHELL_COMMAND_OUTPUT_BYTES];
+};
+
+/** Start the command a "511,…" line asks for. */
+int tedge_shell_request(const char *line, char *reason, size_t rlen);
+/** Next result from the command thread, or -ENOMSG. */
+int tedge_shell_poll_event(struct tedge_shell_event *ev);
+#endif
+
+/* Pure, and unit-tested without a board: this is the function that decides
+ * what a remote party may run. */
+/** True when @p cmd may run under @p list; @p why explains a refusal. */
+bool tedge_shell_command_allowed(const char *list, const char *cmd,
+				 const char **why);
 
 /* --- Firmware update (tedge_firmware.c) ---------------------------------- */
 

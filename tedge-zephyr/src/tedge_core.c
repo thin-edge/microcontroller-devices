@@ -504,6 +504,9 @@ int tedge_start(void)
 		return -EALREADY;
 	}
 	k_event_clear(&events, EV_STOP);
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+	tedge_log_upload_init();
+#endif
 	running = true;
 	k_thread_create(&client_tid, client_stack,
 			K_THREAD_STACK_SIZEOF(client_stack), client_thread, NULL,
@@ -523,3 +526,18 @@ int tedge_stop(void)
 	running = false;
 	return 0;
 }
+
+#if defined(CONFIG_TEDGE_CONFIG)
+/* Configuration management is selectable only as an experimental feature
+ * until its change lands (roadmap P7). The call is here so that an image
+ * which selects it links and says so at runtime, rather than failing to
+ * build. */
+int tedge_register_config_type(const char *type, tedge_config_reader_t reader,
+			       tedge_config_writer_t writer, void *user_data)
+{
+	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(writer);
+	ARG_UNUSED(user_data);
+	LOG_WRN("configuration management is not implemented yet");
+	return -ENOTSUP;
+}
+#endif

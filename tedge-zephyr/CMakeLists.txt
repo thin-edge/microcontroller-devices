@@ -25,11 +25,23 @@ if(CONFIG_TEDGE)
     src/tedge_c8y.c
     src/tedge_smartrest.c
   )
-  zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE
-    src/tedge_firmware.c
+  # The HTTP client belongs to every file-transfer feature, not to the first
+  # one that needed it.
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_HTTP
     src/tedge_http_download.c
+    src/tedge_http_upload.c
     src/tedge_url.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE src/tedge_firmware.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_SHELL_COMMAND
+    src/tedge_shell_cmd.c
+    src/tedge_shell_allow_list.c
+  )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_LOG_UPLOAD
+    src/tedge_log_upload.c
+    src/tedge_log_ring.c
+  )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_COREDUMP src/tedge_coredump.c)
   zephyr_library_sources_ifdef(CONFIG_TEDGE_CERT_RENEWAL
     src/tedge_cert_renew.c
     src/tedge_cert_decision.c

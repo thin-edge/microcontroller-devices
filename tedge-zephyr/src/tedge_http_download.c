@@ -272,7 +272,7 @@ int tedge_download(struct tedge_download *req)
 		if (!redirected) {
 			break;
 		}
-		if (++hops > CONFIG_TEDGE_FIRMWARE_MAX_REDIRECTS) {
+		if (++hops > CONFIG_TEDGE_HTTP_MAX_REDIRECTS) {
 			LOG_ERR("download: too many redirects");
 			return -ELOOP;
 		}

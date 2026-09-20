@@ -534,3 +534,154 @@ ZTEST(tedge_pkcs7, test_output_buffer_too_small)
 }
 
 ZTEST_SUITE(tedge_pkcs7, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* The shell command's allow-list                                            */
+/* ------------------------------------------------------------------------ */
+
+#define ALLOW "kernel uptime, net iface,tedge diag"
+
+static bool allowed(const char *list, const char *cmd)
+{
+	const char *why = NULL;
+	bool ok = tedge_shell_command_allowed(list, cmd, &why);
+
+	zassert_not_null(why, "a decision always explains itself");
+	if (!ok) {
+		zassert_true(strlen(why) > 0, "a refusal states a reason");
+	}
+	return ok;
+}
+
+ZTEST(tedge_shell_allow, test_empty_list_refuses_everything)
+{
+	zassert_false(allowed("", "kernel uptime"));
+	zassert_false(allowed(NULL, "kernel uptime"));
+	zassert_false(allowed("   ", "kernel uptime"));
+}
+
+ZTEST(tedge_shell_allow, test_listed_commands_run)
+{
+	zassert_true(allowed(ALLOW, "kernel uptime"));
+	zassert_true(allowed(ALLOW, "tedge diag"));
+	/* An entry written with a space after the comma still matches. */
+	zassert_true(allowed(ALLOW, "net iface"));
+}
+
+ZTEST(tedge_shell_allow, test_arguments_are_allowed)
+{
+	zassert_true(allowed(ALLOW, "net iface show 1"));
+	/* ...but only as arguments, not as a longer command name. */
+	zassert_false(allowed(ALLOW, "net ifaceother"));
+}
+
+ZTEST(tedge_shell_allow, test_unlisted_command_refused)
+{
+	zassert_false(allowed(ALLOW, "kernel reboot cold"));
+	zassert_false(allowed(ALLOW, "flash erase"));
+	zassert_false(allowed(ALLOW, ""));
+}
+
+ZTEST(tedge_shell_allow, test_no_smuggling_a_second_command)
+{
+	zassert_false(allowed(ALLOW, "kernel uptime; kernel reboot cold"));
+	zassert_false(allowed(ALLOW, "kernel uptime && flash erase"));
+	zassert_false(allowed(ALLOW, "kernel uptime | tee x"));
+	zassert_false(allowed(ALLOW, "kernel uptime > /dev/null"));
+	zassert_false(allowed(ALLOW, "kernel uptime\nflash erase"));
+	zassert_false(allowed(ALLOW, "kernel uptime `flash erase`"));
+	/* Even a list that allows everything cannot allow chaining. */
+	zassert_false(allowed("kernel", "kernel uptime; kernel reboot cold"));
+}
+
+ZTEST_SUITE(tedge_shell_allow, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* The client's own log ring                                                 */
+/* ------------------------------------------------------------------------ */
+
+static void ring_before(void *fixture)
+{
+	uint8_t drain[8];
+
+	ARG_UNUSED(fixture);
+	/* There is no "empty it" call, and there should not be: the ring is
+	 * written by the logging subsystem. Filling it with whole lines
+	 * leaves a known state instead. */
+	for (int i = 0; i < 40; i++) {
+		tedge_log_ring_write((const uint8_t *)"x\n", 2);
+	}
+	(void)tedge_log_ring_read(0, drain, sizeof(drain));
+}
+
+static size_t ring_text(char *out, size_t len)
+{
+	size_t n = tedge_log_ring_read(0, (uint8_t *)out, len - 1);
+
+	out[n] = '\0';
+	return n;
+}
+
+ZTEST(tedge_log_ring, test_lines_come_back_in_order)
+{
+	char text[300];
+
+	tedge_log_ring_write((const uint8_t *)"first\n", 6);
+	tedge_log_ring_write((const uint8_t *)"second\n", 7);
+	(void)ring_text(text, sizeof(text));
+	zassert_not_null(strstr(text, "first\nsecond\n"),
+			 "the ring keeps the order lines arrived in: %s", text);
+}
+
+ZTEST(tedge_log_ring, test_it_never_grows_past_its_size)
+{
+	for (int i = 0; i < 100; i++) {
+		tedge_log_ring_write((const uint8_t *)"a line of log\n", 14);
+	}
+	zassert_true(tedge_log_ring_size() <= 256,
+		     "the ring stays inside CONFIG_TEDGE_LOG_RING_BYTES");
+}
+
+ZTEST(tedge_log_ring, test_oldest_whole_lines_are_dropped)
+{
+	char text[300];
+
+	/* More than the ring holds, so the early lines have to go. */
+	for (int i = 0; i < 100; i++) {
+		tedge_log_ring_write((const uint8_t *)"old\n", 4);
+	}
+	tedge_log_ring_write((const uint8_t *)"newest\n", 7);
+	(void)ring_text(text, sizeof(text));
+	zassert_not_null(strstr(text, "newest\n"), "the newest line survives");
+	/* What is left starts at a line boundary, never mid-line. */
+	zassert_true(text[0] == 'o' || text[0] == 'n',
+		     "what is left starts at a line, not mid-line: %s", text);
+	zassert_is_null(strstr(text, "x\n"),
+			"the lines from before were dropped: %s", text);
+}
+
+ZTEST(tedge_log_ring, test_dropping_is_counted)
+{
+	uint32_t before = tedge_log_ring_dropped();
+
+	for (int i = 0; i < 50; i++) {
+		tedge_log_ring_write((const uint8_t *)"filling it up\n", 14);
+	}
+	zassert_true(tedge_log_ring_dropped() > before,
+		     "a ring that overflowed says how many lines it lost");
+}
+
+ZTEST(tedge_log_ring, test_a_line_longer_than_the_ring_keeps_its_tail)
+{
+	char big[400];
+	char text[300];
+
+	memset(big, 'z', sizeof(big));
+	memcpy(big + sizeof(big) - 5, "tail\n", 5);
+	tedge_log_ring_write((const uint8_t *)big, sizeof(big));
+	(void)ring_text(text, sizeof(text));
+	zassert_not_null(strstr(text, "tail\n"),
+			 "the end of an enormous line is the part worth keeping");
+}
+
+ZTEST_SUITE(tedge_log_ring, NULL, NULL, ring_before, NULL, NULL);

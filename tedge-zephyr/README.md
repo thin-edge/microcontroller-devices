@@ -14,9 +14,10 @@ already does:
 > **Status: early.** Onboarding, the connection, device state, restart,
 > remote access, firmware update, certificate renewal and telemetry (with the
 > client's own health) work and are verified on hardware (ESP32-C6,
-> ESP32-S3). Log retrieval and configuration management are not implemented
-> yet: their API calls return `-ENOTSUP`, and the header says which change
-> implements each. The API may still change.
+> ESP32-S3), as do log retrieval, crash dumps and the allow-listed shell
+> command. Configuration management is not implemented yet: its API calls
+> return `-ENOTSUP`, and the header says which change implements it. The API
+> may still change.
 
 ## Transports
 
@@ -93,6 +94,8 @@ shared with the rest of your image:
 | + remote access | 798 KB | 130 KB |
 | + firmware update, certificate renewal | 812 KB | 116 KB |
 | + telemetry and health | 815 KB | 114 KB |
+| + log upload and crash dumps | 824 KB | 100 KB |
+| + the shell command (on an image that already has a shell) | +2.5 KB | 90 KB |
 
 With the TLS heap in PSRAM on an ESP32-S3, the client costs no internal RAM
 beyond its own buffers.
@@ -191,6 +194,93 @@ application's to publish, because only it knows what those numbers mean.
 
 Without the feature the same calls compile and return `-ENOTSUP`, so an
 application does not need `#ifdef`s to build in a minimal configuration.
+
+### Diagnostics: logs, a crash dump and a command
+
+`CONFIG_TEDGE_LOG_UPLOAD` answers Cumulocity's request for a log file. The
+client always has one log of its own — the most recent lines of everything
+the image logs, kept in a RAM ring of `CONFIG_TEDGE_LOG_RING_BYTES` (2 KB by
+default) — so a device says something useful even if its application never
+built a log. An application adds its own:
+
+```c
+static int status_log(const struct tedge_log_request *req,
+                      tedge_write_fn write, void *ctx, void *user_data)
+{
+        char line[128];
+        int n = snprintf(line, sizeof(line), "pump %s\n", pump_state());
+
+        return write(ctx, line, (size_t)n);  /* pass any error back */
+}
+
+tedge_register_log_type("app-status", status_log, NULL);
+```
+
+A log type is a callback, not a file: nothing is stored, nothing needs a
+filesystem, and no log is ever held whole in RAM. The client applies what it
+can of the request's filters (`search_text`, `max_lines`; the date range is
+passed through for readers that keep wall-clock timestamps — its own ring
+does not). **Your reader may be called twice for one request**, once to
+measure the log and once to send it, so produce the same lines both times.
+
+One request sends at most `CONFIG_TEDGE_LOG_UPLOAD_MAX_BYTES` (8 KB by
+default); a longer log is cut with a line saying so, rather than refused.
+The upload runs on its own thread and leaves the connection working.
+
+**Crash dumps.** `CONFIG_TEDGE_COREDUMP` offers the last crash as the log
+type `coredump`, and it appears in the device's supported logs only when a
+dump is actually stored. Download it and read it with Zephyr's own tooling:
+
+```sh
+python3 $ZEPHYR_BASE/scripts/coredump/coredump_serial_log_parser.py \
+        coredump.log core.bin
+# then: coredump_gdbserver.py, and gdb against the ELF of that firmware
+```
+
+Two things your application must get right, because the client cannot:
+
+- **Pick the backend and the dump mode.** They are Kconfig choices:
+  `CONFIG_DEBUG_COREDUMP_BACKEND_FLASH_PARTITION=y` and
+  `CONFIG_DEBUG_COREDUMP_MEMORY_DUMP_MIN=y`. The default mode dumps all of
+  RAM and never fits a small partition.
+- **Give it a partition big enough.** With the minimal mode a dump is the
+  faulting thread's stack plus its registers, so a 4 KB `coredump_partition`
+  holds a crash in a thread with a stack of about 3 KB. A fault in a larger
+  thread is reported as `-ENOMEM` by the backend and no dump is kept.
+
+The dump is erased only once the cloud has it, so a failed upload can be
+requested again.
+
+**The shell command.** `CONFIG_TEDGE_SHELL_COMMAND` runs `c8y_Command`
+against Zephyr's dummy shell backend — in-process, with no listener on the
+network — on its own thread, and returns what it printed.
+
+**It refuses everything by default.** `CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST`
+is empty until you set it, for example:
+
+```
+CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST="kernel uptime,net iface,tedge diag"
+```
+
+A request must begin with one of those prefixes and may add arguments.
+Anything containing `;`, `|`, `&`, `` ` ``, `$`, `<`, `>` or a newline is
+refused whatever the list says, so an allowed prefix cannot become a doorway
+to a second command. Compiling the feature in is not consent to run
+something: only you know what is safe to expose in your image.
+
+Zephyr cannot interrupt a running command. After
+`CONFIG_TEDGE_SHELL_COMMAND_TIMEOUT_S` the operation is reported as failed,
+but the thread stays busy until the command returns and further commands are
+refused meanwhile — so keep commands that can block for ever off the list.
+The result travels in one SmartREST field: newlines become spaces and a long
+answer is cut. A command with a lot to say belongs behind a log type.
+
+**One operation at a time.** Cumulocity's operation statuses act on the
+oldest operation in each state, not on the one a message names, so the
+client executes one operation at a time and queues what arrives meanwhile
+(two deep). This is also why an operation interrupted by a reset stays
+EXECUTING in Cumulocity: the device cannot see it after the reboot, and it
+has to be cleared from the cloud side.
 
 ### Firmware update
 

@@ -175,8 +175,26 @@ static int cmd_flood(const struct shell *sh, size_t argc, char **argv)
 }
 #endif /* CONFIG_TEDGE_TELEMETRY */
 
+#if defined(CONFIG_APP_TEDGE_TEST_FAULT_COMMAND)
+/* Test aid: crashes the device on purpose, so the crash dump has something
+ * to report. */
+static int cmd_crash(const struct shell *sh, size_t argc, char **argv)
+{
+	volatile uint32_t *nowhere = NULL;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	shell_print(sh, "crashing on purpose");
+	*nowhere = 1;
+	return 0;
+}
+#endif
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_tedge,
 	SHELL_CMD(diag, NULL, "client state and TLS heap", cmd_diag),
+#if defined(CONFIG_APP_TEDGE_TEST_FAULT_COMMAND)
+	SHELL_CMD(crash, NULL, "crash on purpose (test builds only)", cmd_crash),
+#endif
 #if defined(CONFIG_TEDGE_TELEMETRY)
 	SHELL_CMD_ARG(event, NULL, "publish an event: event [text]", cmd_event,
 		      1, 1),
@@ -219,6 +237,44 @@ static void telemetry_fn(struct k_work *work)
 static K_WORK_DELAYABLE_DEFINE(telemetry_work, telemetry_fn);
 #endif
 
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+/* The client keeps its own log; this is the application's, and shows what
+ * the hook is for: a few lines that only this firmware can answer, produced
+ * when the cloud asks rather than stored anywhere. */
+static int status_log(const struct tedge_log_request *req,
+		      tedge_write_fn write, void *ctx, void *user_data)
+{
+	char line[128];
+	size_t count = data_source_count();
+	int rc;
+
+	ARG_UNUSED(req);
+	ARG_UNUSED(user_data);
+
+	rc = snprintf(line, sizeof(line), "device %s, firmware %s %s\n",
+		      app_identity_device_id(), app_identity_firmware_name(),
+		      app_identity_firmware_version());
+	rc = write(ctx, line, (size_t)rc);
+	if (rc != 0) {
+		return rc;
+	}
+	for (size_t i = 0; i < count; i++) {
+		const struct data_measurement *d = data_source_descriptor(i);
+		int n = snprintf(line, sizeof(line), "%s = %d.%02d %s\n",
+				 d->name, (int)data_source_sample(i),
+				 (int)((data_source_sample(i) -
+					(int)data_source_sample(i)) * 100),
+				 (d->unit != NULL) ? d->unit : "");
+
+		rc = write(ctx, line, (size_t)n);
+		if (rc != 0) {
+			return rc;
+		}
+	}
+	return 0;
+}
+#endif
+
 int tedge_glue_start(void)
 {
 	struct tedge_identity id = {
@@ -242,6 +298,9 @@ int tedge_glue_start(void)
 #if defined(CONFIG_TEDGE_TELEMETRY)
 	(void)k_work_schedule(&telemetry_work,
 			      K_SECONDS(CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S));
+#endif
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+	(void)tedge_register_log_type("app-status", status_log, NULL);
 #endif
 	return rc;
 }

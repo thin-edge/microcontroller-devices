@@ -326,7 +326,13 @@ int tedge_operation_succeed(struct tedge_operation *op, const char *result);
 int tedge_operation_fail(struct tedge_operation *op, const char *reason);
 
 /* ------------------------------------------------------------------------ */
-/* Log and configuration types - not implemented yet (-ENOTSUP)              */
+/* Log types (CONFIG_TEDGE_LOG_UPLOAD) and configuration types              */
+/* (CONFIG_TEDGE_CONFIG - not implemented yet, -ENOTSUP)                     */
+/*                                                                           */
+/* A log type is a callback, not a file: the client asks the application to  */
+/* produce the log when the cloud requests it, and the application writes it */
+/* through the sink it is given. Nothing needs a filesystem, and no log is   */
+/* ever held whole in RAM.                                                   */
 /* ------------------------------------------------------------------------ */
 
 /**
@@ -348,9 +354,29 @@ typedef int (*tedge_log_reader_t)(const struct tedge_log_request *req,
 				  tedge_write_fn write, void *ctx,
 				  void *user_data);
 
-/** @brief Add a log type to the ones the device offers. */
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_LOG_UPLOAD)
+/* Log upload is not built in: the call exists so an application compiles. */
+static inline int tedge_register_log_type(const char *type,
+					  tedge_log_reader_t reader,
+					  void *user_data)
+{
+	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(user_data);
+	return -ENOTSUP;
+}
+#else
+/**
+ * @brief Add a log type to the ones the device offers.
+ *
+ * The reader is called on the client's upload thread, possibly twice for one
+ * request (once to measure, once to send), so it must produce the same log
+ * both times as far as it can.
+ *
+ * @return 0, -ENOSPC when the client has no free log-type slot, or -ENOTSUP
+ *         when log upload is not built in.
+ */
 int tedge_register_log_type(const char *type, tedge_log_reader_t reader,
 			    void *user_data);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_LOG_UPLOAD */
 
 /** @brief Writes the current configuration of one type (snapshot). */
 typedef int (*tedge_config_reader_t)(tedge_write_fn write, void *ctx,
@@ -364,9 +390,22 @@ typedef int (*tedge_config_reader_t)(tedge_write_fn write, void *ctx,
 typedef int (*tedge_config_writer_t)(const void *data, size_t len,
 				     void *user_data);
 
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_CONFIG)
+/* Configuration management is not built in (and not implemented yet). */
+static inline int tedge_register_config_type(const char *type,
+					     tedge_config_reader_t reader,
+					     tedge_config_writer_t writer,
+					     void *user_data)
+{
+	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(writer);
+	ARG_UNUSED(user_data);
+	return -ENOTSUP;
+}
+#else
 /** @brief Add a configuration type (snapshot and/or update). */
 int tedge_register_config_type(const char *type, tedge_config_reader_t reader,
 			       tedge_config_writer_t writer, void *user_data);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_CONFIG */
 
 #ifdef __cplusplus
 }

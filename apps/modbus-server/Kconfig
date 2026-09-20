@@ -24,4 +24,11 @@ config APP_TEDGE_TEST_REFUSE_FIRMWARE
 	  newly installed image is never confirmed and the bootloader rolls
 	  it back. For testing the rollback path only.
 
+config APP_TEDGE_TEST_FAULT_COMMAND
+	bool "Test build: a shell command that crashes the device"
+	depends on SHELL
+	help
+	  Adds "tedge crash", which dereferences a null pointer so the
+	  coredump path can be tested end to end. For testing only.
+
 source "Kconfig.zephyr"

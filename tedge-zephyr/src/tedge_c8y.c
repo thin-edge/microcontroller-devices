@@ -123,8 +123,36 @@ static int publish(const char *topic, const char *payload, enum mqtt_qos qos)
 	return ret;
 }
 
+/* One operation at a time.
+ *
+ * Cumulocity's 501, 502 and 503 act on the *oldest* operation in the
+ * matching state, not on an operation named in the message, so a device with
+ * two operations executing at once gets their results crossed: the log
+ * upload's URL lands on the command, and an operation is left EXECUTING for
+ * ever. The client therefore runs one operation at a time and keeps the rest
+ * in a small queue.
+ *
+ * The gate is maintained here, where every status message passes, rather
+ * than at each of the places that send one: a feature added later cannot
+ * forget it.
+ */
+#define OP_QUEUE_DEPTH 2
+/* A firmware request carries a URL, which is the longest line that arrives. */
+#define OP_LINE_MAX    768
+
+static bool op_executing;
+static char op_queue[OP_QUEUE_DEPTH][OP_LINE_MAX];
+static uint8_t op_queued;
+
 int tedge_c8y_publish_sr(const char *line)
 {
+	int tmpl = tedge_sr_template(line);
+
+	if (tmpl == 501) {
+		op_executing = true;
+	} else if (tmpl == 502 || tmpl == 503) {
+		op_executing = false;
+	}
 	return publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
 }
 
@@ -201,13 +229,19 @@ int tedge_operation_fail(struct tedge_operation *op, const char *reason)
 }
 
 /* Report an operation the image cannot run (baseline requirement: never leave
- * it pending). */
+ * it pending).
+ *
+ * 501 first, always: Cumulocity's 502 fails the oldest *executing* operation,
+ * so refusing one straight from PENDING would leave it pending for ever —
+ * exactly the state this function exists to avoid. */
 static void op_unsupported(const char *name, const char *why)
 {
 	char line[224];
 	char quoted[160];
 	char text[140];
 
+	snprintf(line, sizeof(line), "501,%s", name);
+	(void)tedge_c8y_publish_sr(line);
 	snprintf(text, sizeof(text), "%s", why);
 	(void)tedge_sr_quote(text, quoted, sizeof(quoted));
 	snprintf(line, sizeof(line), "502,%s,%s", name, quoted);
@@ -265,7 +299,51 @@ static int restart_marker_cb(const char *key, size_t len,
 /* Downstream messages                                                       */
 /* ------------------------------------------------------------------------ */
 
+static void dispatch_operation(const char *line);
+
+/* Runs @p line now, or holds it until the operation in flight finishes.
+ * Called on the client thread only. */
 static void handle_operation(const char *line)
+{
+	int tmpl = tedge_sr_template(line);
+
+	if (op_executing && tmpl >= 510 && tmpl <= 579) {
+		if (op_queued >= OP_QUEUE_DEPTH) {
+			/* Left PENDING deliberately: failing it would fail the
+			 * operation that is actually running, because that is
+			 * the one Cumulocity's 502 acts on. Cumulocity sends
+			 * pending operations again when the device
+			 * reconnects. */
+			LOG_WRN("operation %d arrived while %d were already "
+				"waiting; it stays pending until the next "
+				"connect", tmpl, op_queued);
+			return;
+		}
+		snprintf(op_queue[op_queued], OP_LINE_MAX, "%s", line);
+		op_queued++;
+		LOG_INF("operation %d waits: another one is running", tmpl);
+		return;
+	}
+	dispatch_operation(line);
+}
+
+/* Starts the next waiting operation, if the last one has finished. */
+static void run_queued_operation(void)
+{
+	char line[OP_LINE_MAX];
+
+	if (op_executing || op_queued == 0) {
+		return;
+	}
+	memcpy(line, op_queue[0], sizeof(line));
+	op_queued--;
+	if (op_queued > 0) {
+		memmove(op_queue[0], op_queue[1], OP_LINE_MAX);
+	}
+	dispatch_operation(line);
+}
+
+static void dispatch_operation(const char *line)
 {
 	char op_name[40];
 	int tmpl = tedge_sr_template(line);
@@ -333,8 +411,50 @@ static void handle_operation(const char *line)
 #endif
 		return;
 	case 511:
+#if defined(CONFIG_TEDGE_SHELL_COMMAND)
+	{
+		char reason[160];
+		char sr[288];
+		char quoted[200];
+
+		/* 501 first, for the reason firmware update gives above. */
+		(void)tedge_c8y_publish_sr("501,c8y_Command");
+		if (tedge_shell_request(line, reason, sizeof(reason)) != 0) {
+			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
+			snprintf(sr, sizeof(sr), "502,c8y_Command,%s", quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		}
+		return;
+	}
+#else
+		/* Without the feature the application may still register its
+		 * own c8y_Command handler, so fall through to the registered
+		 * operations rather than refusing here. */
 		snprintf(op_name, sizeof(op_name), "c8y_Command");
 		break;
+#endif
+	case 522:
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+	{
+		char reason[128];
+		char sr[224];
+		char quoted[160];
+
+		/* 501 first, for the reason firmware update gives above. */
+		(void)tedge_c8y_publish_sr("501,c8y_LogfileRequest");
+		if (tedge_log_request(line, reason, sizeof(reason)) != 0) {
+			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
+			snprintf(sr, sizeof(sr), "502,c8y_LogfileRequest,%s",
+				 quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		}
+	}
+#else
+		op_unsupported("c8y_LogfileRequest",
+			       "log upload is not built into this image "
+			       "(CONFIG_TEDGE_LOG_UPLOAD)");
+#endif
+		return;
 	default:
 		if (tmpl < 0) {
 			return; /* not a SmartREST line */
@@ -358,6 +478,19 @@ static void handle_operation(const char *line)
 			ops[i].handler(&current_op, ops[i].user_data);
 			return;
 		}
+	}
+	/* Cumulocity's operations live in the 5xx templates. One this image
+	 * has no handler for is failed with a reason, never dropped: an
+	 * operation nobody answers stays pending in the cloud for ever, and
+	 * the device looks broken rather than merely incomplete. Anything
+	 * else on this topic is a response, not an operation. */
+	if (tmpl >= 510 && tmpl <= 579) {
+		char why[96];
+
+		snprintf(why, sizeof(why),
+			 "this image has no handler for SmartREST %d", tmpl);
+		op_unsupported(op_name, why);
+		return;
 	}
 	LOG_DBG("unhandled downstream message: %.40s", line);
 }
@@ -611,6 +744,13 @@ static void publish_supported_ops(void)
 	if (IS_ENABLED(CONFIG_TEDGE_FIRMWARE_UPDATE)) {
 		n += snprintf(line + n, sizeof(line) - n, ",c8y_Firmware");
 	}
+	if (IS_ENABLED(CONFIG_TEDGE_SHELL_COMMAND)) {
+		n += snprintf(line + n, sizeof(line) - n, ",c8y_Command");
+	}
+	if (IS_ENABLED(CONFIG_TEDGE_LOG_UPLOAD)) {
+		n += snprintf(line + n, sizeof(line) - n,
+			      ",c8y_LogfileRequest");
+	}
 	for (int i = 0; i < OP_SLOTS && n < sizeof(line); i++) {
 		if (ops[i].name != NULL) {
 			n += snprintf(line + n, sizeof(line) - n, ",%s",
@@ -620,6 +760,18 @@ static void publish_supported_ops(void)
 	if (n > 3) {
 		(void)tedge_c8y_publish_sr(line);
 	}
+
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+	/* The log types this image can actually produce, so an operator is
+	 * never offered one the device does not have. */
+	{
+		char logs[160];
+
+		if (tedge_log_types_line(logs, sizeof(logs)) > 0) {
+			(void)tedge_c8y_publish_sr(logs);
+		}
+	}
+#endif
 }
 
 static int publish_twin_impl(const char *fragment, const char *json)
@@ -781,6 +933,11 @@ static void publish_health(void)
 /* 100, subscriptions, 114, 117, s/uat, then state (design D6). */
 static int session_start(void)
 {
+	/* A new session: Cumulocity sends its pending operations again, so
+	 * whatever this client thought it was running is no longer true. */
+	op_executing = false;
+	op_queued = 0;
+
 	const struct tedge_id *id = tedge_identity();
 	char line[160];
 	char agent[160];
@@ -975,6 +1132,43 @@ static int c8y_poll(int timeout_ms)
 		}
 	}
 #endif
+#if defined(CONFIG_TEDGE_SHELL_COMMAND)
+	{
+		struct tedge_shell_event ev;
+		char sr[288], quoted[200];
+
+		while (tedge_shell_poll_event(&ev) == 0) {
+			/* SmartREST is one line: newlines become spaces and a
+			 * long answer is cut. A command with a lot to say
+			 * belongs behind a log type. */
+			(void)tedge_sr_quote(ev.output, quoted, sizeof(quoted));
+			snprintf(sr, sizeof(sr), "%s,c8y_Command,%s",
+				 (ev.rc == 0) ? "503" : "502", quoted);
+			(void)tedge_c8y_publish_sr(sr);
+		}
+	}
+#endif
+#if defined(CONFIG_TEDGE_LOG_UPLOAD)
+	{
+		struct tedge_log_event ev;
+		char sr[288], quoted[200];
+
+		while (tedge_log_poll_event(&ev) == 0) {
+			if (ev.rc == 0) {
+				(void)tedge_sr_quote(ev.url, quoted,
+						     sizeof(quoted));
+				snprintf(sr, sizeof(sr),
+					 "503,c8y_LogfileRequest,%s", quoted);
+			} else {
+				(void)tedge_sr_quote(ev.reason, quoted,
+						     sizeof(quoted));
+				snprintf(sr, sizeof(sr),
+					 "502,c8y_LogfileRequest,%s", quoted);
+			}
+			(void)tedge_c8y_publish_sr(sr);
+		}
+	}
+#endif
 #if defined(CONFIG_TEDGE_REMOTE_ACCESS)
 	{
 		struct tedge_ra_event ev;
@@ -1013,6 +1207,9 @@ static int c8y_poll(int timeout_ms)
 		}
 	}
 #endif
+	/* Anything that finished above freed the gate, so the next operation
+	 * can start — on this thread, like every other dispatch. */
+	run_queued_operation();
 #if defined(CONFIG_TEDGE_CERT_RENEWAL)
 	/* Renew the certificate while there is still plenty of time. */
 	tedge_cert_renew_tick();

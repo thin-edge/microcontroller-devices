@@ -20,6 +20,8 @@ target_sources(app PRIVATE
   ../../src/tedge_cert_decision.c
   ../../src/tedge_telemetry.c
   ../../src/tedge_json.c
+  ../../src/tedge_shell_allow_list.c
+  ../../src/tedge_log_ring.c
 )
 
 # The telemetry API is compiled in for the tests, with a small buffer so the
@@ -30,5 +32,7 @@ target_compile_definitions(app PRIVATE
   # The module's log level comes from its Kconfig, which is not part of a
   # test build.
   CONFIG_TEDGE_LOG_LEVEL=3
+  # A small ring, so "it wrapped" is one test away.
+  CONFIG_TEDGE_LOG_RING_BYTES=256
 )
 target_include_directories(app PRIVATE ../../include ../../src)

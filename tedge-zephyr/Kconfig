@@ -56,11 +56,11 @@ config TEDGE_FEATURE_AVAILABLE_FIRMWARE_UPDATE
 
 config TEDGE_FEATURE_AVAILABLE_SHELL_COMMAND
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_LOG_UPLOAD
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_REMOTE_ACCESS
 	bool
@@ -376,11 +376,6 @@ config TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S
 	  device so the bootloader can roll the image back. 0 disables it,
 	  leaving the rollback to whatever else resets the device.
 
-config TEDGE_FIRMWARE_MAX_REDIRECTS
-	int "HTTP redirects to follow"
-	default 3
-	range 0 10
-
 config TEDGE_FIRMWARE_PROGRESS
 	bool "Publish download progress on a free-form topic"
 	default y
@@ -402,14 +397,117 @@ config TEDGE_SHELL_COMMAND
 	bool "Shell command operation"
 	depends on TEDGE_FEATURE_AVAILABLE_SHELL_COMMAND
 	depends on SHELL
+	select SHELL_BACKEND_DUMMY
 	help
 	  Runs an allow-listed Zephyr shell command sent from the cloud and
-	  returns its output.
+	  returns its output. The command runs in-process against a capture
+	  backend, not a shell on the network, and nothing runs until
+	  TEDGE_SHELL_COMMAND_ALLOW_LIST says what may.
+
+if TEDGE_SHELL_COMMAND
+
+config TEDGE_SHELL_COMMAND_ALLOW_LIST
+	string "Commands the cloud may run (comma-separated prefixes)"
+	default ""
+	help
+	  For example "kernel uptime,net iface,tedge diag". A request must
+	  begin with one of these and may add arguments; anything that could
+	  chain a second command is refused whatever this says.
+
+	  Empty, the default, refuses every command: compiling the feature in
+	  is not the same as consenting to run something. What is safe to
+	  expose depends on what else is in the image, which only you know.
+
+config TEDGE_SHELL_COMMAND_TIMEOUT_S
+	int "Seconds before a command is reported as timed out"
+	default 30
+	range 1 600
+	help
+	  Zephyr cannot interrupt a running shell command, so the operation
+	  fails but the thread stays busy until the command returns. Keep
+	  commands that can block for ever off the allow-list.
+
+config TEDGE_SHELL_COMMAND_OUTPUT_BYTES
+	int "Output kept from a command"
+	default 512
+	range 64 4096
+	help
+	  What the command printed, as far as this many bytes. The result
+	  reported to Cumulocity is one SmartREST field and is shorter still;
+	  a command with a lot to say belongs behind a log type.
+
+config TEDGE_SHELL_COMMAND_STACK_SIZE
+	int "Stack of the thread a command runs on"
+	default 4096
+
+endif # TEDGE_SHELL_COMMAND
 
 config TEDGE_LOG_UPLOAD
 	bool "Log upload"
 	depends on TEDGE_FEATURE_AVAILABLE_LOG_UPLOAD
 	select TEDGE_HTTP
+	select LOG
+	select LOG_OUTPUT
+	help
+	  Answers the cloud's request for a log file. The client keeps its own
+	  recent log in RAM and offers it without the application doing
+	  anything; the application can add log types of its own, each a
+	  callback that writes the log when it is asked for.
+
+if TEDGE_LOG_UPLOAD
+
+config TEDGE_LOG_RING_BYTES
+	int "The client's own log kept in RAM"
+	default 2048
+	range 256 16384
+	help
+	  A ring in the module's heap holding the most recent log lines of the
+	  whole image, oldest whole line dropped when it is full. It does not
+	  survive a reboot; that is what the crash dump is for.
+
+config TEDGE_LOG_TYPE_SLOTS
+	int "Log types the client can hold"
+	default 4
+	range 1 16
+	help
+	  The client's own log, the crash dump when it is built in, and the
+	  application's own types.
+
+config TEDGE_LOG_UPLOAD_MAX_BYTES
+	int "Most bytes one request may send"
+	default 8192
+	range 512 262144
+	help
+	  A longer log is cut, with a line saying so, rather than refused.
+	  Nothing of this size is held in RAM: the log is streamed as it is
+	  produced.
+
+config TEDGE_COREDUMP
+	bool "Offer the last crash dump as a log"
+	depends on ARCH_SUPPORTS_COREDUMP
+	select DEBUG_COREDUMP
+	help
+	  On a fatal error Zephyr writes a dump to the coredump partition;
+	  after the reset the client offers it as the log type "coredump", in
+	  the format zephyr/scripts/coredump/coredump_serial_log_parser.py
+	  reads, and erases it once the cloud has it.
+
+	  The backend is a Kconfig choice, so this cannot select it: the
+	  application sets CONFIG_DEBUG_COREDUMP_BACKEND_FLASH_PARTITION=y and
+	  its board needs a "coredump_partition" (every layout in this
+	  repository has one).
+
+config TEDGE_LOG_UPLOAD_STACK_SIZE
+	int "Stack of the upload thread"
+	default 8192
+	help
+	  Two TLS handshakes run on this thread — the identity lookup and the
+	  upload itself — which is why it needs as much as the download and
+	  the remote-access bridge. 4096 overflows during the handshake, and
+	  on a board without CONFIG_HW_STACK_PROTECTION that shows up as an
+	  illegal instruction rather than a stack-overflow message.
+
+endif # TEDGE_LOG_UPLOAD
 
 config TEDGE_REMOTE_ACCESS
 	bool "Remote access (tunnel to the device and its network)"
@@ -532,10 +630,27 @@ endif # TEDGE_CERT_RENEWAL
 endmenu
 
 # Shared HTTPS client and token handling, pulled in by the file-transfer
-# features. The Zephyr subsystems it needs are selected when it is
-# implemented.
+# features (firmware update, log upload, configuration management). Every
+# call authenticates with a fresh Bearer JWT and only on the tenant's own
+# domain.
 config TEDGE_HTTP
 	bool
+	select HTTP_CLIENT
+	select NET_SOCKETS
+	select NET_SOCKETS_SOCKOPT_TLS
+	select DNS_RESOLVER
+
+if TEDGE_HTTP
+
+config TEDGE_HTTP_MAX_REDIRECTS
+	int "HTTP redirects to follow"
+	default 3
+	range 0 10
+	help
+	  The JWT is never sent to a host outside the tenant's domain, so a
+	  redirect off it drops the token rather than the request.
+
+endif # TEDGE_HTTP
 
 # --- Resources ------------------------------------------------------------------
 
