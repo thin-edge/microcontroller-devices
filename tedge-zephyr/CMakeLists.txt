@@ -17,7 +17,10 @@ if(CONFIG_TEDGE)
     src/tedge_platform.c
     src/tedge_time.c
     src/tedge_backoff.c
+    src/tedge_json.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_TELEMETRY src/tedge_telemetry.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_HEALTH src/tedge_health.c)
   zephyr_library_sources_ifdef(CONFIG_TEDGE_TRANSPORT_C8Y
     src/tedge_c8y.c
     src/tedge_smartrest.c

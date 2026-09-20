@@ -73,6 +73,36 @@ void *tedge_alloc(size_t size)
 	return p;
 }
 
+size_t tedge_heap_free(void)
+{
+	struct sys_memory_stats stats;
+
+	if (sys_heap_runtime_stats_get(&tedge_heap.heap, &stats) != 0) {
+		return 0;
+	}
+	return stats.free_bytes;
+}
+
+/* JSON has few escapes; anything else that would break a payload becomes a
+ * space, because telemetry text comes from applications and must never be
+ * able to produce invalid JSON. */
+void tedge_json_escape(const char *in, char *out, size_t len)
+{
+	size_t n = 0;
+
+	for (const char *p = in; *p != '\0' && n + 2 < len; p++) {
+		if (*p == '"' || *p == '\\') {
+			out[n++] = '\\';
+			out[n++] = *p;
+		} else if ((unsigned char)*p < 0x20) {
+			out[n++] = ' ';
+		} else {
+			out[n++] = *p;
+		}
+	}
+	out[n] = '\0';
+}
+
 void tedge_free(void *p)
 {
 	if (p != NULL) {
@@ -220,6 +250,11 @@ int tedge_publish_twin(const char *fragment, const char *json)
 	return rc;
 }
 
+void tedge_telemetry_wake(void)
+{
+	k_event_post(&events, EV_WAKE);
+}
+
 void tedge_request_reconnect(void)
 {
 	k_event_post(&events, EV_RECONNECT | EV_WAKE);
@@ -361,6 +396,12 @@ static void client_thread(void *a, void *b, void *c)
 			if (twin_dirty) {
 				tedge_twin_republish();
 			}
+#if defined(CONFIG_TEDGE_TELEMETRY)
+			tedge_telemetry_flush();
+#endif
+#if defined(CONFIG_TEDGE_HEALTH)
+			tedge_health_tick();
+#endif
 		}
 		transport->disconnect();
 		if (k_uptime_get() - connected_at > STABLE_S * 1000) {

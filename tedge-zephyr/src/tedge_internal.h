@@ -169,6 +169,36 @@ const char *tedge_fw_downtime_hint(void);
 /** Publish @p json on the free-form progress topic (QoS 0); no-op on Core MQTT. */
 int tedge_c8y_publish_progress(const char *kind, const char *json);
 
+/* --- Telemetry (tedge_telemetry.c, tedge_health.c) ----------------------- */
+
+enum tedge_msg_kind {
+	TEDGE_MSG_MEASUREMENT,
+	TEDGE_MSG_EVENT,
+	TEDGE_MSG_ALARM,
+	TEDGE_MSG_ALARM_CLEAR,
+};
+
+/** Send one queued message; -ENOTCONN leaves it queued for later. */
+int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
+				const char *payload);
+/** Send whatever is queued, oldest first (client thread). */
+void tedge_telemetry_flush(void);
+/** Wake the client thread when something is queued. */
+void tedge_telemetry_wake(void);
+/** How many messages the buffer has had to drop. */
+uint32_t tedge_telemetry_dropped(void);
+/** Publish the client's own vital signs when the interval has passed. */
+void tedge_health_tick(void);
+/** Bytes free in the module's heap. */
+size_t tedge_heap_free(void);
+/** Copy @p in into @p out with JSON's escapes applied. */
+void tedge_json_escape(const char *in, char *out, size_t len);
+/** Read a string field out of JSON this module built. Length, or -ENOENT. */
+int tedge_json_field(const char *json, const char *key, char *out, size_t len);
+/** Walk the numeric members; 1 while one was found, 0 at the end. */
+int tedge_json_next_number(const char *json, size_t *pos, char *key,
+			   size_t key_len, char *value, size_t value_len);
+
 /* --- Remote access (tedge_remote_access.c) ------------------------------- */
 
 enum tedge_ra_event_type {

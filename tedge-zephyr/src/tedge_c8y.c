@@ -662,6 +662,97 @@ int tedge_c8y_publish_progress(const char *kind, const char *json)
 	return publish(topic, json, MQTT_QOS_0_AT_MOST_ONCE);
 }
 
+#if defined(CONFIG_TEDGE_TELEMETRY)
+/* Core MQTT has no free-form topics: one SmartREST 200 per series, taken
+ * back out of the JSON the API built. */
+static int smartrest_measurement(const char *type, const char *payload)
+{
+	size_t pos = 0;
+	char series[40], value[24], line[128];
+	int sent = 0;
+
+	while (tedge_json_next_number(payload, &pos, series, sizeof(series),
+				      value, sizeof(value)) == 1) {
+		snprintf(line, sizeof(line), "200,%s,%s,%s", type, series,
+			 value);
+		if (tedge_c8y_publish_sr(line) != 0) {
+			return -ENOTCONN;
+		}
+		sent++;
+	}
+	return (sent > 0) ? 0 : -EINVAL;
+}
+
+/* Free-form te/ topics where the transport has them, SmartREST where it
+ * does not; the application sees no difference. */
+int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
+				const char *payload)
+{
+	char topic[128];
+	char line[256];
+
+	if (!session_open) {
+		return -ENOTCONN;
+	}
+	if (FREE_FORM_TOPICS) {
+		static const char *const kinds[] = { "m", "e", "a", "a" };
+
+		snprintf(topic, sizeof(topic), "te/device/%s///%s/%s", device_id,
+			 kinds[kind], type);
+		LOG_DBG("%s: %s", topic + strlen(topic) - strlen(type) - 3,
+			payload);
+		/* A measurement lost in a reconnect is one reading; an event or
+		 * an alarm carries meaning, so those go at least once. */
+		return publish(topic, payload,
+			       (kind == TEDGE_MSG_MEASUREMENT)
+				       ? MQTT_QOS_0_AT_MOST_ONCE
+				       : MQTT_QOS_1_AT_LEAST_ONCE);
+	}
+
+	/* Core MQTT: SmartREST. The payload is JSON either way, so the
+	 * fields are taken back out of it here. */
+	switch (kind) {
+	case TEDGE_MSG_MEASUREMENT:
+		return smartrest_measurement(type, payload);
+	case TEDGE_MSG_EVENT: {
+		char text[160], quoted[180];
+
+		tedge_json_field(payload, "text", text, sizeof(text));
+		(void)tedge_sr_quote(text, quoted, sizeof(quoted));
+		snprintf(line, sizeof(line), "400,%s,%s", type, quoted);
+		return tedge_c8y_publish_sr(line);
+	}
+	case TEDGE_MSG_ALARM: {
+		char text[160], quoted[180], severity[16];
+		static const struct {
+			const char *name;
+			const char *template;
+		} map[] = {
+			{ "critical", "301" }, { "major", "302" },
+			{ "minor", "303" },    { "warning", "304" },
+		};
+		const char *tmpl = "304";
+
+		tedge_json_field(payload, "severity", severity, sizeof(severity));
+		tedge_json_field(payload, "text", text, sizeof(text));
+		for (size_t i = 0; i < ARRAY_SIZE(map); i++) {
+			if (strcmp(severity, map[i].name) == 0) {
+				tmpl = map[i].template;
+				break;
+			}
+		}
+		(void)tedge_sr_quote(text, quoted, sizeof(quoted));
+		snprintf(line, sizeof(line), "%s,%s,%s", tmpl, type, quoted);
+		return tedge_c8y_publish_sr(line);
+	}
+	case TEDGE_MSG_ALARM_CLEAR:
+	default:
+		snprintf(line, sizeof(line), "306,%s", type);
+		return tedge_c8y_publish_sr(line);
+	}
+}
+#endif /* CONFIG_TEDGE_TELEMETRY */
+
 static void publish_health(void)
 {
 	char topic[128];

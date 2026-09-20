@@ -40,11 +40,11 @@ config TEDGE_FEATURE_AVAILABLE_GATEWAY
 
 config TEDGE_FEATURE_AVAILABLE_TELEMETRY
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_HEALTH
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_RESTART
 	bool
@@ -293,11 +293,37 @@ config TEDGE_TELEMETRY
 	  tedge_publish_measurement(), tedge_publish_event() and the alarm
 	  functions. The application decides what to send and when.
 
+if TEDGE_TELEMETRY
+
+config TEDGE_TELEMETRY_BUFFER_BYTES
+	int "Bytes held for telemetry that cannot be sent yet"
+	default 2048
+	range 256 65536
+	help
+	  Messages wait here while the device is offline and are sent oldest
+	  first on reconnect. When it is full the oldest measurement is
+	  dropped and counted; events and alarms are kept. The buffer is RAM,
+	  so a reboot loses what it held.
+
+endif # TEDGE_TELEMETRY
+
 config TEDGE_HEALTH
 	bool "Device health measurements"
 	depends on TEDGE_FEATURE_AVAILABLE_HEALTH
 	help
-	  Periodic free heap, Wi-Fi RSSI, uptime and the last reset reason.
+	  The client's own vital signs: uptime, its free heap, how much
+	  telemetry it dropped, and the last reset reason. What the
+	  application knows about the device is the application's to publish.
+	select TEDGE_TELEMETRY
+	select HWINFO
+	# The free-heap figure comes from the kernel's heap statistics.
+	select SYS_HEAP_RUNTIME_STATS
+
+config TEDGE_HEALTH_INTERVAL_S
+	int "Seconds between health measurements"
+	default 900
+	range 30 86400
+	depends on TEDGE_HEALTH
 
 config TEDGE_RESTART
 	bool "Restart operation"

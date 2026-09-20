@@ -12,6 +12,7 @@
 #include "tedge_glue.h"
 
 #include "boot_request.h"
+#include "data_source.h"
 #include "identity.h"
 #include "status_led.h"
 
@@ -118,6 +119,34 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_tedge,
 SHELL_CMD_REGISTER(tedge, &sub_tedge, "thin-edge.io client", NULL);
 #endif /* CONFIG_SHELL */
 
+#if defined(CONFIG_TEDGE_TELEMETRY)
+/* The application decides what to send and when; the client only carries
+ * it. Here that is the pump simulation this firmware already serves over
+ * Modbus, so the same values reach an operator who has no Modbus client.
+ */
+static void telemetry_fn(struct k_work *work)
+{
+	struct tedge_measurement_value values[8];
+	size_t count = MIN(data_source_count(), ARRAY_SIZE(values));
+
+	for (size_t i = 0; i < count; i++) {
+		const struct data_measurement *d = data_source_descriptor(i);
+
+		values[i].series = d->name;
+		values[i].unit = d->unit;
+		values[i].value = data_source_sample(i);
+	}
+	if (count > 0) {
+		(void)tedge_publish_measurement(CONFIG_APP_TEDGE_MEASUREMENT_TYPE,
+						values, count, 0);
+	}
+	(void)k_work_reschedule(k_work_delayable_from_work(work),
+				K_SECONDS(CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S));
+}
+
+static K_WORK_DELAYABLE_DEFINE(telemetry_work, telemetry_fn);
+#endif
+
 int tedge_glue_start(void)
 {
 	struct tedge_identity id = {
@@ -136,6 +165,11 @@ int tedge_glue_start(void)
 	rc = tedge_start();
 	if (rc != 0) {
 		LOG_ERR("tedge_start failed (%d)", rc);
+		return rc;
 	}
+#if defined(CONFIG_TEDGE_TELEMETRY)
+	(void)k_work_schedule(&telemetry_work,
+			      K_SECONDS(CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S));
+#endif
 	return rc;
 }
