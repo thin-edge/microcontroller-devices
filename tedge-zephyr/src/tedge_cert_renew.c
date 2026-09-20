@@ -130,9 +130,11 @@ static void raise_alarm(int days)
 {
 	struct tm tm;
 	char iso[24];
-	char line[160];
 	char text[110];
+#if !defined(CONFIG_TEDGE_TELEMETRY)
+	char line[160];
 	char quoted[128];
+#endif
 
 	if (alarm_raised) {
 		return;
@@ -142,9 +144,16 @@ static void raise_alarm(int days)
 	snprintf(text, sizeof(text),
 		 "the device certificate expires on %s (%d days) and could not "
 		 "be renewed", iso, days);
+#if defined(CONFIG_TEDGE_TELEMETRY)
+	if (tedge_raise_alarm("c8y_CertificateExpiring", TEDGE_ALARM_CRITICAL,
+			      text) == 0) {
+#else
+	/* Without the telemetry feature, the alarm still has to reach the
+	 * cloud: this is what the API would have sent. */
 	(void)tedge_sr_quote(text, quoted, sizeof(quoted));
 	snprintf(line, sizeof(line), "301,c8y_CertificateExpiring,%s", quoted);
 	if (tedge_c8y_publish_sr(line) == 0) {
+#endif
 		alarm_raised = true;
 		LOG_ERR("certificate: %s", text);
 	}
@@ -155,7 +164,11 @@ static void clear_alarm(void)
 	if (!alarm_raised) {
 		return;
 	}
+#if defined(CONFIG_TEDGE_TELEMETRY)
+	if (tedge_clear_alarm("c8y_CertificateExpiring") == 0) {
+#else
 	if (tedge_c8y_publish_sr("306,c8y_CertificateExpiring") == 0) {
+#endif
 		alarm_raised = false;
 	}
 }

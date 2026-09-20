@@ -21,6 +21,9 @@
 
 #include <tedge/tedge.h>
 
+#include <stdlib.h>
+#include <string.h>
+
 #if defined(CONFIG_SHELL)
 #include <zephyr/shell/shell.h>
 #include <mbedtls/memory_buffer_alloc.h>
@@ -113,8 +116,77 @@ static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+#if defined(CONFIG_TEDGE_TELEMETRY)
+/* Test aids: an application normally decides for itself when something is
+ * worth an event or an alarm, but a console is the quickest way to see one
+ * arrive in the cloud. */
+static int cmd_event(const struct shell *sh, size_t argc, char **argv)
+{
+	int rc = tedge_publish_event("app_test",
+				     (argc > 1) ? argv[1] : "test event", 0);
+
+	shell_print(sh, "event: %d", rc);
+	return rc;
+}
+
+static int cmd_alarm(const struct shell *sh, size_t argc, char **argv)
+{
+	static const char *const names[] = {"critical", "major", "minor",
+					    "warning"};
+	enum tedge_alarm_severity severity = TEDGE_ALARM_WARNING;
+	int rc;
+
+	if (argc > 1) {
+		for (size_t i = 0; i < ARRAY_SIZE(names); i++) {
+			if (strcmp(argv[1], names[i]) == 0) {
+				severity = (enum tedge_alarm_severity)i;
+			}
+		}
+	}
+	rc = tedge_raise_alarm("app_test_alarm", severity,
+			       (argc > 2) ? argv[2] : "test alarm");
+	shell_print(sh, "alarm: %d", rc);
+	return rc;
+}
+
+static int cmd_clear(const struct shell *sh, size_t argc, char **argv)
+{
+	int rc = tedge_clear_alarm((argc > 1) ? argv[1] : "app_test_alarm");
+
+	ARG_UNUSED(argv);
+	shell_print(sh, "clear: %d", rc);
+	return rc;
+}
+
+/* Publish faster than the link can carry, to see what a full buffer does. */
+static int cmd_flood(const struct shell *sh, size_t argc, char **argv)
+{
+	struct tedge_measurement_value value = {.series = "flood", .value = 0};
+	long count = (argc > 1) ? strtol(argv[1], NULL, 10) : 50;
+	int last = 0;
+
+	for (long i = 0; i < count; i++) {
+		value.value = (double)i;
+		last = tedge_publish_measurement("flood", &value, 1, 0);
+	}
+	shell_print(sh, "flood: %ld published, last=%d, dropped=%u", count,
+		    last, tedge_telemetry_dropped());
+	return 0;
+}
+#endif /* CONFIG_TEDGE_TELEMETRY */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_tedge,
 	SHELL_CMD(diag, NULL, "client state and TLS heap", cmd_diag),
+#if defined(CONFIG_TEDGE_TELEMETRY)
+	SHELL_CMD_ARG(event, NULL, "publish an event: event [text]", cmd_event,
+		      1, 1),
+	SHELL_CMD_ARG(alarm, NULL, "raise an alarm: alarm [severity] [text]",
+		      cmd_alarm, 1, 2),
+	SHELL_CMD_ARG(clear, NULL, "clear an alarm: clear [type]", cmd_clear,
+		      1, 1),
+	SHELL_CMD_ARG(flood, NULL, "publish N measurements: flood [N]",
+		      cmd_flood, 1, 1),
+#endif
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(tedge, &sub_tedge, "thin-edge.io client", NULL);
 #endif /* CONFIG_SHELL */

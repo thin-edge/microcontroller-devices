@@ -119,6 +119,37 @@ build.
 - The Modbus application starts publishing its simulation, which makes the
   repository's example show data in Cumulocity.
 
+## Results (ESP32-C6, Modbus application, 2026-09-20)
+
+**Cost.** Telemetry and health together add 2,696 B of code and 2,160 B of
+RAM (the 2 KB buffer and its bookkeeping) over the same build without them.
+The signed image jumps 64 KB, which is the ESP32 padding its flash segments
+to 64 KB MMU pages, not the feature's own size.
+
+**What was verified on hardware.** Both transports were flashed onto the same
+device and driven from the console (`tedge event|alarm|clear|flood`, test
+aids in the application, not the module):
+
+| Check | Result |
+|---|---|
+| Free-form payloads (MQTT Service) | `m/pump`, `e/app_test`, `a/app_test_alarm` and an empty payload to clear, each carrying `time` |
+| Measurements (Core MQTT) | `pump` measurements in Cumulocity, one object per series (static template 200 takes one series per line) |
+| Event and alarm (Core MQTT) | raised as MINOR and cleared, then MAJOR, with the device's own timestamps |
+| Buffered through an outage | interface down for 70 s: event published at 09:24:15Z, `creationTime` 09:25:36Z — the cloud records when the reading was taken, 81 s before it arrived |
+| A full buffer | `flood 120` → 85 measurements dropped and counted, nothing refused, the client kept running |
+| Health | `tedge_health` every interval: uptime, freeHeap, droppedMessages, resetCause |
+
+Two Cumulocity behaviours worth knowing, both the cloud's and not the
+client's: raising an alarm of a type that is already active updates the
+existing alarm rather than creating a second one (its severity stays as
+first raised), and `te/` messages only become measurements once the tenant
+has a Smart Function mapping them — Core MQTT needs none, because SmartREST
+is native.
+
+`resetCause` reads 0 on the ESP32-C6 after an esptool reset; `hwinfo`
+reports nothing useful there, so the number is only meaningful on boards
+whose driver fills it in.
+
 ## Open Questions
 
 - Should the client publish a "buffer overflowed" event, rather than only a

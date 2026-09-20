@@ -11,11 +11,12 @@ already does:
 - log retrieval;
 - configuration management.
 
-> **Status: early.** Onboarding, the connection, device state, restart and
-> remote access work and are verified on hardware (ESP32-C6, ESP32-S3).
-> Firmware update, telemetry, logs, configuration and certificate renewal are
-> not implemented yet: their API calls return `-ENOTSUP`, and the header says
-> which change implements each. The API may still change.
+> **Status: early.** Onboarding, the connection, device state, restart,
+> remote access, firmware update, certificate renewal and telemetry (with the
+> client's own health) work and are verified on hardware (ESP32-C6,
+> ESP32-S3). Log retrieval and configuration management are not implemented
+> yet: their API calls return `-ENOTSUP`, and the header says which change
+> implements each. The API may still change.
 
 ## Transports
 
@@ -90,6 +91,8 @@ shared with the rest of your image:
 | Application alone | 616 KB | 296 KB |
 | + client (onboarding, connection, restart) | 775 KB | 180 KB |
 | + remote access | 798 KB | 130 KB |
+| + firmware update, certificate renewal | 812 KB | 116 KB |
+| + telemetry and health | 815 KB | 114 KB |
 
 With the TLS heap in PSRAM on an ESP32-S3, the client costs no internal RAM
 beyond its own buffers.
@@ -121,6 +124,73 @@ message above and writes it unchanged under a `remoteAccess` fragment:
 
 Operations stay on SmartREST (`s/ds`, `501`/`503`/`502`), which is how
 Cumulocity tracks an operation's lifecycle.
+
+### Telemetry
+
+`CONFIG_TEDGE_TELEMETRY` gives the application four calls, safe from any
+thread and none of them blocking on the network:
+
+```c
+struct tedge_measurement_value v[] = {
+        { .series = "speed", .value = 1480, .unit = "rpm" },
+        { .series = "pressure", .value = 4.2, .unit = "bar" },
+};
+
+tedge_publish_measurement("pump", v, ARRAY_SIZE(v), 0); /* 0 = now */
+tedge_publish_event("maintenance_due", "500 hours since service", 0);
+tedge_raise_alarm("pump_stalled", TEDGE_ALARM_MAJOR, "no rotation");
+tedge_clear_alarm("pump_stalled");
+```
+
+**The client samples nothing by itself.** What is worth measuring, and how
+often, is the application's decision — it owns the sensors. The client's job
+starts once the call is made.
+
+A call builds its message there and then, with the time it was made, and
+puts it in a buffer; the client thread sends it while connected. That is why
+a reading buffered through an outage is recorded at the time it was taken,
+not the time the device reconnected. An application that sampled earlier
+passes its own Unix time in ms as the last argument.
+
+| Kind | Topic (MQTT Service) | Payload | Core MQTT |
+|---|---|---|---|
+| Measurement | `te/device/<id>///m/<type>` | `{"time":"…","speed":1480.00,"pressure":4.20}` | `200,<type>,<series>,<value>` per series |
+| Event | `te/device/<id>///e/<type>` | `{"time":"…","text":"…"}` | `400,<type>,"<text>"` |
+| Alarm | `te/device/<id>///a/<type>` | `{"time":"…","severity":"major","text":"…"}` | `301`–`304` by severity |
+| Clear an alarm | `te/device/<id>///a/<type>` | empty payload | `306,<type>` |
+
+Measurements go at QoS 0 and events and alarms at QoS 1: a lost reading is
+one reading, a lost alarm is an unreported fault. Values carry two decimals
+(the client formats them without floating-point printf, which an application
+should not have to pay for).
+
+Two differences belong to Cumulocity rather than the client. On Core MQTT a
+measurement with several series becomes one measurement object per series,
+because the static template carries one; on the MQTT Service the whole
+message arrives as one. And raising an alarm whose type is already active
+updates that alarm instead of creating a second one, keeping the severity it
+was first raised with. `te/` messages also need a Smart Function in the
+tenant before they show up as measurements; SmartREST on Core MQTT needs
+none.
+
+**What the buffer can and cannot do.** It is
+`CONFIG_TEDGE_TELEMETRY_BUFFER_BYTES` (default 2048) of RAM in the client's
+heap — minutes of a typical reporting interval, not hours, and it does not
+survive a reboot. When it is full the oldest *measurement* is dropped and
+counted; events and alarms are never dropped to make room for a measurement.
+`tedge_telemetry_dropped()` returns the count, and the client publishes it in
+its own health, so loss is a number rather than a mystery. An application
+that must lose nothing should keep its own store and publish from it.
+
+With `CONFIG_TEDGE_HEALTH` the client also reports itself every
+`CONFIG_TEDGE_HEALTH_INTERVAL_S` (default 900) as a `tedge_health`
+measurement: uptime, free bytes in its heap, messages dropped, and the reason
+for the last reset. That is the *client's* health; anything the application
+knows about the device — signal strength, battery, sensor status — is the
+application's to publish, because only it knows what those numbers mean.
+
+Without the feature the same calls compile and return `-ENOTSUP`, so an
+application does not need `#ifdef`s to build in a minimal configuration.
 
 ### Firmware update
 

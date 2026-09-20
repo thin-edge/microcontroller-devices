@@ -224,7 +224,7 @@ the strongest reason for the direct transport.
 | P1 | `c8y-direct-core` (done 2026-09-20) | The `tedge-zephyr` module and public API; onboarding (CA and bootstrap), connection with reconnect and back-off, inventory, restart (full-system reset hook), availability, state on `te/` topics with reference Smart Functions; one protocol app and `samples/minimal` integrated |
 | P2 | `c8y-direct-remote-access` (done 2026-09-20) | **Remote access**: WSS bridge to LAN hosts and local services under the target policy, session cap, audit events, capacity as twin data |
 | P3 | `c8y-direct-firmware-update` (done 2026-09-20) | Firmware update: confirmed only after the new image reaches Cumulocity and passes the app's checks; MCUboot rolls back otherwise |
-| P4 | — | Telemetry (free-form, `te/`-shaped) and device-health measurements |
+| P4 | `c8y-direct-telemetry` (done 2026-09-20) | Telemetry (free-form, `te/`-shaped) and device-health measurements, buffered through an outage with the time each reading was taken |
 | P5 | — | Diagnostics: shell command (allow-listed), log upload (RAM ring buffer, coredump, health) |
 | P6 | `c8y-direct-cert-renewal` (done 2026-09-20) | Certificate renewal: the client renews before expiry, publishes the expiry as twin data and alarms if renewal keeps failing |
 | P7 | — | Configuration management (settings-backed parameters) |

@@ -4,7 +4,12 @@
  * back-off and the PKCS#7 unwrap that reads the enrollment reply.
  */
 
+#include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
+
+/* The module's sources log under this name; a test build has to register it
+ * because the module's own Kconfig is not part of one. */
+LOG_MODULE_REGISTER(tedge, 3);
 
 #include "tedge_internal.h"
 #include "pkcs7_fixture.h"
@@ -262,6 +267,173 @@ ZTEST(tedge_url, test_resolve_redirect)
 }
 
 ZTEST_SUITE(tedge_url, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* Telemetry: the buffer and the messages                                    */
+/* ------------------------------------------------------------------------ */
+
+/* The transport, stubbed: the test decides whether a publish works and
+ * records what it was asked to send. */
+static bool transport_up;
+static int sent_count;
+static enum tedge_msg_kind sent_kind[16];
+static char sent_type[16][40];
+static char sent_payload[16][224];
+
+int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
+				const char *payload)
+{
+	if (!transport_up) {
+		return -ENOTCONN;
+	}
+	if (sent_count < (int)ARRAY_SIZE(sent_kind)) {
+		sent_kind[sent_count] = kind;
+		strncpy(sent_type[sent_count], type,
+			sizeof(sent_type[0]) - 1);
+		strncpy(sent_payload[sent_count], payload,
+			sizeof(sent_payload[0]) - 1);
+		sent_count++;
+	}
+	return 0;
+}
+
+void tedge_telemetry_wake(void) { }
+
+bool tedge_time_is_valid(void)
+{
+	return true; /* the tests do not depend on a real clock */
+}
+
+void tedge_json_escape(const char *in, char *out, size_t len)
+{
+	size_t n = 0;
+
+	for (const char *p = in; *p && n + 2 < len; p++) {
+		if (*p == '"' || *p == '\\') {
+			out[n++] = '\\';
+		}
+		out[n++] = *p;
+	}
+	out[n] = '\0';
+}
+
+static void telemetry_before(void *fixture)
+{
+	ARG_UNUSED(fixture);
+	transport_up = true;
+	sent_count = 0;
+	/* Drain anything a previous test left queued. */
+	tedge_telemetry_flush();
+	sent_count = 0;
+}
+
+ZTEST(tedge_telemetry, test_measurement_round_trip)
+{
+	struct tedge_measurement_value v[] = {
+		{ .series = "temperature", .value = 21.5, .unit = "C" },
+		{ .series = "humidity", .value = 48.25 },
+	};
+
+	zassert_equal(tedge_publish_measurement("environment", v, 2, 0), 0);
+	tedge_telemetry_flush();
+	zassert_equal(sent_count, 1);
+	zassert_equal(sent_kind[0], TEDGE_MSG_MEASUREMENT);
+	zassert_str_equal(sent_type[0], "environment");
+	zassert_not_null(strstr(sent_payload[0], "\"temperature\":21.50"));
+	zassert_not_null(strstr(sent_payload[0], "\"humidity\":48.25"));
+	zassert_not_null(strstr(sent_payload[0], "\"time\":\""));
+}
+
+ZTEST(tedge_telemetry, test_application_timestamp_is_kept)
+{
+	struct tedge_measurement_value v = { .series = "x", .value = 1 };
+
+	/* An application that sampled earlier passes its own time, and that
+	 * is the time the message must carry. */
+	zassert_equal(tedge_publish_measurement("t", &v, 1, 1789891200000LL), 0);
+	tedge_telemetry_flush();
+	zassert_equal(sent_count, 1);
+	zassert_not_null(strstr(sent_payload[0],
+				"\"time\":\"2026-09-20T08:00:00Z\""),
+			 "payload was %s", sent_payload[0]);
+}
+
+ZTEST(tedge_telemetry, test_event_and_alarm)
+{
+	zassert_equal(tedge_publish_event("boot", "started \"cleanly\"", 0), 0);
+	zassert_equal(tedge_raise_alarm("overheating", TEDGE_ALARM_MAJOR,
+					"too hot"),
+		      0);
+	zassert_equal(tedge_clear_alarm("overheating"), 0);
+	tedge_telemetry_flush();
+
+	zassert_equal(sent_count, 3);
+	zassert_equal(sent_kind[0], TEDGE_MSG_EVENT);
+	/* The quotes in the text must not break the payload. */
+	zassert_not_null(strstr(sent_payload[0], "started \\\"cleanly\\\""));
+	zassert_equal(sent_kind[1], TEDGE_MSG_ALARM);
+	zassert_not_null(strstr(sent_payload[1], "\"severity\":\"major\""));
+	zassert_equal(sent_kind[2], TEDGE_MSG_ALARM_CLEAR);
+	zassert_str_equal(sent_payload[2], "");
+}
+
+ZTEST(tedge_telemetry, test_messages_wait_while_offline)
+{
+	struct tedge_measurement_value v = { .series = "x", .value = 1 };
+
+	transport_up = false;
+	zassert_equal(tedge_publish_measurement("t", &v, 1, 0), 0);
+	tedge_telemetry_flush();
+	zassert_equal(sent_count, 0, "nothing should be sent while offline");
+
+	transport_up = true;
+	tedge_telemetry_flush();
+	zassert_equal(sent_count, 1, "the message should follow on reconnect");
+}
+
+ZTEST(tedge_telemetry, test_full_buffer_drops_oldest_measurement)
+{
+	struct tedge_measurement_value v = { .series = "x", .value = 1 };
+	uint32_t before = tedge_telemetry_dropped();
+	int queued = 0;
+
+	transport_up = false;
+	/* Fill it well past its size. */
+	for (int i = 0; i < 60; i++) {
+		if (tedge_publish_measurement("t", &v, 1, 0) == 0) {
+			queued++;
+		}
+	}
+	zassert_true(queued > 0);
+	zassert_true(tedge_telemetry_dropped() > before,
+		     "dropping should be counted");
+
+	transport_up = true;
+	tedge_telemetry_flush();
+	zassert_true(sent_count > 0, "what is left should still be sent");
+}
+
+ZTEST(tedge_telemetry, test_alarms_survive_a_full_buffer)
+{
+	struct tedge_measurement_value v = { .series = "x", .value = 1 };
+	bool found = false;
+
+	transport_up = false;
+	zassert_equal(tedge_raise_alarm("fault", TEDGE_ALARM_CRITICAL, "stopped"),
+		      0);
+	for (int i = 0; i < 60; i++) {
+		(void)tedge_publish_measurement("t", &v, 1, 0);
+	}
+	transport_up = true;
+	tedge_telemetry_flush();
+
+	for (int i = 0; i < sent_count; i++) {
+		found = found || (sent_kind[i] == TEDGE_MSG_ALARM);
+	}
+	zassert_true(found, "the alarm must not be dropped for measurements");
+}
+
+ZTEST_SUITE(tedge_telemetry, NULL, NULL, telemetry_before, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
 /* Certificate renewal                                                       */

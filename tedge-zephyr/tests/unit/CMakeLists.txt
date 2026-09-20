@@ -18,5 +18,17 @@ target_sources(app PRIVATE
   ../../src/tedge_ra_allow_list.c
   ../../src/tedge_url.c
   ../../src/tedge_cert_decision.c
+  ../../src/tedge_telemetry.c
+  ../../src/tedge_json.c
+)
+
+# The telemetry API is compiled in for the tests, with a small buffer so the
+# "it filled up" cases are quick to reach.
+target_compile_definitions(app PRIVATE
+  CONFIG_TEDGE_TELEMETRY=1
+  CONFIG_TEDGE_TELEMETRY_BUFFER_BYTES=512
+  # The module's log level comes from its Kconfig, which is not part of a
+  # test build.
+  CONFIG_TEDGE_LOG_LEVEL=3
 )
 target_include_directories(app PRIVATE ../../include ../../src)

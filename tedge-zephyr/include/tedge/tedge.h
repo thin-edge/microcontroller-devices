@@ -23,7 +23,9 @@
 #define TEDGE_TEDGE_H_
 
 #include <zephyr/net/net_ip.h> /* struct sockaddr, for remote-access targets */
+#include <zephyr/toolchain.h>
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -195,7 +197,13 @@ int tedge_registration_url(char *buf, size_t len);
 int tedge_publish_twin(const char *fragment, const char *json);
 
 /* ------------------------------------------------------------------------ */
-/* Telemetry (CONFIG_TEDGE_TELEMETRY) - not implemented yet (-ENOTSUP)       */
+/* Telemetry (CONFIG_TEDGE_TELEMETRY)                                        */
+/*                                                                           */
+/* Every call builds its message there and then and returns: nothing waits   */
+/* on the network, and any thread may call. Messages the client cannot send  */
+/* yet wait in a small RAM buffer (CONFIG_TEDGE_TELEMETRY_BUFFER_BYTES).     */
+/* Without the feature the calls are still there and return -ENOTSUP, so an  */
+/* application builds either way.                                            */
 /* ------------------------------------------------------------------------ */
 
 /** @brief One value of a measurement. */
@@ -207,6 +215,51 @@ struct tedge_measurement_value {
 	const char *unit;
 };
 
+enum tedge_alarm_severity {
+	TEDGE_ALARM_CRITICAL,
+	TEDGE_ALARM_MAJOR,
+	TEDGE_ALARM_MINOR,
+	TEDGE_ALARM_WARNING,
+};
+
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_TELEMETRY)
+/* Telemetry is not built in: the calls exist so an application compiles,
+ * and cost one instruction each. */
+static inline int tedge_publish_measurement(const char *type,
+					    const struct tedge_measurement_value *values,
+					    size_t count, int64_t timestamp_ms)
+{
+	ARG_UNUSED(type); ARG_UNUSED(values); ARG_UNUSED(count);
+	ARG_UNUSED(timestamp_ms);
+	return -ENOTSUP;
+}
+
+static inline int tedge_publish_event(const char *type, const char *text,
+				      int64_t timestamp_ms)
+{
+	ARG_UNUSED(type); ARG_UNUSED(text); ARG_UNUSED(timestamp_ms);
+	return -ENOTSUP;
+}
+
+static inline int tedge_raise_alarm(const char *type,
+				    enum tedge_alarm_severity severity,
+				    const char *text)
+{
+	ARG_UNUSED(type); ARG_UNUSED(severity); ARG_UNUSED(text);
+	return -ENOTSUP;
+}
+
+static inline int tedge_clear_alarm(const char *type)
+{
+	ARG_UNUSED(type);
+	return -ENOTSUP;
+}
+
+static inline uint32_t tedge_telemetry_dropped(void)
+{
+	return 0;
+}
+#else
 /**
  * @brief Publish a measurement of @p type made of @p count values.
  *
@@ -221,19 +274,20 @@ int tedge_publish_measurement(const char *type,
 int tedge_publish_event(const char *type, const char *text,
 			int64_t timestamp_ms);
 
-enum tedge_alarm_severity {
-	TEDGE_ALARM_CRITICAL,
-	TEDGE_ALARM_MAJOR,
-	TEDGE_ALARM_MINOR,
-	TEDGE_ALARM_WARNING,
-};
-
 /** @brief Raise (or update) the alarm of @p type. */
 int tedge_raise_alarm(const char *type, enum tedge_alarm_severity severity,
 		      const char *text);
 
 /** @brief Clear the alarm of @p type. */
 int tedge_clear_alarm(const char *type);
+
+/**
+ * @brief How many messages the client has dropped because its buffer was
+ * full, since boot. The client reports this in its health measurement; an
+ * application that must not lose data can watch it too.
+ */
+uint32_t tedge_telemetry_dropped(void);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_TELEMETRY */
 
 /* ------------------------------------------------------------------------ */
 /* Custom operations                                                         */

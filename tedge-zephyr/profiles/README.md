@@ -14,9 +14,14 @@ west build -b <board> <app> -- -DEXTRA_CONF_FILE=/path/to/tedge-zephyr/profiles/
   remote-access tunnel, for a device that only gives the cloud access to LAN
   hosts. Fits an ESP32-WROOM-32 with nothing else on it.
 
-Both are drafts. Until the features are implemented in the module, their
-options are only selectable with `CONFIG_TEDGE_EXPERIMENTAL_FEATURES=y`. The
-measured costs are in each file's header.
+The measured costs are in each file's header.
+
+`full.conf` asks for everything, including the two features that are not
+implemented yet (log upload and configuration management), so it sets
+`CONFIG_TEDGE_EXPERIMENTAL_FEATURES=y`. It also expects a sysbuild image with
+MCUboot and a shell; on a build without them, Kconfig warns that firmware
+update and the shell command were turned back off, which is the warning doing
+its job.
 
 A board's or application's default profile belongs to the application (its
 `boards/*.conf`), not to this module.

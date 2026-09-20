@@ -668,13 +668,17 @@ int tedge_c8y_publish_progress(const char *kind, const char *json)
 static int smartrest_measurement(const char *type, const char *payload)
 {
 	size_t pos = 0;
-	char series[40], value[24], line[128];
+	char series[40], value[24], line[128], when[32];
 	int sent = 0;
 
+	/* Static template 200 takes ",<unit>,<time>" after the value. The
+	 * unit stays empty (the API's unit is advisory and the JSON does not
+	 * carry it); the time is what makes a buffered reading truthful. */
+	tedge_json_field(payload, "time", when, sizeof(when));
 	while (tedge_json_next_number(payload, &pos, series, sizeof(series),
 				      value, sizeof(value)) == 1) {
-		snprintf(line, sizeof(line), "200,%s,%s,%s", type, series,
-			 value);
+		snprintf(line, sizeof(line), "200,%s,%s,%s,,%s", type, series,
+			 value, when);
 		if (tedge_c8y_publish_sr(line) != 0) {
 			return -ENOTCONN;
 		}
@@ -715,15 +719,17 @@ int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
 	case TEDGE_MSG_MEASUREMENT:
 		return smartrest_measurement(type, payload);
 	case TEDGE_MSG_EVENT: {
-		char text[160], quoted[180];
+		char text[160], quoted[180], when[32];
 
 		tedge_json_field(payload, "text", text, sizeof(text));
+		tedge_json_field(payload, "time", when, sizeof(when));
 		(void)tedge_sr_quote(text, quoted, sizeof(quoted));
-		snprintf(line, sizeof(line), "400,%s,%s", type, quoted);
+		snprintf(line, sizeof(line), "400,%s,%s,%s", type, quoted,
+			 when);
 		return tedge_c8y_publish_sr(line);
 	}
 	case TEDGE_MSG_ALARM: {
-		char text[160], quoted[180], severity[16];
+		char text[160], quoted[180], severity[16], when[32];
 		static const struct {
 			const char *name;
 			const char *template;
@@ -735,6 +741,7 @@ int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
 
 		tedge_json_field(payload, "severity", severity, sizeof(severity));
 		tedge_json_field(payload, "text", text, sizeof(text));
+		tedge_json_field(payload, "time", when, sizeof(when));
 		for (size_t i = 0; i < ARRAY_SIZE(map); i++) {
 			if (strcmp(severity, map[i].name) == 0) {
 				tmpl = map[i].template;
@@ -742,7 +749,8 @@ int tedge_c8y_publish_telemetry(enum tedge_msg_kind kind, const char *type,
 			}
 		}
 		(void)tedge_sr_quote(text, quoted, sizeof(quoted));
-		snprintf(line, sizeof(line), "%s,%s,%s", tmpl, type, quoted);
+		snprintf(line, sizeof(line), "%s,%s,%s,%s", tmpl, type, quoted,
+			 when);
 		return tedge_c8y_publish_sr(line);
 	}
 	case TEDGE_MSG_ALARM_CLEAR:

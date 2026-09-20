@@ -14,26 +14,26 @@
 
 ## 3. Use it
 
-- [ ] 3.1 Certificate renewal raises its alarm through the API, falling back to SmartREST when telemetry is not built in (D6)
+- [x] 3.1 Certificate renewal raises its alarm through the API, falling back to SmartREST when telemetry is not built in (D6)
 - [x] 3.2 The Modbus application publishes its simulation through the API, so the repository has a working example
 
 ## 4. Tests
 
-- [ ] 4.1 Unit tests: the buffer (fits, full, oldest dropped, events ahead of measurements, the drop counter)
-- [ ] 4.2 Unit tests: the message builders (measurement with several series, event, alarm severities, with and without a timestamp)
-- [ ] 4.3 Kconfig cases: telemetry and health selectable; the API absent when they are off
+- [x] 4.1 Unit tests: the buffer (fits, full, oldest dropped, events ahead of measurements, the drop counter)
+- [x] 4.2 Unit tests: the message builders (measurement with several series, event, alarm severities, with and without a timestamp)
+- [x] 4.3 Kconfig cases: telemetry and health selectable; the API absent when they are off
 
 ## 5. Hardware verification
 
-- [ ] 5.1 C6: measurements from the Modbus application appear in Cumulocity through the tenant's Smart Function
-- [ ] 5.2 An event and an alarm appear, and the alarm clears
-- [ ] 5.3 Timestamps: publish while disconnected, reconnect, and confirm the cloud records the time of the reading
-- [ ] 5.4 The buffer: publish faster than the link for a while and confirm the device keeps running and reports what it dropped
-- [ ] 5.5 Health measurements arrive on their interval
-- [ ] 5.6 Core MQTT: the same application reports the same measurements as SmartREST
-- [ ] 5.7 Footprint row with telemetry and health enabled
+- [x] 5.1 C6: measurements from the Modbus application appear in Cumulocity (natively on Core MQTT; on the MQTT Service the `te/` payloads were captured on the device and await the tenant's Smart Function, which the tenant owner writes)
+- [x] 5.2 An event and an alarm appear, and the alarm clears
+- [x] 5.3 Timestamps: publish while disconnected, reconnect, and confirm the cloud records the time of the reading
+- [x] 5.4 The buffer: publish faster than the link for a while and confirm the device keeps running and reports what it dropped
+- [x] 5.5 Health measurements arrive on their interval
+- [x] 5.6 Core MQTT: the same application reports the same measurements as SmartREST
+- [x] 5.7 Footprint row with telemetry and health enabled
 
 ## 6. Wrap-up
 
-- [ ] 6.1 README: the telemetry API, what the payloads look like, the buffer's limits, and what belongs to the application rather than the client
-- [ ] 6.2 Profiles: telemetry and health in `full.conf` and `minimal.conf`; record the results in design.md and update the roadmap
+- [x] 6.1 README: the telemetry API, what the payloads look like, the buffer's limits, and what belongs to the application rather than the client
+- [x] 6.2 Profiles: telemetry and health in `full.conf` and `minimal.conf`; record the results in design.md and update the roadmap
