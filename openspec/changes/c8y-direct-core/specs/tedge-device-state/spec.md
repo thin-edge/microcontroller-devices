@@ -56,15 +56,16 @@ the API, which the client republishes after every reconnect.
   lost and re-established
 - **THEN** the client publishes the fragment again after the reconnect
 
-### Requirement: Reference Smart Functions ship with the module
+### Requirement: The twin topics and payloads are documented for cloud-side mapping
 
-The module SHALL include reference Cumulocity Smart Functions that map its
-`te/` twin and health messages onto the device's managed object, with
-instructions for installing them on a tenant.
+The module SHALL document the topics it publishes state on and the shape of
+each payload, so that a tenant can map them with its own Cumulocity Smart
+Functions (or a thin-edge.io gateway can consume them unchanged). The
+documentation SHALL name the fragment each payload belongs to and give a
+worked example.
 
-#### Scenario: Twin fragment appears in the inventory
+#### Scenario: A tenant maps the twin data
 
-- **WHEN** the reference twin function is installed and a device publishes
-  `tedge_Agent`
-- **THEN** the device's managed object shows a `tedge_Agent` fragment with the
-  published values
+- **WHEN** an integrator reads the module's documentation
+- **THEN** it states the topic (`te/device/<id>///twin/<fragment>`), the
+  payload of each built-in fragment, and what a function receives

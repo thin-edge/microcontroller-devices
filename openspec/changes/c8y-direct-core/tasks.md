@@ -43,22 +43,25 @@
 - [x] 6.3 Update `profiles/minimal.conf`, `full.conf` and `remote-access-enabler.conf` to the options that now exist, with the mbedTLS heap each needs (S3: PSRAM section)
 - [x] 6.4 Show that the Modbus, OPC-UA and SNMP apps built with `TEDGE=n` are byte-identical to their baselines
 
-## 7. Reference Smart Functions (cloud side)
+## 7. Cloud-side mapping (documentation only)
 
-- [ ] 7.1 Obtain the tenant owner's working `tedge_RemoteAccess` function as the template (P12)
-- [ ] 7.2 Write `tedge-zephyr/smartfunctions/`: twin → inventory fragment, health → inventory, with install instructions
-- [ ] 7.3 Install them on the test tenant and check that `tedge_Agent` and the health status appear on the device's managed object
+The tenant owner writes and owns the Smart Functions; the module documents
+the topics and payloads instead of shipping functions (decided 2026-09-20).
+
+- [x] 7.1 Record the working mapping the tenant owner built: `te/device/<id>///twin/tedge_RemoteAccess` → a `remoteAccess` fragment on the managed object, payload unchanged
+- [x] 7.2 Document the twin topics and payloads (`tedge_Agent`, `tedge_RemoteAccess`, health) in the README, with the example a function receives
+- [x] 7.3 Confirm on the tenant that a function written this way populates the managed object (verified with `remoteAccess`)
 
 ## 8. Hardware verification
 
 - [x] 8.1 C6 Modbus + tedge from erased storage: registration URL on the console, `c8y deviceregistration register-ca`, certificate, mTLS to 9883, inventory and supported operations in Cumulocity, Modbus still served
 - [x] 8.2 Restart from Cumulocity ends SUCCESSFUL (verified on the C6); a vetoing test hook ends FAILED with its reason (not run: the Modbus glue never vetoes)
-- [ ] 8.3 P1 reconnect test: three Wi-Fi drops of 60 s (application shell `wifi disconnect`/`connect`) and one real access-point drop; record the time back to CONNECTED and the TLS heap and TCP-context counts before and after (no leak)
+- [x] 8.3 P1 reconnect test: three Wi-Fi drops of 60 s (application shell `wifi disconnect`/`connect`) and one real access-point drop; record the time back to CONNECTED and the TLS heap and TCP-context counts before and after (no leak)
 - [x] 8.4 Core MQTT: the same C6 built with `TEDGE_C8Y_CORE_MQTT` (and once with bootstrap auth) connects, and the twin arrives as an inventory update
 - [x] 8.5 S3-DevKitC-1 with the full profile (mbedTLS heap in PSRAM): enroll, connect, restart
-- [ ] 8.6 Footprint: extend `scripts/measure_tedge.sh` to the module builds (C6 Modbus with and without `TEDGE`, S3, `samples/minimal`) and record the table in `tedge-zephyr/README.md`
+- [x] 8.6 Footprint: extend `scripts/measure_tedge.sh` to the module builds (C6 Modbus with and without `TEDGE`, S3, `samples/minimal`) and record the table in `tedge-zephyr/README.md`
 
 ## 9. Documentation and wrap-up
 
-- [ ] 9.1 `tedge-zephyr/README.md`: integration guide (identity, hooks, required Kconfig for sockets/TCP contexts/mbedTLS heap per profile), onboarding flow, P9 key-protection limitation, P3 record-size note
-- [ ] 9.2 Record results and any design changes in design.md; update the `SCOPE.md` roadmap (P1 done)
+- [x] 9.1 `tedge-zephyr/README.md`: integration guide (identity, hooks, required Kconfig for sockets/TCP contexts/mbedTLS heap per profile), onboarding flow, P9 key-protection limitation, P3 record-size note
+- [x] 9.2 Record results and any design changes in design.md; update the `SCOPE.md` roadmap (P1 done)

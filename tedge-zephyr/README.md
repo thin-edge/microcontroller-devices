@@ -94,6 +94,34 @@ shared with the rest of your image:
 With the TLS heap in PSRAM on an ESP32-S3, the client costs no internal RAM
 beyond its own buffers.
 
+### What the client publishes, and how to map it
+
+On the Cumulocity MQTT Service the client uses thin-edge.io's `te/` topics,
+so the same messages suit a gateway or a Cumulocity Smart Function. On Core
+MQTT the same values go out as direct inventory updates instead.
+
+| Topic | Payload | Meaning |
+|---|---|---|
+| `te/device/<id>///twin/tedge_Agent` | `{"name":"tedge-zephyr","version":"0.0.1","transport":"c8y-mqtt-service","firmware":"<name> <version>"}` | which client and firmware the device runs |
+| `te/device/<id>///twin/tedge_RemoteAccess` | `{"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}` | remote-access capacity, published on every connect and whenever a session opens or ends |
+| `te/device/<id>/service/tedge-zephyr/status/health` | `{"status":"up","time":<unix seconds>}` | the client is connected |
+
+Twin values are **state, not events**: the client republishes all of them
+after every reconnect, so a reboot never leaves a stale value, and nothing
+relies on retained messages.
+
+A Smart Function maps a twin message to a fragment on the managed object.
+The mapping verified on the test tenant takes the `tedge_RemoteAccess`
+message above and writes it unchanged under a `remoteAccess` fragment:
+
+```json
+{"remoteAccess": {"activeSessions": 0, "freeSessions": 1,
+                  "maxSessions": 1, "policy": "lan", "sessions": []}}
+```
+
+Operations stay on SmartREST (`s/ds`, `501`/`503`/`502`), which is how
+Cumulocity tracks an operation's lifecycle.
+
 ### Security limitations
 
 - The device key is stored in PSA ITS, encrypted with a key derived from the

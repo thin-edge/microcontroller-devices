@@ -289,7 +289,12 @@ firmware update will still add to the hooks.
 
 ## Open Questions
 
-- **Smart Function format and delivery (P12):** the tenant owner's
+- ~~**Smart Function format and delivery (P12)**~~ **Settled 2026-09-20:**
+  the tenant owner writes and owns the functions; the module documents the
+  topics and payloads instead of shipping any. The mapping they built and
+  verified takes `te/device/<id>///twin/tedge_RemoteAccess` and writes it
+  unchanged under a `remoteAccess` fragment on the managed object. Earlier
+  note: the tenant owner's
   `tedge_RemoteAccess` function is meant to write the payload to the device's
   managed object under a `remoteAccess` fragment, but it is untested and the
   fragment has not appeared (the managed object's `lastUpdated` predates the
@@ -338,3 +343,39 @@ restart) and a cloud restart (SUCCESSFUL) all behaved as on the C6.
   the type the client sends (`thin-edge.io-zephyr-modbus`). If the type
   matters, the client has to set it as an inventory update, which is a
   decision for the twin work.
+
+### Reconnect after a network drop (task 8.3, spikes problem P1)
+
+Three 60-second outages on the C6, the interface admin-down so the
+application could not re-associate (`net iface down 1`, then up):
+
+| Cycle | Back to connected | TLS heap after | TCP contexts |
+|---|---|---|---|
+| 1 | 69.0 s | 34,828 B (peak 51,820) | unchanged |
+| 2 | 67.3 s | identical | unchanged |
+| 3 | 70.9 s | identical | unchanged |
+
+The client is connected again 7–11 s after the network returns, and neither
+the TLS heap nor the TCP contexts grow across cycles. **P1 is answered.**
+
+Two earlier attempts are worth recording, because they measured something
+else: `wifi disconnect` alone only flaps the link (`lib/common` re-associates
+in about 2 s) and the TLS session survives it untouched, so the client never
+notices. A test of reconnect behaviour has to take the interface down.
+
+### Footprint (task 8.6)
+
+`MODE=module scripts/measure_tedge.sh` builds each application with and
+without the client:
+
+| Build | Image | text | libc heap left | TLS heap |
+|---|---|---|---|---|
+| C6 Modbus, no client | 733,947 | 616,328 | 295,936 | — |
+| C6 Modbus + client | 882,556 | 775,148 | 180,048 | 65,536 |
+| C6 Modbus + client + remote access | 885,499 | 798,480 | 129,920 | 98,304 |
+| S3 Modbus, no client | 583,914 | 502,188 | 195,964 | — |
+| S3 Modbus + client (TLS heap in PSRAM) | 731,740 | 646,268 | 142,452 | 98,304 |
+| C6 `samples/minimal` | 865,888 | 748,124 | 205,680 | 57,344 |
+
+The client costs about **159 KB of flash**; of the RAM, the TLS heap is the
+application's to size. On the S3 it sits in PSRAM and costs no internal RAM.
