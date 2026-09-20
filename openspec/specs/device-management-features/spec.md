@@ -77,7 +77,9 @@ operation or leave it pending.
 Dependencies between features and on the platform SHALL be expressed in Kconfig
 (`depends on`/`select`), so that an invalid combination fails when the build is
 configured, not at runtime. Firmware update SHALL require an MCUboot build.
-Remote access SHALL require certificate (CA) authentication. Features that
+Remote access and certificate renewal SHALL require certificate (CA)
+authentication, because both need a token that only certificate devices
+receive. Features that
 transfer files (firmware update, log upload, configuration management) SHALL
 bring in the HTTP client. Both authentication methods SHALL stay selectable.
 The Cumulocity MQTT Service endpoint SHALL require certificate
@@ -101,6 +103,13 @@ configuration.
 
 - **WHEN** a build selects bootstrap basic authentication and remote access
 - **THEN** remote access cannot be selected
+
+#### Scenario: Certificate renewal with basic authentication
+
+- **WHEN** a build selects bootstrap basic authentication and certificate
+  renewal
+- **THEN** certificate renewal cannot be selected, since such a device has
+  no certificate to renew
 
 ### Requirement: Per-feature footprint is measured and documented
 
