@@ -32,6 +32,14 @@ jobs:
     container:
       image: zephyrprojectrtos/zephyr-build:latest
       options: --user root
+    env:
+      # The image registers the SDK in the *non-root* user's CMake package
+      # registry (~/.cmake/packages/Zephyr-sdk), and this job runs as root,
+      # so find_package(Zephyr-sdk) comes up empty: "Could not find a
+      # package configuration file provided by Zephyr-sdk". Pointing at the
+      # directory that holds zephyr-sdk-<version> lets CMake find it
+      # whatever version :latest happens to carry.
+      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
     steps:
       - uses: actions/checkout@v4
         with:
