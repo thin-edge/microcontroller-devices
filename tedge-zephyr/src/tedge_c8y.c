@@ -52,13 +52,20 @@ static const sec_tag_t sec_tags_basic[] = { TEDGE_TAG_SERVER_CA };
 
 /* Downstream topics: thin-edge.io's Cumulocity bridge set, minus the
  * bootstrap topics (tedge_bootstrap.c owns those). */
+#if defined(CONFIG_TEDGE_C8Y_OPERATION_JSON)
+/* Operations come as JSON, which is the only delivery that carries their
+ * id; s/ds would deliver the same operations a second time. */
+#define OP_TOPIC "devicecontrol/notifications"
+static const char *const sub_topics[] = { OP_TOPIC, "s/e", "s/dat" };
+#else
 static const char *const sub_topics[] = { "s/ds", "s/e", "s/dat" };
+#endif
 
 static struct mqtt_client client;
 static struct sockaddr_storage broker;
 static uint8_t rx_buf[2048];
 static uint8_t tx_buf[2048];
-static uint8_t payload_buf[1024];
+static uint8_t payload_buf[CONFIG_TEDGE_C8Y_PAYLOAD_BYTES];
 static uint16_t next_msg_id = 1;
 static bool session_open;
 static bool connack_seen;
@@ -148,9 +155,9 @@ int tedge_c8y_publish_sr(const char *line)
 {
 	int tmpl = tedge_sr_template(line);
 
-	if (tmpl == 501) {
+	if (tmpl == 501 || tmpl == 504) {
 		op_executing = true;
-	} else if (tmpl == 502 || tmpl == 503) {
+	} else if (tmpl == 502 || tmpl == 503 || tmpl == 505 || tmpl == 506) {
 		op_executing = false;
 	}
 	return publish("s/us", line, MQTT_QOS_1_AT_LEAST_ONCE);
@@ -164,6 +171,84 @@ const char *tedge_c8y_jwt(void)
 /* ------------------------------------------------------------------------ */
 /* Operations                                                                */
 /* ------------------------------------------------------------------------ */
+
+/* The id of the operation in flight, when the client knows it. Exactly one
+ * operation runs at a time (see the queue above), so one id is enough for
+ * everything that finishes inside the session; the restart and the firmware
+ * update, which finish after a reboot, keep theirs in settings.
+ *
+ * With an id, a status names the operation it belongs to (504, 505, 506).
+ * Without one, it names the fragment and Cumulocity applies it to the
+ * oldest operation in that state (501, 502, 503) — which is why knowing the
+ * id matters: an operation left executing by a reset otherwise swallows
+ * every later result.
+ */
+static char current_op_id[24];
+
+static void op_status(int by_id, int by_name, const char *name,
+		      const char *quoted)
+{
+	char line[288];
+
+	if (current_op_id[0] != '\0') {
+		if (quoted != NULL) {
+			snprintf(line, sizeof(line), "%d,%s,%s", by_id,
+				 current_op_id, quoted);
+		} else {
+			snprintf(line, sizeof(line), "%d,%s", by_id,
+				 current_op_id);
+		}
+	} else if (quoted != NULL) {
+		snprintf(line, sizeof(line), "%d,%s,%s", by_name, name, quoted);
+	} else {
+		snprintf(line, sizeof(line), "%d,%s", by_name, name);
+	}
+	(void)tedge_c8y_publish_sr(line);
+}
+
+/* @p reason and @p result are raw text; they are quoted here. */
+static void op_executing_now(const char *name)
+{
+	op_status(504, 501, name, NULL);
+}
+
+static void op_failed(const char *name, const char *reason)
+{
+	char quoted[224];
+
+	(void)tedge_sr_quote((reason != NULL) ? reason : "failed", quoted,
+			     sizeof(quoted));
+	op_status(505, 502, name, quoted);
+}
+
+static void op_succeeded(const char *name, const char *result)
+{
+	char quoted[224];
+
+	if (result == NULL || result[0] == '\0') {
+		op_status(506, 503, name, NULL);
+		return;
+	}
+	(void)tedge_sr_quote(result, quoted, sizeof(quoted));
+	op_status(506, 503, name, quoted);
+}
+
+/* Completes an operation whose id was kept across a reboot. */
+static void op_finish_by_id(const char *id, const char *name, bool ok,
+			    const char *text)
+{
+	char saved[sizeof(current_op_id)];
+
+	snprintf(saved, sizeof(saved), "%s", current_op_id);
+	snprintf(current_op_id, sizeof(current_op_id), "%s",
+		 (id != NULL) ? id : "");
+	if (ok) {
+		op_succeeded(name, text);
+	} else {
+		op_failed(name, text);
+	}
+	snprintf(current_op_id, sizeof(current_op_id), "%s", saved);
+}
 
 int tedge_register_operation(const char *name, tedge_operation_handler_t handler,
 			     void *user_data)
@@ -188,44 +273,24 @@ const char *tedge_operation_payload(const struct tedge_operation *op)
 	return (op != NULL) ? op->payload : NULL;
 }
 
-static int op_result(struct tedge_operation *op, const char *sr)
+int tedge_operation_succeed(struct tedge_operation *op, const char *result)
 {
 	if (op == NULL || op->done) {
 		return -EINVAL;
 	}
 	op->done = true;
-	return tedge_c8y_publish_sr(sr);
-}
-
-int tedge_operation_succeed(struct tedge_operation *op, const char *result)
-{
-	char line[224];
-
-	if (op == NULL) {
-		return -EINVAL;
-	}
-	if (result != NULL && result[0] != '\0') {
-		char quoted[160];
-
-		(void)tedge_sr_quote(result, quoted, sizeof(quoted));
-		snprintf(line, sizeof(line), "503,%s,%s", op->name, quoted);
-	} else {
-		snprintf(line, sizeof(line), "503,%s", op->name);
-	}
-	return op_result(op, line);
+	op_succeeded(op->name, result);
+	return 0;
 }
 
 int tedge_operation_fail(struct tedge_operation *op, const char *reason)
 {
-	char line[224];
-	char quoted[160];
-
-	if (op == NULL) {
+	if (op == NULL || op->done) {
 		return -EINVAL;
 	}
-	(void)tedge_sr_quote(reason ? reason : "failed", quoted, sizeof(quoted));
-	snprintf(line, sizeof(line), "502,%s,%s", op->name, quoted);
-	return op_result(op, line);
+	op->done = true;
+	op_failed(op->name, reason);
+	return 0;
 }
 
 /* Report an operation the image cannot run (baseline requirement: never leave
@@ -236,16 +301,12 @@ int tedge_operation_fail(struct tedge_operation *op, const char *reason)
  * exactly the state this function exists to avoid. */
 static void op_unsupported(const char *name, const char *why)
 {
-	char line[224];
-	char quoted[160];
-	char text[140];
-
-	snprintf(line, sizeof(line), "501,%s", name);
-	(void)tedge_c8y_publish_sr(line);
-	snprintf(text, sizeof(text), "%s", why);
-	(void)tedge_sr_quote(text, quoted, sizeof(quoted));
-	snprintf(line, sizeof(line), "502,%s,%s", name, quoted);
-	(void)tedge_c8y_publish_sr(line);
+	/* Executing first, always: without an id, Cumulocity's failure acts
+	 * on the oldest *executing* operation, so an operation refused
+	 * straight from PENDING would stay pending for ever — exactly the
+	 * state this function exists to avoid. With an id it is harmless. */
+	op_executing_now(name);
+	op_failed(name, why);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -274,13 +335,25 @@ static void handle_restart(void)
 		}
 	}
 	LOG_INF("restart requested by the cloud");
-	(void)tedge_c8y_publish_sr("501,c8y_Restart");
-	(void)settings_save_one(TEDGE_KEY_RESTART, &one, sizeof(one));
+	op_executing_now("c8y_Restart");
+	/* The operation is completed after the reboot, so what identifies it
+	 * has to survive the reboot too. An empty id means "the oldest
+	 * restart operation", which is all the static path can say. */
+	if (current_op_id[0] != '\0') {
+		(void)settings_save_one(TEDGE_KEY_RESTART, current_op_id,
+					strlen(current_op_id) + 1);
+	} else {
+		(void)settings_save_one(TEDGE_KEY_RESTART, &one, sizeof(one));
+	}
 	k_msleep(500);
 	mqtt_disconnect(&client, NULL);
 	k_msleep(300);
 	tedge_platform_reset();
 }
+
+/* The marker is either a single byte (the older format: "a restart was
+ * asked for") or the id of the operation that asked. */
+static char restart_op_id[24];
 
 static int restart_marker_cb(const char *key, size_t len,
 			     settings_read_cb read_cb, void *cb_arg, void *param)
@@ -290,6 +363,15 @@ static int restart_marker_cb(const char *key, size_t len,
 	ARG_UNUSED(key);
 	if (len == sizeof(v) && read_cb(cb_arg, &v, sizeof(v)) == sizeof(v)) {
 		*(bool *)param = (v == 1);
+	} else if (len > 1 && len <= sizeof(restart_op_id)) {
+		ssize_t n = read_cb(cb_arg, restart_op_id,
+				    sizeof(restart_op_id));
+
+		if (n > 0) {
+			restart_op_id[MIN((size_t)n, sizeof(restart_op_id) - 1)] =
+				'\0';
+			*(bool *)param = true;
+		}
 	}
 	return 0;
 }
@@ -307,7 +389,7 @@ static void handle_operation(const char *line)
 {
 	int tmpl = tedge_sr_template(line);
 
-	if (op_executing && tmpl >= 510 && tmpl <= 579) {
+	if (op_executing && tmpl >= 510 && tmpl <= 599) {
 		if (op_queued >= OP_QUEUE_DEPTH) {
 			/* Left PENDING deliberately: failing it would fail the
 			 * operation that is actually running, because that is
@@ -345,6 +427,13 @@ static void run_queued_operation(void)
 
 static void dispatch_operation(const char *line)
 {
+#if defined(CONFIG_TEDGE_C8Y_OPERATION_JSON)
+	/* The first field is the operation's id, where the static templates
+	 * put the device serial nobody read. */
+	if (tedge_sr_field(line, 1, current_op_id, sizeof(current_op_id)) <= 0) {
+		current_op_id[0] = '\0';
+	}
+#endif
 	char op_name[40];
 	int tmpl = tedge_sr_template(line);
 
@@ -362,18 +451,15 @@ static void dispatch_operation(const char *line)
 #if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
 	{
 		char reason[128];
-		char sr[224];
-		char quoted[160];
 
-		/* 501 first, always: Cumulocity's 502 fails the oldest
-		 * *executing* operation, so an operation refused straight from
-		 * PENDING would never leave that state. */
-		(void)tedge_c8y_publish_sr("501,c8y_Firmware");
+		/* Executing first, always: see op_unsupported(). */
+		op_executing_now("c8y_Firmware");
 		if (tedge_fw_request(line, reason, sizeof(reason)) != 0) {
-			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
-			snprintf(sr, sizeof(sr), "502,c8y_Firmware,%s", quoted);
-			(void)tedge_c8y_publish_sr(sr);
+			op_failed("c8y_Firmware", reason);
 		} else {
+			char sr[224], quoted[160];
+
+			tedge_fw_remember_operation(current_op_id);
 			(void)tedge_sr_quote(tedge_fw_downtime_hint(), quoted,
 					     sizeof(quoted));
 			snprintf(sr, sizeof(sr), "400,c8y_FirmwareUpdateStarted,%s",
@@ -392,16 +478,9 @@ static void dispatch_operation(const char *line)
 	{
 		char reason[112];
 
-		(void)tedge_c8y_publish_sr("501,c8y_RemoteAccessConnect");
+		op_executing_now("c8y_RemoteAccessConnect");
 		if (tedge_ra_request(line, reason, sizeof(reason)) != 0) {
-			char quoted[128];
-
-			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
-			char sr[192];
-
-			snprintf(sr, sizeof(sr), "502,c8y_RemoteAccessConnect,%s",
-				 quoted);
-			(void)tedge_c8y_publish_sr(sr);
+			op_failed("c8y_RemoteAccessConnect", reason);
 		}
 	}
 #else
@@ -414,15 +493,10 @@ static void dispatch_operation(const char *line)
 #if defined(CONFIG_TEDGE_SHELL_COMMAND)
 	{
 		char reason[160];
-		char sr[288];
-		char quoted[200];
 
-		/* 501 first, for the reason firmware update gives above. */
-		(void)tedge_c8y_publish_sr("501,c8y_Command");
+		op_executing_now("c8y_Command");
 		if (tedge_shell_request(line, reason, sizeof(reason)) != 0) {
-			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
-			snprintf(sr, sizeof(sr), "502,c8y_Command,%s", quoted);
-			(void)tedge_c8y_publish_sr(sr);
+			op_failed("c8y_Command", reason);
 		}
 		return;
 	}
@@ -437,16 +511,10 @@ static void dispatch_operation(const char *line)
 #if defined(CONFIG_TEDGE_LOG_UPLOAD)
 	{
 		char reason[128];
-		char sr[224];
-		char quoted[160];
 
-		/* 501 first, for the reason firmware update gives above. */
-		(void)tedge_c8y_publish_sr("501,c8y_LogfileRequest");
+		op_executing_now("c8y_LogfileRequest");
 		if (tedge_log_request(line, reason, sizeof(reason)) != 0) {
-			(void)tedge_sr_quote(reason, quoted, sizeof(quoted));
-			snprintf(sr, sizeof(sr), "502,c8y_LogfileRequest,%s",
-				 quoted);
-			(void)tedge_c8y_publish_sr(sr);
+			op_failed("c8y_LogfileRequest", reason);
 		}
 	}
 #else
@@ -473,8 +541,8 @@ static void dispatch_operation(const char *line)
 			snprintf(current_op.payload, sizeof(current_op.payload),
 				 "%.*s", (int)sizeof(current_op.payload) - 1,
 				 line);
-			snprintf(line_sr, sizeof(line_sr), "501,%s", op_name);
-			(void)tedge_c8y_publish_sr(line_sr);
+			ARG_UNUSED(line_sr);
+			op_executing_now(op_name);
 			ops[i].handler(&current_op, ops[i].user_data);
 			return;
 		}
@@ -484,11 +552,12 @@ static void dispatch_operation(const char *line)
 	 * operation nobody answers stays pending in the cloud for ever, and
 	 * the device looks broken rather than merely incomplete. Anything
 	 * else on this topic is a response, not an operation. */
-	if (tmpl >= 510 && tmpl <= 579) {
+	if (tmpl >= 510 && tmpl <= 599) {
 		char why[96];
 
 		snprintf(why, sizeof(why),
-			 "this image has no handler for SmartREST %d", tmpl);
+			 "this image has no handler for this operation (%d)",
+			 tmpl);
 		op_unsupported(op_name, why);
 		return;
 	}
@@ -511,6 +580,16 @@ static void handle_message(const char *topic, const char *payload, size_t len)
 		LOG_WRN("cloud error: %.*s", (int)MIN(len, 160), payload);
 		return;
 	}
+#if defined(CONFIG_TEDGE_C8Y_OPERATION_JSON)
+	if (strcmp(topic, OP_TOPIC) == 0) {
+		char line[OP_LINE_MAX];
+
+		if (tedge_operation_from_json(payload, line, sizeof(line))) {
+			handle_operation(line);
+		}
+		return;
+	}
+#endif
 	if (strcmp(topic, "s/ds") == 0) {
 		LOG_DBG("s/ds: %.60s", payload);
 		handle_operation(payload);
@@ -1013,7 +1092,7 @@ static int session_start(void)
 #endif
 #if defined(CONFIG_TEDGE_RESTART)
 	if (restart_pending_after_boot) {
-		(void)tedge_c8y_publish_sr("503,c8y_Restart");
+		op_finish_by_id(restart_op_id, "c8y_Restart", true, NULL);
 		(void)settings_delete(TEDGE_KEY_RESTART);
 		restart_pending_after_boot = false;
 		LOG_INF("restart operation reported as successful");
@@ -1110,11 +1189,16 @@ static int c8y_poll(int timeout_ms)
 			switch (ev.type) {
 			case TEDGE_FW_INSTALLED: {
 				char fw[96];
+				char id[24];
 
 				snprintf(fw, sizeof(fw), "115,%s,%s",
 					 tedge_identity()->firmware_name, ev.text);
 				(void)tedge_c8y_publish_sr(fw);
-				(void)tedge_c8y_publish_sr("503,c8y_Firmware");
+				/* The update finished after a reboot, so its
+				 * id comes back from settings rather than
+				 * from the operation in flight. */
+				(void)tedge_fw_operation_id(id, sizeof(id));
+				op_finish_by_id(id, "c8y_Firmware", true, NULL);
 				continue;
 			}
 			case TEDGE_FW_REBOOTING:
@@ -1123,10 +1207,14 @@ static int c8y_poll(int timeout_ms)
 				break;
 			case TEDGE_FW_REVERTED:
 			case TEDGE_FW_FAILED:
-			default:
-				snprintf(sr, sizeof(sr), "502,c8y_Firmware,%s",
-					 quoted);
-				break;
+			default: {
+				char id[24];
+
+				(void)tedge_fw_operation_id(id, sizeof(id));
+				op_finish_by_id(id, "c8y_Firmware", false,
+						ev.text);
+				continue;
+			}
 			}
 			(void)tedge_c8y_publish_sr(sr);
 		}
@@ -1135,37 +1223,29 @@ static int c8y_poll(int timeout_ms)
 #if defined(CONFIG_TEDGE_SHELL_COMMAND)
 	{
 		struct tedge_shell_event ev;
-		char sr[288], quoted[200];
 
 		while (tedge_shell_poll_event(&ev) == 0) {
 			/* SmartREST is one line: newlines become spaces and a
 			 * long answer is cut. A command with a lot to say
 			 * belongs behind a log type. */
-			(void)tedge_sr_quote(ev.output, quoted, sizeof(quoted));
-			snprintf(sr, sizeof(sr), "%s,c8y_Command,%s",
-				 (ev.rc == 0) ? "503" : "502", quoted);
-			(void)tedge_c8y_publish_sr(sr);
+			if (ev.rc == 0) {
+				op_succeeded("c8y_Command", ev.output);
+			} else {
+				op_failed("c8y_Command", ev.output);
+			}
 		}
 	}
 #endif
 #if defined(CONFIG_TEDGE_LOG_UPLOAD)
 	{
 		struct tedge_log_event ev;
-		char sr[288], quoted[200];
 
 		while (tedge_log_poll_event(&ev) == 0) {
 			if (ev.rc == 0) {
-				(void)tedge_sr_quote(ev.url, quoted,
-						     sizeof(quoted));
-				snprintf(sr, sizeof(sr),
-					 "503,c8y_LogfileRequest,%s", quoted);
+				op_succeeded("c8y_LogfileRequest", ev.url);
 			} else {
-				(void)tedge_sr_quote(ev.reason, quoted,
-						     sizeof(quoted));
-				snprintf(sr, sizeof(sr),
-					 "502,c8y_LogfileRequest,%s", quoted);
+				op_failed("c8y_LogfileRequest", ev.reason);
 			}
-			(void)tedge_c8y_publish_sr(sr);
 		}
 	}
 #endif
@@ -1179,15 +1259,13 @@ static int c8y_poll(int timeout_ms)
 			(void)tedge_sr_quote(ev.text, quoted, sizeof(quoted));
 			switch (ev.type) {
 			case TEDGE_RA_UP:
-				(void)tedge_c8y_publish_sr(
-					"503,c8y_RemoteAccessConnect");
+				op_succeeded("c8y_RemoteAccessConnect", NULL);
 				snprintf(sr, sizeof(sr),
 					 "400,c8y_RemoteAccessOpened,%s", quoted);
 				break;
 			case TEDGE_RA_FAILED:
-				snprintf(sr, sizeof(sr),
-					 "502,c8y_RemoteAccessConnect,%s", quoted);
-				break;
+				op_failed("c8y_RemoteAccessConnect", ev.text);
+				continue;
 			default:
 				snprintf(sr, sizeof(sr),
 					 "400,c8y_RemoteAccessClosed,%s", quoted);

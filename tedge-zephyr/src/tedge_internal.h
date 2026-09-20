@@ -167,6 +167,11 @@ bool tedge_url_is_tenant(const char *host);
 int tedge_url_resolve(const char *base, const char *location, char *out,
 		      size_t len);
 
+/** Keep (or clear) the id of the operation driving a firmware update. */
+void tedge_fw_remember_operation(const char *id);
+/** The id kept above, consumed as it is read. */
+int tedge_fw_operation_id(char *out, size_t len);
+
 /* --- Log upload (tedge_log_upload.c, tedge_log_ring.c) ------------------- */
 
 struct tedge_log_event {
@@ -189,6 +194,17 @@ void tedge_log_ring_write(const uint8_t *data, size_t len);
 size_t tedge_log_ring_read(size_t offset, uint8_t *out, size_t len);
 size_t tedge_log_ring_size(void);
 uint32_t tedge_log_ring_dropped(void);
+
+/* --- Operations as JSON (tedge_op_json.c) -------------------------------- */
+
+/**
+ * @brief Turn an operation's JSON into the line the handlers parse.
+ *
+ * The line is "<template>,<operation id>[,<field>…]" — the shape the static
+ * templates delivered, with the id where the device serial was. Returns
+ * false when the JSON is not an operation this client can answer at all.
+ */
+bool tedge_operation_from_json(const char *json, char *line, size_t len);
 
 /* --- Crash dumps (tedge_coredump.c) -------------------------------------- */
 
@@ -275,6 +291,8 @@ size_t tedge_heap_free(void);
 void tedge_json_escape(const char *in, char *out, size_t len);
 /** Read a string field out of JSON this module built. Length, or -ENOENT. */
 int tedge_json_field(const char *json, const char *key, char *out, size_t len);
+/** Like tedge_json_field(), but the value may be a number or a keyword. */
+int tedge_json_value(const char *json, const char *key, char *out, size_t len);
 /** Walk the numeric members; 1 while one was found, 0 at the end. */
 int tedge_json_next_number(const char *json, size_t *pos, char *key,
 			   size_t key_len, char *value, size_t value_len);
@@ -363,6 +381,7 @@ const char *tedge_auth_password(void);
  * change, because the image that reads it is the one on the other side of a
  * swap, which may be older code. */
 #define TEDGE_KEY_FIRMWARE_SIZE  TEDGE_SETTINGS_ROOT "/firmware_size"
+#define TEDGE_KEY_FIRMWARE_OP    TEDGE_SETTINGS_ROOT "/firmware_op"
 
 /* --- TLS credential tags ------------------------------------------------- */
 

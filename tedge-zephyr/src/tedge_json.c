@@ -52,6 +52,37 @@ int tedge_json_field(const char *json, const char *key, char *out, size_t len)
 	return (int)n;
 }
 
+/* Like tedge_json_field(), but the value may be a number, true or false as
+ * well as a string: an operation carries a port and a line count beside its
+ * text. The search starts at @p json, so a caller that wants a field of one
+ * fragment passes a pointer to that fragment rather than to the document. */
+int tedge_json_value(const char *json, const char *key, char *out, size_t len)
+{
+	const char *p = value_of(json, key);
+	size_t n = 0;
+
+	if (out == NULL || len == 0) {
+		return -EINVAL;
+	}
+	out[0] = '\0';
+	if (p == NULL) {
+		return -ENOENT;
+	}
+	while (*p == ' ') {
+		p++;
+	}
+	if (*p == '"') {
+		return tedge_json_field(json, key, out, len);
+	}
+	/* A bare token ends at the comma or brace that follows it. */
+	while (*p != '\0' && *p != ',' && *p != '}' && *p != ']' &&
+	       *p != ' ' && n < len - 1) {
+		out[n++] = *p++;
+	}
+	out[n] = '\0';
+	return (int)n;
+}
+
 int tedge_json_next_number(const char *json, size_t *pos, char *key,
 			   size_t key_len, char *value, size_t value_len)
 {

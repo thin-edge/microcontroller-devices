@@ -151,6 +151,32 @@ config TEDGE_SNTP_SERVER
 	default "pool.ntp.org"
 	depends on TEDGE_SNTP
 
+config TEDGE_C8Y_OPERATION_JSON
+	bool "Receive operations with their id (devicecontrol/notifications)"
+	default y
+	help
+	  Cumulocity's SmartREST operation statuses (501, 502, 503) name a
+	  fragment and act on the oldest operation in that state, not on the
+	  one the device is working on. An operation left executing by a reset
+	  therefore absorbs the results of every operation after it.
+
+	  With this on, the client receives operations as JSON on
+	  devicecontrol/notifications, where the operation id is, and reports
+	  every status with 504, 505 and 506, which name the operation.
+
+	  Turn it off for a tenant or a transport that does not serve that
+	  topic; the client then uses s/ds and the older templates.
+
+config TEDGE_C8Y_PAYLOAD_BYTES
+	int "Largest message the client accepts"
+	default 2048 if TEDGE_C8Y_OPERATION_JSON
+	default 1024
+	range 512 8192
+	help
+	  An operation's JSON carries a delivery log beside its own fields, so
+	  it needs more room than a SmartREST line. A message larger than this
+	  is dropped with a warning naming its size.
+
 config TEDGE_REQUIRED_INTERVAL_MIN
 	int "Required interval reported to Cumulocity (minutes)"
 	default 60

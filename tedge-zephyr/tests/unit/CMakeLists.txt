@@ -22,6 +22,7 @@ target_sources(app PRIVATE
   ../../src/tedge_json.c
   ../../src/tedge_shell_allow_list.c
   ../../src/tedge_log_ring.c
+  ../../src/tedge_op_json.c
 )
 
 # The telemetry API is compiled in for the tests, with a small buffer so the
@@ -34,5 +35,6 @@ target_compile_definitions(app PRIVATE
   CONFIG_TEDGE_LOG_LEVEL=3
   # A small ring, so "it wrapped" is one test away.
   CONFIG_TEDGE_LOG_RING_BYTES=256
+  CONFIG_TEDGE_C8Y_OPERATION_JSON=1
 )
 target_include_directories(app PRIVATE ../../include ../../src)

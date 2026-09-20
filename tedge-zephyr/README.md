@@ -275,12 +275,21 @@ refused meanwhile — so keep commands that can block for ever off the list.
 The result travels in one SmartREST field: newlines become spaces and a long
 answer is cut. A command with a lot to say belongs behind a log type.
 
-**One operation at a time.** Cumulocity's operation statuses act on the
-oldest operation in each state, not on the one a message names, so the
-client executes one operation at a time and queues what arrives meanwhile
-(two deep). This is also why an operation interrupted by a reset stays
-EXECUTING in Cumulocity: the device cannot see it after the reboot, and it
-has to be cleared from the cloud side.
+**Operations are answered by id.** The client subscribes to
+`devicecontrol/notifications`, where Cumulocity delivers each operation as
+JSON *with its id*, and reports every status with `504`, `505` and `506`,
+which name the operation. The older `501`/`502`/`503` name only a fragment
+and act on the oldest operation in that state, so a single operation left
+EXECUTING by a reset would swallow the result of every operation after it —
+which is exactly what happened on a test device before this changed.
+
+Turn `CONFIG_TEDGE_C8Y_OPERATION_JSON` off for a tenant that does not serve
+that topic; the client then uses `s/ds` and the older statuses.
+
+**Still one operation at a time.** The client runs one operation and queues
+what arrives meanwhile (two deep), because a second file transfer or tunnel
+needs a second TLS session and another thread, which a constrained board
+does not have. With ids this is a resource limit, not a correctness one.
 
 ### Firmware update
 

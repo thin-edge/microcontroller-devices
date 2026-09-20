@@ -152,6 +152,49 @@ static int marker_cb(const char *key, size_t len, settings_read_cb read_cb,
 	return 0;
 }
 
+/* The operation that asked for this update finishes after a reboot, so its
+ * id is kept beside the marker. It is a separate key on purpose: the marker
+ * itself is a contract between firmware versions and must not change shape.
+ */
+static int op_id_cb(const char *key, size_t len, settings_read_cb read_cb,
+		    void *cb_arg, void *param)
+{
+	char *out = param;
+
+	ARG_UNUSED(key);
+	if (len > 0 && len < 24) {
+		ssize_t n = read_cb(cb_arg, out, len);
+
+		out[MAX(n, 0)] = '\0';
+	}
+	return 0;
+}
+
+void tedge_fw_remember_operation(const char *id)
+{
+	if (id == NULL || id[0] == '\0') {
+		(void)settings_delete(TEDGE_KEY_FIRMWARE_OP);
+		return;
+	}
+	(void)settings_save_one(TEDGE_KEY_FIRMWARE_OP, id, strlen(id) + 1);
+}
+
+int tedge_fw_operation_id(char *out, size_t len)
+{
+	if (out == NULL || len == 0) {
+		return -EINVAL;
+	}
+	out[0] = '\0';
+	(void)settings_load_subtree_direct(TEDGE_KEY_FIRMWARE_OP, op_id_cb,
+					   out);
+	if (out[0] == '\0') {
+		return -ENOENT;
+	}
+	/* One operation, one answer: the id goes once the update is over. */
+	(void)settings_delete(TEDGE_KEY_FIRMWARE_OP);
+	return 0;
+}
+
 static void marker_load(void)
 {
 	(void)settings_load_subtree_direct(TEDGE_KEY_FIRMWARE, marker_cb, NULL);

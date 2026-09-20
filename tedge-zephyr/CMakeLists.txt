@@ -25,6 +25,9 @@ if(CONFIG_TEDGE)
     src/tedge_c8y.c
     src/tedge_smartrest.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_C8Y_OPERATION_JSON
+    src/tedge_op_json.c
+  )
   # The HTTP client belongs to every file-transfer feature, not to the first
   # one that needed it.
   zephyr_library_sources_ifdef(CONFIG_TEDGE_HTTP

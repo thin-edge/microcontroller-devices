@@ -685,3 +685,171 @@ ZTEST(tedge_log_ring, test_a_line_longer_than_the_ring_keeps_its_tail)
 }
 
 ZTEST_SUITE(tedge_log_ring, NULL, NULL, ring_before, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* Operations delivered as JSON                                              */
+/* ------------------------------------------------------------------------ */
+
+/* Shaped like what devicecontrol/notifications delivers, delivery log and
+ * all, so the test exercises what the device actually reads. */
+#define OP_HEAD                                                               \
+	"{\"delivery\":{\"time\":\"2026-09-20T10:00:00.000Z\","               \
+	"\"status\":\"SEND\",\"log\":[]},\"agentId\":\"79211726\","           \
+	"\"creationTime\":\"2026-09-20T10:00:00.000Z\","                      \
+	"\"deviceId\":\"79211726\",\"id\":\"214925\",\"status\":\"PENDING\","
+
+static void translate(const char *json, char *line, size_t len)
+{
+	zassert_true(tedge_operation_from_json(json, line, len),
+		     "an operation with an id is always answerable");
+}
+
+ZTEST(tedge_op_json, test_restart_carries_only_its_id)
+{
+	char line[256];
+
+	translate(OP_HEAD "\"c8y_Restart\":{}}", line, sizeof(line));
+	zassert_str_equal(line, "510,214925", "got: %s", line);
+}
+
+ZTEST(tedge_op_json, test_command_text)
+{
+	char line[256];
+	char field[64];
+
+	translate(OP_HEAD "\"c8y_Command\":{\"text\":\"kernel uptime\"}}", line,
+		  sizeof(line));
+	zassert_equal(tedge_sr_template(line), 511, "got: %s", line);
+	(void)tedge_sr_field(line, 1, field, sizeof(field));
+	zassert_str_equal(field, "214925", "the id takes the serial's place");
+	(void)tedge_sr_field(line, 2, field, sizeof(field));
+	zassert_str_equal(field, "kernel uptime");
+}
+
+ZTEST(tedge_op_json, test_a_comma_in_a_command_survives)
+{
+	char line[256];
+	char field[64];
+
+	translate(OP_HEAD "\"c8y_Command\":{\"text\":\"net iface, please\"}}",
+		  line, sizeof(line));
+	(void)tedge_sr_field(line, 2, field, sizeof(field));
+	zassert_str_equal(field, "net iface, please",
+			  "a quoted field keeps its comma: %s", line);
+}
+
+ZTEST(tedge_op_json, test_firmware_fields_in_order)
+{
+	char line[320];
+	char field[80];
+
+	translate(OP_HEAD "\"c8y_Firmware\":{\"name\":\"app\","
+			  "\"version\":\"1.2.3\",\"url\":\"https://x/y\"}}",
+		  line, sizeof(line));
+	zassert_equal(tedge_sr_template(line), 515, "got: %s", line);
+	(void)tedge_sr_field(line, 2, field, sizeof(field));
+	zassert_str_equal(field, "app");
+	(void)tedge_sr_field(line, 3, field, sizeof(field));
+	zassert_str_equal(field, "1.2.3");
+	(void)tedge_sr_field(line, 4, field, sizeof(field));
+	zassert_str_equal(field, "https://x/y");
+}
+
+ZTEST(tedge_op_json, test_numbers_are_read_as_well_as_strings)
+{
+	char line[320];
+	char field[48];
+
+	translate(OP_HEAD "\"c8y_RemoteAccessConnect\":{\"hostname\":\"10.0.0.5\","
+			  "\"port\":22,\"connectionKey\":\"abc\"}}",
+		  line, sizeof(line));
+	zassert_equal(tedge_sr_template(line), 530, "got: %s", line);
+	(void)tedge_sr_field(line, 3, field, sizeof(field));
+	zassert_str_equal(field, "22", "a port is a number in JSON");
+}
+
+ZTEST(tedge_op_json, test_log_request_keeps_its_filters)
+{
+	char line[384];
+	char field[48];
+
+	translate(OP_HEAD "\"c8y_LogfileRequest\":{\"logFile\":\"tedge-log\","
+			  "\"dateFrom\":\"2026-09-20T00:00:00.000Z\","
+			  "\"dateTo\":\"2026-09-21T00:00:00.000Z\","
+			  "\"searchText\":\"tedge\",\"maximumLines\":5}}",
+		  line, sizeof(line));
+	zassert_equal(tedge_sr_template(line), 522, "got: %s", line);
+	(void)tedge_sr_field(line, 2, field, sizeof(field));
+	zassert_str_equal(field, "tedge-log");
+	(void)tedge_sr_field(line, 5, field, sizeof(field));
+	zassert_str_equal(field, "tedge", "the search text");
+	(void)tedge_sr_field(line, 6, field, sizeof(field));
+	zassert_str_equal(field, "5", "the line limit");
+}
+
+ZTEST(tedge_op_json, test_an_unknown_operation_is_still_answerable)
+{
+	char line[256];
+	char field[48];
+
+	translate(OP_HEAD "\"c8y_SoftwareUpdate\":[{\"name\":\"x\"}]}", line,
+		  sizeof(line));
+	zassert_equal(tedge_sr_template(line), 599,
+		      "an operation with no handler still carries its id: %s",
+		      line);
+	(void)tedge_sr_field(line, 1, field, sizeof(field));
+	zassert_str_equal(field, "214925");
+}
+
+ZTEST(tedge_op_json, test_something_that_is_not_an_operation)
+{
+	char line[256];
+
+	zassert_false(tedge_operation_from_json("{\"status\":\"ok\"}", line,
+						sizeof(line)),
+		      "no id, nothing to answer");
+}
+
+ZTEST_SUITE(tedge_op_json, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* Reading a JSON value that may be a number                                 */
+/* ------------------------------------------------------------------------ */
+
+ZTEST(tedge_json_value, test_strings_and_numbers)
+{
+	const char *json = "{\"a\":\"text\",\"b\":22,\"c\":true,\"d\":1.5}";
+	char out[32];
+
+	zassert_true(tedge_json_value(json, "a", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "text");
+	zassert_true(tedge_json_value(json, "b", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "22");
+	zassert_true(tedge_json_value(json, "c", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "true");
+	zassert_true(tedge_json_value(json, "d", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "1.5");
+}
+
+ZTEST(tedge_json_value, test_a_missing_key_says_so)
+{
+	char out[32];
+
+	zassert_equal(tedge_json_value("{\"a\":1}", "b", out, sizeof(out)),
+		      -ENOENT);
+	zassert_str_equal(out, "", "and leaves nothing behind");
+}
+
+ZTEST(tedge_json_value, test_the_search_can_start_inside_a_fragment)
+{
+	const char *json = "{\"port\":1,\"frag\":{\"port\":22}}";
+	const char *frag = strstr(json, "\"frag\"");
+	char out[16];
+
+	zassert_not_null(frag);
+	(void)tedge_json_value(frag, "port", out, sizeof(out));
+	zassert_str_equal(out, "22",
+			  "a fragment's field, not the one above it");
+}
+
+ZTEST_SUITE(tedge_json_value, NULL, NULL, NULL, NULL, NULL);
