@@ -36,7 +36,7 @@
 
 ## 5. Wrap-up
 
-- [ ] 5.1 README: the feature's requirements (slot layout, MCUboot, heap for a second session), what belongs in the confirm hook, and the downtime during a swap
-- [ ] 5.2 Profiles: firmware update in `full.conf`; record the results in design.md
-- [ ] 5.3 Delete `apps/c8y-spike` and its references, now that every feature it demonstrated lives in the module
-- [ ] 5.4 Report the Zephyr HTTP-client chunked-body bug upstream (P5), with the reproduction from the spike
+- [x] 5.1 README: the feature's requirements (slot layout, MCUboot, heap for a second session), what belongs in the confirm hook, and the downtime during a swap
+- [x] 5.2 Profiles: firmware update in `full.conf`; record the results in design.md
+- [x] 5.3 Delete `apps/c8y-spike` and its references, now that every feature it demonstrated lives in the module
+- [x] 5.4 Report the Zephyr HTTP-client chunked-body bug upstream (P5): written up with a reproduction in `tedge-zephyr/docs/zephyr-http-chunked-body-bug.md`, ready to file (filing it needs a Zephyr GitHub account)

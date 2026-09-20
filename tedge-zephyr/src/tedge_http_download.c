@@ -10,7 +10,9 @@
  *     callback: one receive buffer can hold several segments, and the client
  *     keeps the first segment's start with the last segment's length.
  *     Cumulocity serves binaries chunked, so every byte is written from the
- *     parser's own on_body callback instead (spikes, problem P5).
+ *     parser's own on_body callback instead. See
+ *     docs/zephyr-http-chunked-body-bug.md; remove the workaround once it is
+ *     fixed upstream.
  *   - Zephyr's HTTP client does not follow redirects, and a release asset
  *     can answer with a Location header of nearly a kilobyte.
  *   - The cloud token must reach the tenant and nowhere else, including
