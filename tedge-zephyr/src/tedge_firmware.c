@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
@@ -102,17 +103,17 @@ static void publish_progress(const char *phase, int percent, int64_t bytes,
 	n = snprintf(json, sizeof(json),
 		     "{\"name\":\"%s\",\"version\":\"%s\",\"phase\":\"%s\"",
 		     job.name, job.version, phase);
-	if (n < sizeof(json) && (percent >= 0 || bytes > 0)) {
-		if (percent >= 0) {
-			n += snprintf(json + n, sizeof(json) - n,
-				      ",\"percent\":%d", percent);
-		}
+	if (percent >= 0 && n < sizeof(json)) {
+		n += snprintf(json + n, sizeof(json) - n, ",\"percent\":%d",
+			      percent);
+	}
+	if (n < sizeof(json)) {
 		n += snprintf(json + n, sizeof(json) - n, ",\"bytes\":%lld",
 			      (long long)bytes);
-		if (image_total > 0) {
-			n += snprintf(json + n, sizeof(json) - n,
-				      ",\"total\":%lld", (long long)image_total);
-		}
+	}
+	if (image_total > 0 && n < sizeof(json)) {
+		n += snprintf(json + n, sizeof(json) - n, ",\"total\":%lld",
+			      (long long)image_total);
 	}
 	if (reason != NULL && n < sizeof(json)) {
 		n += snprintf(json + n, sizeof(json) - n, ",\"reason\":\"%s\"",
@@ -156,7 +157,7 @@ static void marker_load(void)
 	(void)settings_load_subtree_direct(TEDGE_KEY_FIRMWARE, marker_cb, NULL);
 }
 
-static void marker_save(const char *name, const char *version)
+static void marker_save(const char *name, const char *version, int64_t total)
 {
 	char buf[80];
 	int n = snprintf(buf, sizeof(buf), "%s%c%s", name, MARKER_SEPARATOR,
@@ -165,12 +166,43 @@ static void marker_save(const char *name, const char *version)
 	if (n > 0 && n < (int)sizeof(buf)) {
 		(void)settings_save_one(TEDGE_KEY_FIRMWARE, buf, n);
 	}
+	/* The size travels in its own key: an older image on the other side of
+	 * the swap parses the marker, and its format must stay as it was. */
+	n = snprintf(buf, sizeof(buf), "%lld", (long long)total);
+	if (n > 0 && n < (int)sizeof(buf)) {
+		(void)settings_save_one(TEDGE_KEY_FIRMWARE_SIZE, buf, n);
+	}
 }
 
 static void marker_clear(void)
 {
 	marker[0] = '\0';
 	(void)settings_delete(TEDGE_KEY_FIRMWARE);
+	(void)settings_delete(TEDGE_KEY_FIRMWARE_SIZE);
+}
+
+/* The size of the image that was installed, written beside the marker. */
+static char size_text[24];
+
+static int size_cb(const char *key, size_t len, settings_read_cb read_cb,
+		   void *cb_arg, void *param)
+{
+	ARG_UNUSED(key);
+	ARG_UNUSED(param);
+	if (len > 0 && len < sizeof(size_text)) {
+		ssize_t n = read_cb(cb_arg, size_text, len);
+
+		size_text[MAX(n, 0)] = '\0';
+	}
+	return 0;
+}
+
+static int64_t size_load(void)
+{
+	size_text[0] = '\0';
+	(void)settings_load_subtree_direct(TEDGE_KEY_FIRMWARE_SIZE, size_cb,
+					   NULL);
+	return (size_text[0] != '\0') ? strtoll(size_text, NULL, 10) : 0;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -202,17 +234,20 @@ static void report_progress(int64_t written, void *user_data)
 	int percent = -1;
 
 	ARG_UNUSED(user_data);
+	bool first = (last_progress_at == 0);
+
 	image_total = dl_req.total;
 	if (image_total > 0) {
 		percent = (int)((written * 100) / image_total);
-		if (percent <
-		    last_progress_percent + CONFIG_TEDGE_FIRMWARE_PROGRESS_PERCENT) {
+		if (!first &&
+		    percent <
+			    last_progress_percent + CONFIG_TEDGE_FIRMWARE_PROGRESS_PERCENT) {
 			return;
 		}
-	} else if (written < last_progress_bytes + PROGRESS_BYTES_STEP) {
+	} else if (!first && written < last_progress_bytes + PROGRESS_BYTES_STEP) {
 		return;
 	}
-	if (k_uptime_get() - last_progress_at < 1000) {
+	if (!first && k_uptime_get() - last_progress_at < 1000) {
 		return; /* at most one a second */
 	}
 	last_progress_percent = (percent >= 0) ? percent : 0;
@@ -242,7 +277,8 @@ static void download_thread(void *a, void *b, void *c)
 	last_progress_bytes = 0;
 	last_progress_at = 0;
 	image_total = 0;
-	publish_progress("downloading", 0, 0, NULL);
+	/* The first message waits for the response headers, so that it can
+	 * state the size like every other one. */
 
 	ret = flash_img_init(&flash_ctx);
 	if (ret == 0) {
@@ -263,7 +299,8 @@ static void download_thread(void *a, void *b, void *c)
 	publish_progress("installing", 100, dl_req.written, NULL);
 
 	/* From here the device is about to go dark for the swap. */
-	marker_save(job.name, job.version);
+	marker_save(job.name, job.version, dl_req.total ? dl_req.total
+							: dl_req.written);
 	ret = boot_request_upgrade(BOOT_UPGRADE_TEST);
 	if (ret != 0) {
 		marker_clear();
@@ -390,6 +427,7 @@ void tedge_fw_on_connected(void)
 			 (int)(sep - marker), marker);
 		snprintf(job.version, sizeof(job.version), "%s", sep + 1);
 	}
+	image_total = size_load();
 	(void)tedge_fw_running_version(version, sizeof(version));
 
 	if (confirmed && strcmp(version, job.version) != 0) {
@@ -400,7 +438,7 @@ void tedge_fw_on_connected(void)
 		post(TEDGE_FW_REVERTED,
 		     "%s was rolled back; the device is running %s", job.version,
 		     version);
-		publish_progress("failed", -1, 0, "rolled back");
+		publish_progress("failed", -1, image_total, "rolled back");
 		marker_clear();
 		return;
 	}
@@ -434,7 +472,7 @@ void tedge_fw_on_connected(void)
 		(void)k_work_cancel_delayable(&confirm_deadline);
 		LOG_INF("firmware: %s confirmed", job.version);
 		post(TEDGE_FW_INSTALLED, "%s", job.version);
-		publish_progress("done", 100, 0, NULL);
+		publish_progress("done", 100, image_total, NULL);
 		marker_clear();
 	}
 }

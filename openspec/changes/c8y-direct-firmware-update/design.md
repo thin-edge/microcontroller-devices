@@ -66,8 +66,16 @@ reverts it on the next reset. The old image then finds the marker while
 running *confirmed*, which is how it knows a revert happened, and reports
 `502,c8y_Firmware,"…"` with the reason.
 
-The marker is a settings key (`tedge/firmware`), so it survives the swap and
-a power cut. It is the only state the flow keeps.
+The marker is a settings key (`tedge/firmware`, "name,version"), so it
+survives the swap and a power cut.
+
+**Its format is a contract between two firmware versions** and must never
+change: the image that reads it is the one on the *other side* of a swap,
+which may be older code. Learned the hard way (2026-09-20) by adding the
+download size as a third field: the older image split on the first comma and
+reported `"version":"1.3.0,887994"`. Anything else the flow wants to carry
+across a swap goes in its own key (the size is in `tedge/firmware_size`),
+which an older image ignores.
 
 ### D3: The download runs on its own thread
 
@@ -228,7 +236,9 @@ devices on a metered link.
    a range request gets the size back in `Content-Range`, so the download now
    sends `Range: bytes=0-`, accepts `206`, and reports true percentages:
    `{"phase":"downloading","percent":40,"bytes":355866,"total":887978}`. A
-   server that ignores ranges still works, reporting bytes only.
+   server that ignores ranges still works, reporting bytes only. Every
+   message states `total` once it is known, including the `done` message
+   after the reboot, which reads it from `tedge/firmware_size`.
 3. **The version to compare is MCUboot's,** not the application's
    `APP_VERSION_STRING`: an image built from the same source with a different
    signed version must still be installable. The client reads the running

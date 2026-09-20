@@ -30,7 +30,7 @@
 - [x] 4.3 Revert: install an image that cannot connect (wrong tenant) and confirm the previous image comes back and reports the failure
 - [ ] 4.4 Revert: an image whose application hook refuses it
 - [x] 4.5 Progress messages arrive during a real update, at the configured step, ending with installing
-- [ ] 4.6 A download from a non-tenant host (a GitHub release asset) works and carries no token
+- [x] 4.6 A download from a non-tenant host (a GitHub release asset) works and carries no token
 - [ ] 4.7 TLS heap with MQTT + download, and the footprint row in `measure_tedge.sh`
 - [ ] 4.8 S3 with the TLS heap in PSRAM: one update end to end
 

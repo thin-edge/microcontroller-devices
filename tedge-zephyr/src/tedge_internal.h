@@ -214,6 +214,10 @@ const char *tedge_auth_password(void);
 #define TEDGE_KEY_BOOTSTRAP_PASS TEDGE_SETTINGS_ROOT "/bootstrap/pass"
 #define TEDGE_KEY_RESTART        TEDGE_SETTINGS_ROOT "/restart"
 #define TEDGE_KEY_FIRMWARE       TEDGE_SETTINGS_ROOT "/firmware"
+/* Separate from the marker on purpose: the marker's format must never
+ * change, because the image that reads it is the one on the other side of a
+ * swap, which may be older code. */
+#define TEDGE_KEY_FIRMWARE_SIZE  TEDGE_SETTINGS_ROOT "/firmware_size"
 
 /* --- TLS credential tags ------------------------------------------------- */
 
