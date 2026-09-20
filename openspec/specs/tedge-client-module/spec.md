@@ -107,6 +107,14 @@ restart hook the chance to respond.
 - **THEN** the client opens no connection and fails the operation with the
   hook's reason
 
+#### Scenario: Application vetoes a new firmware image
+
+- **WHEN** a newly installed image is running and connected, and the
+  application's firmware-check hook reports that the application is not
+  healthy
+- **THEN** the client does not confirm the image, so the bootloader reverts
+  it on the next reset
+
 #### Scenario: Application-supplied telemetry
 
 - **WHEN** the application calls the telemetry API with a measurement

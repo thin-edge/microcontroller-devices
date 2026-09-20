@@ -56,6 +56,12 @@ a feature that is not compiled in, the device SHALL mark that operation as
 failed with a reason that names the missing feature. It SHALL NOT ignore the
 operation or leave it pending.
 
+#### Scenario: Firmware update advertises itself and the running version
+
+- **WHEN** an image with the firmware-update feature connects
+- **THEN** its supported operations include firmware update, and it reports
+  the name and version of the image that is running
+
 #### Scenario: Supported operations reflect the image
 
 - **WHEN** an image without the firmware-update feature connects
