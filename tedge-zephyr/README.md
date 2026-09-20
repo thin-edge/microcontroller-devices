@@ -122,6 +122,43 @@ message above and writes it unchanged under a `remoteAccess` fragment:
 Operations stay on SmartREST (`s/ds`, `501`/`503`/`502`), which is how
 Cumulocity tracks an operation's lifecycle.
 
+### Firmware update
+
+`CONFIG_TEDGE_FIRMWARE_UPDATE` needs an MCUboot (sysbuild) build with a
+second slot — the layout this repository's applications already use.
+
+What happens, and what it costs:
+
+| Step | On an ESP32-C6 |
+|---|---|
+| Download into the second slot | ~30 s for 890 KB, while MQTT stays up |
+| The bootloader swaps | ~40 s (~19 s on an S3) — **the device is offline for this** |
+| The new image confirms itself | once it reaches the cloud and your hook agrees |
+| Whole operation | about 105 s |
+
+**Your `firmware_confirm_check` hook decides whether an update sticks.**
+Check what would make the device useless in the field: that your protocol
+server accepted a connection, that a sensor answers, that the peer you
+depend on is reachable. Returning non-zero leaves the image unconfirmed, and
+it is rolled back.
+
+**An image that never confirms rolls itself back.** It resets the device
+after `CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S` (default 900 s) so the
+bootloader can restore the previous image; the restored image then reports
+the failure to the cloud. This only protects against images that carry the
+client: an image that crashes earlier still needs a hardware watchdog.
+
+Progress is published on `te/device/<id>///progress/firmware` at QoS 0:
+
+```json
+{"name":"app","version":"1.6.0","phase":"downloading","percent":40,
+ "bytes":355866,"total":888011}
+```
+
+Phases are `downloading`, `installing`, `done` and `failed` (with a
+`reason`). The size comes from a `Range: bytes=0-` request, because
+Cumulocity serves binaries chunked and sends no `Content-Length`.
+
 ### Security limitations
 
 - The device key is stored in PSA ITS, encrypted with a key derived from the

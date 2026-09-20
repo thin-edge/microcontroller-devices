@@ -224,6 +224,18 @@ devices on a metered link.
 | Progress | a final `{"phase":"failed","reason":"rolled back"}` message |
 | Without the deadline (an image built before it) | the bad image ran for 8 minutes retrying; the rollback only happened when something else reset the device. This is why D10 exists |
 
+### The application's veto, the S3, and the footprint (tasks 4.4, 4.7, 4.8)
+
+| Check | Result |
+|---|---|
+| The application refuses the new image (a test hook in the Modbus glue) | the image is never confirmed, the deadline resets the device, the previous image comes back and the operation FAILS with "the application refused 1.7.0-app-refuses; it will be rolled back" |
+| ESP32-S3 with the TLS heap in PSRAM | an update from the cloud is SUCCESSFUL; the same flow, timings and progress as the C6 |
+| Footprint, C6 Modbus + client + remote access + firmware | 809 KB text, 117 KB of libc heap left |
+| Footprint, S3 Modbus + client + firmware (PSRAM) | 678 KB text, 113 KB of libc heap left |
+
+Firmware update adds about **11 KB of text** over the client with remote
+access, plus the second TLS session's heap, which the profiles size.
+
 **Three findings, all fixed:**
 
 1. **A refusal must publish `501` first.** Cumulocity's `502` fails the

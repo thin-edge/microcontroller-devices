@@ -6,4 +6,12 @@
 
 mainmenu "Modbus TCP Server Firmware"
 
+config APP_TEDGE_TEST_REFUSE_FIRMWARE
+	bool "Test build: refuse to confirm a new firmware image"
+	depends on TEDGE_FIRMWARE_UPDATE
+	help
+	  Makes the application's firmware-check hook always refuse, so a
+	  newly installed image is never confirmed and the bootloader rolls
+	  it back. For testing the rollback path only.
+
 source "Kconfig.zephyr"

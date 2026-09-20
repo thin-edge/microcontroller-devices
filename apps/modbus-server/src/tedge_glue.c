@@ -70,10 +70,24 @@ static void reset(void *user_data)
 	boot_request_reboot();
 }
 
+#if defined(CONFIG_APP_TEDGE_TEST_REFUSE_FIRMWARE)
+/* Test build only: pretend the application is unhealthy after an update, so
+ * the image is never confirmed and the bootloader rolls it back. */
+static int firmware_confirm_check(void *user_data)
+{
+	ARG_UNUSED(user_data);
+	LOG_WRN("test build: refusing to confirm this firmware");
+	return -EINVAL;
+}
+#endif
+
 static const struct tedge_hooks hooks = {
 	.on_state = on_state,
 	.restart_request = restart_request,
 	.reset = reset,
+#if defined(CONFIG_APP_TEDGE_TEST_REFUSE_FIRMWARE)
+	.firmware_confirm_check = firmware_confirm_check,
+#endif
 };
 
 #if defined(CONFIG_SHELL)
