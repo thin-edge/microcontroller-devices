@@ -33,8 +33,9 @@ version that did not come up.
 #### Scenario: The new image cannot connect
 
 - **WHEN** the new image runs but never reaches the cloud
-- **THEN** it stays unconfirmed, the bootloader restores the previous image
-  on the next reset, and that image reports the failure with the version
+- **THEN** it stays unconfirmed, resets itself once its confirmation
+  deadline expires, and the bootloader restores the previous image, which
+  reports the failure with the version
 
 #### Scenario: The application refuses the new image
 
@@ -48,6 +49,21 @@ version that did not come up.
 - **WHEN** the downloaded image fails the bootloader's signature check
 - **THEN** the previous image boots, the slot is discarded, and the operation
   is reported as failed
+
+### Requirement: An image that cannot confirm itself gives up
+
+A test-booted image SHALL reset the device when it has not been confirmed
+within a configured time, so that the bootloader can restore the previous
+image without anyone intervening. Confirming the image SHALL cancel that
+deadline. The deadline MAY be disabled for devices that have another way to
+reset themselves.
+
+#### Scenario: A new image that never reaches the cloud
+
+- **WHEN** a newly installed image runs but cannot reach the cloud, and the
+  network itself is healthy so nothing else restarts the device
+- **THEN** the image resets the device once its deadline expires, and the
+  previous image comes back
 
 ### Requirement: Downloads follow redirects and keep the token to the tenant
 

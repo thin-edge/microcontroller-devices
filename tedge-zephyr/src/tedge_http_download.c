@@ -32,9 +32,6 @@
 
 LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
 
-/* A redirect target can be ~1 KB (a GitHub release asset). */
-#define URL_MAX  1152
-#define HOST_MAX 128
 #define RX_SIZE  1024
 struct download_state {
 	struct tedge_download *req;
@@ -44,100 +41,6 @@ struct download_state {
 };
 
 static struct download_state *current;
-
-/* Split "scheme://host[:port]/path" into its parts. */
-static int split_url(const char *url, bool *tls, char *host, size_t host_len,
-		     uint16_t *port, const char **path)
-{
-	const char *p;
-
-	if (strncmp(url, "https://", 8) == 0) {
-		*tls = true;
-		*port = 443;
-		p = url + 8;
-	} else if (strncmp(url, "http://", 7) == 0) {
-		*tls = false;
-		*port = 80;
-		p = url + 7;
-	} else {
-		return -EINVAL;
-	}
-
-	const char *slash = strchr(p, '/');
-	const char *colon = memchr(p, ':', slash ? (size_t)(slash - p)
-						 : strlen(p));
-	size_t n = colon ? (size_t)(colon - p)
-			 : (slash ? (size_t)(slash - p) : strlen(p));
-
-	if (n == 0 || n >= host_len) {
-		return -EINVAL;
-	}
-	memcpy(host, p, n);
-	host[n] = '\0';
-	if (colon != NULL) {
-		*port = (uint16_t)strtoul(colon + 1, NULL, 10);
-		if (*port == 0) {
-			return -EINVAL;
-		}
-	}
-	*path = slash ? slash : "/";
-	return 0;
-}
-
-/* True when @p host is the tenant or a host inside its parent domain, which
- * is where Cumulocity serves binaries from (t<id>.<domain>). */
-bool tedge_url_is_tenant(const char *host)
-{
-	const char *tenant = tedge_c8y_host();
-	const char *parent = strchr(tenant, '.');
-	size_t plen;
-
-	if (host == NULL || tenant[0] == '\0') {
-		return false;
-	}
-	if (strcmp(host, tenant) == 0) {
-		return true;
-	}
-	if (parent == NULL) {
-		return false;
-	}
-	plen = strlen(parent);
-	return strlen(host) > plen &&
-	       strcmp(host + strlen(host) - plen, parent) == 0;
-}
-
-/* Resolve a redirect target against the URL it came from. */
-int tedge_url_resolve(const char *base, const char *location, char *out,
-		      size_t len)
-{
-	if (location == NULL || location[0] == '\0') {
-		return -EINVAL;
-	}
-	if (strncmp(location, "http://", 7) == 0 ||
-	    strncmp(location, "https://", 8) == 0) {
-		return (snprintf(out, len, "%s", location) < (int)len) ? 0
-								      : -ENOSPC;
-	}
-	/* Relative: keep the base's scheme and host. */
-	const char *after_scheme = strstr(base, "://");
-
-	if (after_scheme == NULL) {
-		return -EINVAL;
-	}
-	const char *slash = strchr(after_scheme + 3, '/');
-	size_t root = slash ? (size_t)(slash - base) : strlen(base);
-
-	if (location[0] == '/') {
-		return (snprintf(out, len, "%.*s%s", (int)root, base,
-				 location) < (int)len)
-			       ? 0
-			       : -ENOSPC;
-	}
-	return (snprintf(out, len, "%.*s/%s", (int)root, base, location) <
-		(int)len)
-		       ? 0
-		       : -ENOSPC;
-}
 
 /* ------------------------------------------------------------------------ */
 /* HTTP callbacks                                                            */
@@ -179,7 +82,7 @@ static int on_response(struct http_response *rsp, enum http_final_call final,
 }
 
 /* The Location header of a redirect. */
-static char redirect_to[URL_MAX];
+static char redirect_to[TEDGE_URL_MAX];
 static bool in_location;
 
 static int on_header_field(struct http_parser *parser, const char *at,
@@ -217,7 +120,7 @@ static int fetch_once(const char *url, struct download_state *st,
 	const char *headers[2] = { 0 };
 	static uint8_t rx[RX_SIZE];
 	char auth[1100];
-	char host[HOST_MAX];
+	char host[TEDGE_HOST_MAX];
 	char port_s[8];
 	const char *path;
 	uint16_t port;
@@ -225,7 +128,7 @@ static int fetch_once(const char *url, struct download_state *st,
 	int fd = -1, ret, h = 0;
 
 	*redirected = false;
-	ret = split_url(url, &tls, host, sizeof(host), &port, &path);
+	ret = tedge_url_split(url, &tls, host, sizeof(host), &port, &path);
 	if (ret != 0) {
 		LOG_ERR("download: cannot parse the URL");
 		return ret;
@@ -312,8 +215,8 @@ static int fetch_once(const char *url, struct download_state *st,
 int tedge_download(struct tedge_download *req)
 {
 	struct download_state st = { .req = req };
-	char url[URL_MAX];
-	char next[URL_MAX];
+	char url[TEDGE_URL_MAX];
+	char next[TEDGE_URL_MAX];
 	int hops = 0;
 
 	if (req == NULL || req->url == NULL || req->sink == NULL) {

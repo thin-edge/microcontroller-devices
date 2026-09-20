@@ -173,6 +173,97 @@ ZTEST(tedge_remote_access, test_allow_list)
 ZTEST_SUITE(tedge_remote_access, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
+/* URLs and the token rule (firmware update)                                 */
+/* ------------------------------------------------------------------------ */
+
+/* tedge_url.c asks the client which tenant it talks to; the test decides. */
+static const char *test_tenant = "tedge-dev05.preprod.c8y.io";
+
+const char *tedge_c8y_host(void)
+{
+	return test_tenant;
+}
+
+ZTEST(tedge_url, test_split)
+{
+	char host[64];
+	const char *path;
+	uint16_t port;
+	bool tls;
+
+	zassert_equal(tedge_url_split("https://example.com/a/b.bin", &tls, host,
+				      sizeof(host), &port, &path),
+		      0);
+	zassert_true(tls);
+	zassert_str_equal(host, "example.com");
+	zassert_equal(port, 443);
+	zassert_str_equal(path, "/a/b.bin");
+
+	zassert_equal(tedge_url_split("http://10.0.0.5:8080/f", &tls, host,
+				      sizeof(host), &port, &path),
+		      0);
+	zassert_false(tls);
+	zassert_str_equal(host, "10.0.0.5");
+	zassert_equal(port, 8080);
+
+	/* No path means the root. */
+	zassert_equal(tedge_url_split("https://example.com", &tls, host,
+				      sizeof(host), &port, &path),
+		      0);
+	zassert_str_equal(path, "/");
+
+	/* Anything else is refused. */
+	zassert_true(tedge_url_split("ftp://example.com/x", &tls, host,
+				     sizeof(host), &port, &path) < 0);
+	zassert_true(tedge_url_split("https:///x", &tls, host, sizeof(host),
+				     &port, &path) < 0);
+}
+
+ZTEST(tedge_url, test_is_tenant)
+{
+	/* The tenant itself, and the tenant-ID host Cumulocity serves
+	 * binaries from, are both inside the tenant's domain. */
+	zassert_true(tedge_url_is_tenant("tedge-dev05.preprod.c8y.io"));
+	zassert_true(tedge_url_is_tenant("t297258657.preprod.c8y.io"));
+
+	/* Anywhere else is not, including a look-alike. */
+	zassert_false(tedge_url_is_tenant("github.com"));
+	zassert_false(tedge_url_is_tenant("release-assets.githubusercontent.com"));
+	zassert_false(tedge_url_is_tenant("preprod.c8y.io.evil.example"));
+	zassert_false(tedge_url_is_tenant(""));
+}
+
+ZTEST(tedge_url, test_resolve_redirect)
+{
+	const char *base = "https://t1.preprod.c8y.io/inventory/binaries/42";
+	char out[256];
+
+	/* Absolute. */
+	zassert_equal(tedge_url_resolve(base, "https://cdn.example/x.bin", out,
+					sizeof(out)),
+		      0);
+	zassert_str_equal(out, "https://cdn.example/x.bin");
+
+	/* Root-relative keeps the scheme and host. */
+	zassert_equal(tedge_url_resolve(base, "/other/path", out, sizeof(out)),
+		      0);
+	zassert_str_equal(out, "https://t1.preprod.c8y.io/other/path");
+
+	/* Relative. */
+	zassert_equal(tedge_url_resolve(base, "next.bin", out, sizeof(out)), 0);
+	zassert_str_equal(out, "https://t1.preprod.c8y.io/next.bin");
+
+	/* An empty target, or one that will not fit, is refused. */
+	zassert_true(tedge_url_resolve(base, "", out, sizeof(out)) < 0);
+	char tiny[8];
+
+	zassert_true(tedge_url_resolve(base, "https://cdn.example/x.bin", tiny,
+				       sizeof(tiny)) < 0);
+}
+
+ZTEST_SUITE(tedge_url, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
 /* PKCS#7 (the enrollment reply)                                             */
 /* ------------------------------------------------------------------------ */
 

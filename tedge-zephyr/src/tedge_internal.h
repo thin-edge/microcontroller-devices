@@ -121,6 +121,13 @@ struct tedge_download {
 };
 
 int tedge_download(struct tedge_download *req);
+/** Redirect targets can be ~1 KB (a release asset). */
+#define TEDGE_URL_MAX  1152
+#define TEDGE_HOST_MAX 128
+
+/** Split "scheme://host[:port]/path"; @p path points into @p url. */
+int tedge_url_split(const char *url, bool *tls, char *host, size_t host_len,
+		    uint16_t *port, const char **path);
 /** True when @p host is the tenant or inside its parent domain. */
 bool tedge_url_is_tenant(const char *host);
 /** Resolve a redirect target against the URL it came from. */
@@ -145,6 +152,11 @@ struct tedge_fw_event {
 int tedge_fw_request(const char *line, char *reason, size_t rlen);
 /** Next result from the download thread; 0 when @p ev was filled. */
 int tedge_fw_poll_event(struct tedge_fw_event *ev);
+/**
+ * Start the deadline by which a test-booted image must confirm itself; after
+ * it, the device resets so the bootloader can roll the image back.
+ */
+void tedge_fw_arm_confirm_deadline(void);
 /** Confirm a test boot, or report a rollback. Called once per session. */
 void tedge_fw_on_connected(void);
 /** The running image's version, from MCUboot's header. */

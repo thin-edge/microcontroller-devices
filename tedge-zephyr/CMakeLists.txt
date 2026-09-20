@@ -25,6 +25,7 @@ if(CONFIG_TEDGE)
   zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE
     src/tedge_firmware.c
     src/tedge_http_download.c
+    src/tedge_url.c
   )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_REMOTE_ACCESS
     src/tedge_remote_access.c

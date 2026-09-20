@@ -427,6 +427,11 @@ int tedge_init(const struct tedge_identity *id, const struct tedge_hooks *h)
 						      : 0));
 	net_mgmt_add_event_callback(&l4_cb);
 
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	/* Before anything else: a test-booted image must confirm itself or be
+	 * rolled back, whether or not it ever reaches the cloud. */
+	tedge_fw_arm_confirm_deadline();
+#endif
 	initialised = true;
 	LOG_INF("tedge-zephyr %s: device \"%s\" (%s)", tedge_version(),
 		identity.external_id, identity.type);

@@ -111,6 +111,25 @@ image, for devices that want a longer probation.
 `IMG_ERASE_PROGRESSIVELY` (the spike needed progressive erase to keep the
 download from stalling).
 
+### D10: An unconfirmed image resets itself
+
+An image that cannot reach the cloud never confirms, and **nothing else
+would reset the device**: the network is up, so the application's
+connectivity watchdog sees nothing wrong, and the client simply retries with
+a growing back-off. Seen on hardware: a bad image ran for 8 minutes, happily
+retrying, while MCUboot waited for a reset that never came.
+
+So a test-booted image arms `TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S` (default
+900 s) at start-up and resets itself when it expires, which lets the
+bootloader roll it back. Confirmation cancels it.
+
+**The limit of this:** the deadline lives in the *new* image, so it only
+protects against images that carry it. An image without it (an older build,
+or one that crashes before the client starts) still needs an external reset
+— a hardware watchdog, or the application's own. This is worth saying aloud
+in the README: MCUboot's revert is the safety net, and the deadline is what
+pulls the trigger.
+
 ### D8: The same version is refused
 
 A `515` whose name and version match the running image SHALL be failed at
@@ -184,6 +203,15 @@ devices on a metered link.
 | Install the running version | FAILED, "zephyr-modbus-server 0.6.0 is already running"; nothing downloaded, no reboot |
 | Install an older version (0.6.0 → 0.4.0) | SUCCESSFUL: downgrades are allowed, only the *same* version is refused |
 | Progress | `te/device/<id>///progress/firmware` at QoS 0: `downloading` every 128 KB, then `installing`, then `done` |
+
+### Rollback (tasks 4.3, 2.5)
+
+| Check | Result |
+|---|---|
+| An image that cannot reach the cloud (a tenant host that does not resolve) | it downloads and boots, never confirms, and after 180 s resets itself; MCUboot restores the previous image |
+| What the operator sees | the restored image reports `502`: "1.2.0-deadline-test was rolled back; the device is running 1.1.0", and the inventory shows the restored version |
+| Progress | a final `{"phase":"failed","reason":"rolled back"}` message |
+| Without the deadline (an image built before it) | the bad image ran for 8 minutes retrying; the rollback only happened when something else reset the device. This is why D10 exists |
 
 **Three findings, all fixed:**
 

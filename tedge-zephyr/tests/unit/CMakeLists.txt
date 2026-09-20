@@ -16,5 +16,6 @@ target_sources(app PRIVATE
   ../../src/tedge_backoff.c
   ../../src/tedge_pkcs7.c
   ../../src/tedge_ra_allow_list.c
+  ../../src/tedge_url.c
 )
 target_include_directories(app PRIVATE ../../include ../../src)

@@ -278,6 +278,40 @@ static void download_thread(void *a, void *b, void *c)
 }
 
 /* ------------------------------------------------------------------------ */
+/* The confirm deadline                                                      */
+/* ------------------------------------------------------------------------ */
+
+/* A test-booted image that never reaches the cloud would otherwise run for
+ * ever: the network is up, so nothing else resets the device and the
+ * bootloader never gets to roll it back. */
+static void confirm_deadline_fn(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	if (boot_is_img_confirmed()) {
+		return;
+	}
+	LOG_ERR("firmware: this image has not confirmed itself within %d s; "
+		"resetting so the bootloader can roll it back",
+		CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S);
+	tedge_platform_reset();
+}
+
+static K_WORK_DELAYABLE_DEFINE(confirm_deadline, confirm_deadline_fn);
+
+void tedge_fw_arm_confirm_deadline(void)
+{
+	if (CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S == 0 ||
+	    boot_is_img_confirmed()) {
+		return;
+	}
+	LOG_INF("firmware: running an unconfirmed image; it has %d s to "
+		"confirm itself", CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S);
+	(void)k_work_schedule(&confirm_deadline,
+			      K_SECONDS(CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S));
+}
+
+/* ------------------------------------------------------------------------ */
 /* The operation                                                             */
 /* ------------------------------------------------------------------------ */
 
@@ -397,6 +431,7 @@ void tedge_fw_on_connected(void)
 			LOG_ERR("firmware: could not confirm the image (%d)", rc);
 			return;
 		}
+		(void)k_work_cancel_delayable(&confirm_deadline);
 		LOG_INF("firmware: %s confirmed", job.version);
 		post(TEDGE_FW_INSTALLED, "%s", job.version);
 		publish_progress("done", 100, 0, NULL);

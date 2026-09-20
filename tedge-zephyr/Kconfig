@@ -338,6 +338,18 @@ config TEDGE_FIRMWARE_CONFIRM_AFTER_CONNECT
 	  confirms it, and any reset rolls it back. The application's
 	  firmware-check hook is consulted either way.
 
+config TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S
+	int "Seconds a test-booted image has to confirm itself"
+	default 900
+	range 0 86400
+	help
+	  A new image that cannot reach the cloud never confirms, and nothing
+	  else would reset the device: the network is up, so the
+	  application's connectivity watchdog sees nothing wrong. When this
+	  many seconds pass without a confirmation, the client resets the
+	  device so the bootloader can roll the image back. 0 disables it,
+	  leaving the rollback to whatever else resets the device.
+
 config TEDGE_FIRMWARE_MAX_REDIRECTS
 	int "HTTP redirects to follow"
 	default 3
