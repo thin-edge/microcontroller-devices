@@ -556,8 +556,14 @@ tedge-zephyr/
 ├── profiles/                 feature-set overlays (minimal, full)
 ├── samples/minimal/          builds with Zephyr and this module only
 ├── tests/                    unit tests (native_sim) and Kconfig checks
+├── docs/                     findings worth keeping (upstream bugs, debugging)
 └── scripts/                  checks (self-containment, no logged secrets)
 ```
+
+`docs/debugging-against-real-devices.md` is worth reading before chasing a
+failure on hardware: which counters to trust, the two ESP32 allocation
+failures that look alike, and the measurement traps that make a broken
+session look healthy.
 
 This directory is self-contained. Nothing in it may reference files outside
 it; `scripts/check-independence.py` enforces that, so the directory can move

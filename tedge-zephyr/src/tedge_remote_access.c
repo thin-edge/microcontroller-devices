@@ -41,6 +41,16 @@ LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
 #define MAX_SESSIONS CONFIG_TEDGE_REMOTE_ACCESS_MAX_SESSIONS
 #define BUF_SIZE     CONFIG_TEDGE_REMOTE_ACCESS_BUF_SIZE
 #define TELNET_PORT  23
+/* How long the bridge waits when nothing is moving. */
+#define IDLE_POLL_MS 1000
+/* And while bytes are flowing: straight back for more. Pacing this was
+ * tried against the allocation failures a saturating session provokes and
+ * made them worse, not better. What a tunnel actually runs out of is
+ * receive buffers on the board — see
+ * docs/debugging-against-real-devices.md — so the answer is
+ * CONFIG_NET_BUF_DATA_SIZE and NET_BUF_RX_COUNT there, not a throttle
+ * here. */
+#define ACTIVE_POLL_MS 0
 
 struct session {
 	char host[64];
@@ -143,6 +153,16 @@ static int policy_check(const struct in_addr *addr, const char *host,
 /* Sockets                                                                   */
 /* ------------------------------------------------------------------------ */
 
+/* Turn off Nagle. Best effort: a transport that does not support it is no
+ * worse off than before. */
+static void set_nodelay(int fd)
+{
+	int on = 1;
+
+	(void)zsock_setsockopt(fd, IPPROTO_TCP, ZSOCK_TCP_NODELAY, &on,
+			       sizeof(on));
+}
+
 static int tcp_connect(const struct in_addr *addr, uint16_t port)
 {
 	struct sockaddr_in sa = { .sin_family = AF_INET,
@@ -159,6 +179,13 @@ static int tcp_connect(const struct in_addr *addr, uint16_t port)
 		zsock_close(fd);
 		return ret;
 	}
+	/* An interactive session is a stream of small writes — keystrokes one
+	 * way, a shell's or a TUI's output the other. Nagle holds each of
+	 * them until the previous segment is acknowledged, and against a peer
+	 * doing delayed ACK that is tens to hundreds of milliseconds per
+	 * exchange. Line-at-a-time output survives it; anything that repaints
+	 * a screen does not. */
+	set_nodelay(fd);
 	return fd;
 }
 
@@ -197,6 +224,7 @@ static int wss_connect(struct session *s, int *http_fd_out)
 			       sizeof(tags));
 	(void)zsock_setsockopt(fd, ZSOCK_SOL_TLS, ZSOCK_TLS_HOSTNAME, host,
 			       strlen(host) + 1);
+	set_nodelay(fd);
 	ret = zsock_connect(fd, res->ai_addr, res->ai_addrlen);
 	zsock_freeaddrinfo(res);
 	if (ret < 0) {
@@ -313,13 +341,20 @@ static void bridge(void *a, void *b, void *c)
 	}
 
 	last_activity = k_uptime_get();
-	for (;;) {
+	/* While bytes are flowing, come straight back for more instead of
+	 * waiting on the next poll: a second between buffers caps the tunnel
+	 * at one BUF_SIZE per poll (~2 KB/s at the default 2048), which is
+	 * enough for a command and its output but not for anything that
+	 * repaints a screen. The long wait is only for an idle session; a
+	 * busy one paces at ACTIVE_POLL_MS instead. */
+	for (int poll_ms = IDLE_POLL_MS;;) {
 		struct zsock_pollfd fds[2] = {
 			{ .fd = tcp, .events = ZSOCK_POLLIN },
 			{ .fd = ws, .events = ZSOCK_POLLIN },
 		};
+		bool moved = false;
 
-		ret = zsock_poll(fds, 2, 1000);
+		ret = zsock_poll(fds, 2, poll_ms);
 		if (ret < 0) {
 			why = "poll error";
 			break;
@@ -339,6 +374,7 @@ static void bridge(void *a, void *b, void *c)
 				break;
 			}
 			up += n;
+			moved = true;
 			last_activity = k_uptime_get();
 		}
 		if (fds[1].revents & ZSOCK_POLLIN) {
@@ -374,8 +410,10 @@ static void bridge(void *a, void *b, void *c)
 			if (closed) {
 				break;
 			}
+			moved = true;
 			last_activity = k_uptime_get();
 		}
+		poll_ms = moved ? ACTIVE_POLL_MS : IDLE_POLL_MS;
 		if ((fds[0].revents | fds[1].revents) &
 		    (ZSOCK_POLLHUP | ZSOCK_POLLERR)) {
 			why = (fds[0].revents & (ZSOCK_POLLHUP | ZSOCK_POLLERR))
