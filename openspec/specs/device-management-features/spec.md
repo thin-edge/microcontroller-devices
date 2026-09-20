@@ -32,7 +32,9 @@ shell command, log upload, remote access, configuration management and
 certificate renewal. The transport (direct to Cumulocity, or via a thin-edge.io
 gateway) and the authentication method (Cumulocity CA certificate, or bootstrap
 basic-auth credentials) SHALL each be a Kconfig choice. A feature that has not
-been implemented yet SHALL be present in the menu but not selectable.
+been implemented yet SHALL be present in the menu but not selectable, and
+the public API calls that belong to it SHALL return "not supported" rather
+than failing silently.
 
 #### Scenario: Feature removed to save resources
 

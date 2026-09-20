@@ -121,6 +121,13 @@ restart hook the chance to respond.
 - **THEN** the client publishes it on the configured transport, and no telemetry
   is read from anything outside the calls the application makes
 
+#### Scenario: Telemetry from the application's own threads
+
+- **WHEN** the application publishes telemetry from a thread of its own
+  while the client is busy with an operation
+- **THEN** the call returns without waiting for the network, and the client
+  sends the message on its own thread
+
 #### Scenario: Application vetoes a restart
 
 - **WHEN** a restart operation arrives and the application's restart hook
