@@ -81,15 +81,22 @@ static int on_response(struct http_response *rsp, enum http_final_call final,
 	return 0;
 }
 
-/* The Location header of a redirect. */
+/* Headers worth keeping: a redirect's target, and the length a
+ * "Content-Range: bytes 0-887801/887802" reply states. */
 static char redirect_to[TEDGE_URL_MAX];
-static bool in_location;
+static enum { HDR_OTHER, HDR_LOCATION, HDR_CONTENT_RANGE } header_kind;
 
 static int on_header_field(struct http_parser *parser, const char *at,
 			   size_t length)
 {
 	ARG_UNUSED(parser);
-	in_location = (length == 8 && strncasecmp(at, "location", 8) == 0);
+	if (length == 8 && strncasecmp(at, "location", 8) == 0) {
+		header_kind = HDR_LOCATION;
+	} else if (length == 13 && strncasecmp(at, "content-range", 13) == 0) {
+		header_kind = HDR_CONTENT_RANGE;
+	} else {
+		header_kind = HDR_OTHER;
+	}
 	return 0;
 }
 
@@ -97,9 +104,26 @@ static int on_header_value(struct http_parser *parser, const char *at,
 			   size_t length)
 {
 	ARG_UNUSED(parser);
-	if (in_location && length < sizeof(redirect_to)) {
+	if (header_kind == HDR_LOCATION && length < sizeof(redirect_to)) {
 		memcpy(redirect_to, at, length);
 		redirect_to[length] = '\0';
+	} else if (header_kind == HDR_CONTENT_RANGE && current != NULL) {
+		/* "bytes <first>-<last>/<total>"; anything else is ignored. */
+		char value[64];
+		const char *slash;
+
+		if (length < sizeof(value)) {
+			memcpy(value, at, length);
+			value[length] = '\0';
+			slash = strrchr(value, '/');
+			if (slash != NULL && slash[1] != '*') {
+				int64_t total = strtoll(slash + 1, NULL, 10);
+
+				if (total > 0) {
+					current->req->total = total;
+				}
+			}
+		}
 	}
 	return 0;
 }
@@ -117,7 +141,7 @@ static int fetch_once(const char *url, struct download_state *st,
 					.ai_socktype = SOCK_STREAM };
 	struct zsock_addrinfo *res = NULL;
 	struct http_request req = { 0 };
-	const char *headers[2] = { 0 };
+	const char *headers[3] = { 0 };
 	static uint8_t rx[RX_SIZE];
 	char auth[1100];
 	char host[TEDGE_HOST_MAX];
@@ -164,6 +188,13 @@ static int fetch_once(const char *url, struct download_state *st,
 		return ret;
 	}
 
+	/* Ask for the whole file as a range: a server that supports ranges
+	 * answers 206 with "Content-Range: bytes 0-<last>/<total>", which is
+	 * the only way to learn the size of a chunked transfer (Cumulocity
+	 * serves binaries chunked). A server that ignores it answers 200 as
+	 * usual. */
+	headers[h++] = "Range: bytes=0-\r\n";
+
 	/* The token is for the tenant only, never a redirect target. */
 	if (st->req->token != NULL && st->req->token[0] != '\0' &&
 	    tedge_url_is_tenant(host)) {
@@ -175,7 +206,7 @@ static int fetch_once(const char *url, struct download_state *st,
 	cb.on_header_field = on_header_field;
 	cb.on_header_value = on_header_value;
 	redirect_to[0] = '\0';
-	in_location = false;
+	header_kind = HDR_OTHER;
 	st->status = 0;
 
 	req.method = HTTP_GET;
@@ -205,7 +236,7 @@ static int fetch_once(const char *url, struct download_state *st,
 		*redirected = true;
 		return 0;
 	}
-	if (st->status != 200) {
+	if (st->status != 200 && st->status != 206) {
 		LOG_ERR("download: the server answered %d", st->status);
 		return -EIO;
 	}

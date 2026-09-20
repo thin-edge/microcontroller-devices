@@ -151,9 +151,12 @@ device-management traffic.
  "percent":45,"bytes":405504,"total":898378}
 ```
 
-Cumulocity serves binaries **chunked**, so there is no `Content-Length` and
-no percentage to report: progress then carries `bytes` only, every 128 KB.
-When a server does send a length (a plain file host), `percent` is included
+Cumulocity serves binaries **chunked**, so there is no `Content-Length`.
+The download therefore asks for the whole file as a range (`Range: bytes=0-`)
+and reads the size out of the `Content-Range: bytes 0-887801/887802` header
+of the `206` reply (suggested by the tenant owner, 2026-09-20). A server
+that ignores the range header answers `200` as before, and progress then
+carries `bytes` only, every 128 KB. With a known size, `percent` is included
 and the step is `TEDGE_FIRMWARE_PROGRESS_PERCENT` (default 10).
 
 Phases: `downloading` (never more than one message a second), then `installing` (the test boot is
@@ -220,9 +223,12 @@ devices on a metered link.
    PENDING never left that state. The client now reports `501` for every
    firmware operation it receives, then `502` with the reason if it refuses.
    This also cleared a queue of operations that had piled up.
-2. **No percentage for a Cumulocity download.** The binary is chunked, so
-   `Content-Length` is absent; progress reports `bytes` every 128 KB instead,
-   and `percent` only when a server provides a length.
+2. **No percentage for a Cumulocity download, at first.** The binary is
+   chunked, so `Content-Length` is absent. The tenant owner pointed out that
+   a range request gets the size back in `Content-Range`, so the download now
+   sends `Range: bytes=0-`, accepts `206`, and reports true percentages:
+   `{"phase":"downloading","percent":40,"bytes":355866,"total":887978}`. A
+   server that ignores ranges still works, reporting bytes only.
 3. **The version to compare is MCUboot's,** not the application's
    `APP_VERSION_STRING`: an image built from the same source with a different
    signed version must still be installable. The client reads the running
