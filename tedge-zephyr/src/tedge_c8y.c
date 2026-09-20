@@ -1062,6 +1062,16 @@ static int session_start(void)
 	}
 
 	publish_supported_ops();
+
+	/* Ask Cumulocity for anything still PENDING for this device.
+	 *
+	 * This is what makes operations raised while the device was away
+	 * arrive at all, and it governs delivery on both channels — the
+	 * SmartREST s/ds topic and devicecontrol/notifications alike. Without
+	 * it an operation can sit PENDING until something else prompts a
+	 * redelivery, which looks from the cloud like a device that has
+	 * stopped listening. */
+	(void)tedge_c8y_publish_sr("500");
 	{
 #if defined(CONFIG_TEDGE_PARAMETERS_SELF)
 		int required = tedge_self_required_interval_min();
