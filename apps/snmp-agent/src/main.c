@@ -15,6 +15,9 @@
 #include "net.h"
 #include "display.h"
 #include "snmp_agent.h"
+#if defined(CONFIG_TEDGE)
+#include "tedge_glue.h"
+#endif
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -50,6 +53,15 @@ int main(void)
 		return 0;
 	}
 	LOG_INF("SNMP agent running on UDP port %d", CONFIG_APP_SNMP_PORT);
+
+#if defined(CONFIG_TEDGE)
+	/* Device management runs alongside the protocol agent. */
+	if (tedge_glue_start() == 0) {
+#if defined(CONFIG_TEDGE_TELEMETRY)
+		tedge_glue_start_telemetry();
+#endif
+	}
+#endif
 
 	return 0;
 }
