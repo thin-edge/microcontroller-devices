@@ -20,3 +20,6 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(opcua_server_firmware C)
 
 target_sources(app PRIVATE src/main.c)
+# The glue to the device-management client lives in the application, never in
+# the module.
+target_sources_ifdef(CONFIG_TEDGE app PRIVATE src/tedge_glue.c)

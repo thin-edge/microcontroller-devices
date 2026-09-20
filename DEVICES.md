@@ -9,6 +9,11 @@ Last verified **2026-09-20** against `tedge-dev05.preprod.c8y.io`.
 Authentication is **x.509 from the Cumulocity CA** everywhere
 (`CONFIG_TEDGE_AUTH_C8Y_CA`); no board uses bootstrap basic-auth.
 
+All three applications — `modbus-server`, `snmp-agent` and `opcua-server` —
+can carry the client: each has a `src/tedge_glue.c` built when
+`CONFIG_TEDGE=y`. Whether a given *board* can is a separate question,
+answered below.
+
 ## Where they are
 
 | Board | Port | App | Cumulocity external ID |

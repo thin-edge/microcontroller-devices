@@ -6,4 +6,14 @@
 
 mainmenu "OPC-UA Server Firmware"
 
+config APP_TEDGE_MEASUREMENT_TYPE
+	string "Measurement type published to the cloud"
+	depends on TEDGE_TELEMETRY
+	default "server"
+
+config APP_TEDGE_MEASUREMENT_INTERVAL_S
+	int "Seconds between measurements"
+	depends on TEDGE_TELEMETRY
+	default 30
+
 source "Kconfig.zephyr"
