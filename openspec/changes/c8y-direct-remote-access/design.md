@@ -183,3 +183,17 @@ EXECUTING operation is not proof that the device ignored it.
 An operation created while the local `c8y remoteaccess server` is shutting
 down stays EXECUTING: the device never receives it. Seen twice; it is a
 cloud-side artefact, not a device fault.
+
+### Telnet, reboot and leak checks (C6, 2026-09-20)
+
+| Check | Result |
+|---|---|
+| Telnet target (a server on the Pi's port 23) | the first bytes to the cloud client are `ff fb 01 ff fb 03` (WILL ECHO, WILL SGA), then the target's banner; typed text echoes back |
+| Reboot with a session open | during: `activeSessions` 1, `freeSessions` 0, with the target and start time; after the reboot: 0 and 1 with an empty session list, in the device log and in the managed object |
+| TLS heap across two tunnels | 34,828 B with MQTT alone, 69,624 B with a tunnel (peak 86,620 B, as the spike's 86.2 KB), back to 34,828 B after each close |
+| TCP contexts | 2 at rest, 4 with a tunnel, 3 briefly while closing, back to 2 |
+| Footprint (C6, Modbus + client) | remote access adds **23 KB of text** (775 → 798 KB) and 50 KB of libc heap, most of it the larger TLS heap the second session needs |
+
+The reference Smart Function shape is settled: the tenant's function maps
+`te/device/<id>///twin/tedge_RemoteAccess` to a `remoteAccess` fragment on
+the managed object, payload unchanged.

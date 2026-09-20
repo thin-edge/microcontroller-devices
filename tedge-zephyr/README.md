@@ -11,10 +11,11 @@ already does:
 - log retrieval;
 - configuration management.
 
-> **Status: skeleton.** This is the Kconfig menu, a public header outline
-> (`include/tedge/tedge.h`, marked unstable) and a minimal sample. No feature
-> logic exists yet; see `openspec/changes/archive/2026-09-19-c8y-direct-spikes/` in the incubating
-> repository for the plan.
+> **Status: early.** Onboarding, the connection, device state, restart and
+> remote access work and are verified on hardware (ESP32-C6, ESP32-S3).
+> Firmware update, telemetry, logs, configuration and certificate renewal are
+> not implemented yet: their API calls return `-ENOTSUP`, and the header says
+> which change implements each. The API may still change.
 
 ## Transports
 
@@ -64,8 +65,44 @@ The module is a guest in your image.
 | Watchdog | Owns the task watchdog | Calls an optional progress hook from each thread it owns |
 | Resources | Provides the socket, poll and mbedTLS configuration listed below | Runs its own threads with its own bounded heap; settings under `tedge/`; TLS credential tags from `CONFIG_TEDGE_TLS_TAG_BASE` |
 
-The requirements on your configuration (socket counts, poll slots, mbedTLS
-options) are filled in as features are implemented.
+### What your application must configure
+
+The client selects the protocol pieces it needs (MQTT, sockets, TLS sockets,
+credentials, SNTP, settings). These are yours to size, because they are
+shared with the rest of your image:
+
+| Option | Why, and what to set |
+|---|---|
+| `CONFIG_MBEDTLS_HEAP_SIZE` | The TLS memory for **all** TLS in your image. One session needs **52 KB** while it shakes hands and holds **35 KB**; every extra concurrent session (a remote-access tunnel, a download) needs another 52 KB peak. 64 KB for the connection alone, **96 KB** with remote access. |
+| `CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN` | 16384. 8192 works on the MQTT Service and saves 16 KB per session, but leaves only ~2 KB of margin over today's server chain. |
+| `CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS` | One for the client, plus one per remote-access session. |
+| `CONFIG_NET_MAX_CONN`, `CONFIG_NET_MAX_CONTEXTS` | About 4 more than your application needs: a closed TLS connection holds its TCP context while it finishes closing. |
+| `CONFIG_SECURE_STORAGE_ITS_STORE_IMPLEMENTATION_*` | The device key lives in PSA ITS. It is a Kconfig choice, so the module cannot pick it; `..._SETTINGS` works with an NVS settings backend. |
+| mbedTLS ciphersuites and `CONFIG_PSA_WANT_ECC_SECP_R1_256` | The TLS 1.2 baseline Cumulocity needs; see `profiles/`. |
+
+`profiles/minimal.conf`, `profiles/full.conf` and
+`profiles/remote-access-enabler.conf` set all of this for you.
+
+### Measured cost (ESP32-C6, Modbus application, 2026-09-20)
+
+| Build | Flash (text) | libc heap left |
+|---|---|---|
+| Application alone | 616 KB | 296 KB |
+| + client (onboarding, connection, restart) | 775 KB | 180 KB |
+| + remote access | 798 KB | 130 KB |
+
+With the TLS heap in PSRAM on an ESP32-S3, the client costs no internal RAM
+beyond its own buffers.
+
+### Security limitations
+
+- The device key is stored in PSA ITS, encrypted with a key derived from the
+  device ID, and is exported into RAM while the TLS credential is registered.
+  It is obfuscated, not protected: use flash encryption for a real
+  deployment.
+- Remote access reaches whatever the target policy allows. Keep the default
+  (the device's own subnets) or an allow-list, and narrow it further from the
+  application.
 
 ## Layout
 
@@ -77,8 +114,8 @@ tedge-zephyr/
 ├── src/                      implementation
 ├── profiles/                 feature-set overlays (minimal, full)
 ├── samples/minimal/          builds with Zephyr and this module only
-├── tests/                    Kconfig dependency checks
-└── scripts/                  checks (independence from the host repository)
+├── tests/                    unit tests (native_sim) and Kconfig checks
+└── scripts/                  checks (self-containment, no logged secrets)
 ```
 
 This directory is self-contained. Nothing in it may reference files outside
