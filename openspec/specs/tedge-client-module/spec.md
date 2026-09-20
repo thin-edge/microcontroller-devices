@@ -2,7 +2,6 @@
 
 ## Purpose
 How the tedge-zephyr client is packaged and integrated: a self-contained Zephyr module with a namespaced API that any Zephyr application can include, where the host application owns connectivity and the module owns bounded resources, and which can move into its own repository unchanged.
-
 ## Requirements
 ### Requirement: The client is a self-contained Zephyr module
 
@@ -62,15 +61,26 @@ interface goes down. The application's connectivity code (in this repository,
 The module SHALL run its work on its own thread(s), each with a stack size and
 priority set in Kconfig. It SHALL NOT block the system work queue. It SHALL
 allocate its dynamic memory from its own bounded heap, sized in Kconfig, and not
-from the application's heap. The module's documentation SHALL list what it
-requires from the application's configuration: socket and poll-slot counts,
-mbedTLS options, and task-watchdog channels.
+from the application's heap. TLS memory is the exception: it comes from
+Zephyr's mbedTLS heap, which is global and part of the application's
+configuration, so the module's documentation SHALL state the mbedTLS heap each
+profile needs (per concurrent TLS session and TLS record size). The module's
+documentation SHALL also list what it requires from the application's
+configuration: socket, TCP-connection and poll-slot counts, mbedTLS options,
+and task-watchdog channels.
 
 #### Scenario: Client memory is capped
 
 - **WHEN** the client's operations need more memory than its configured heap
 - **THEN** the affected operation fails with a reason, and the application's
   own allocations are unaffected
+
+#### Scenario: TLS heap too small
+
+- **WHEN** the application's mbedTLS heap is smaller than the documented need
+  and a handshake runs out of memory
+- **THEN** the client logs that the TLS handshake failed for lack of mbedTLS
+  heap, backs off, and the application keeps running
 
 ### Requirement: Integration hooks for the host application
 
@@ -88,6 +98,14 @@ The public API SHALL let the host application:
 
 The module SHALL NOT call `sys_reboot()` without first giving the application's
 restart hook the chance to respond.
+
+#### Scenario: Application narrows remote-access targets
+
+- **WHEN** the application registers a remote-access target hook and the
+  cloud asks for a tunnel to a target the built-in policy allows but the hook
+  refuses
+- **THEN** the client opens no connection and fails the operation with the
+  hook's reason
 
 #### Scenario: Application-supplied telemetry
 
