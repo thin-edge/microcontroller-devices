@@ -190,24 +190,111 @@ static int cmd_crash(const struct shell *sh, size_t argc, char **argv)
 }
 #endif
 
-SHELL_STATIC_SUBCMD_SET_CREATE(sub_tedge,
-	SHELL_CMD(diag, NULL, "client state and TLS heap", cmd_diag),
+/* These hang off the client's own "tedge" root, which tedge-zephyr defines.
+ * An application that registered a root of the same name would give the
+ * device two of them, and the shell would only ever reach one. */
+SHELL_SUBCMD_ADD((tedge), diag, NULL, "client state and TLS heap", cmd_diag,
+		 1, 0);
 #if defined(CONFIG_APP_TEDGE_TEST_FAULT_COMMAND)
-	SHELL_CMD(crash, NULL, "crash on purpose (test builds only)", cmd_crash),
+SHELL_SUBCMD_ADD((tedge), crash, NULL, "crash on purpose (test builds only)",
+		 cmd_crash, 1, 0);
 #endif
 #if defined(CONFIG_TEDGE_TELEMETRY)
-	SHELL_CMD_ARG(event, NULL, "publish an event: event [text]", cmd_event,
-		      1, 1),
-	SHELL_CMD_ARG(alarm, NULL, "raise an alarm: alarm [severity] [text]",
-		      cmd_alarm, 1, 2),
-	SHELL_CMD_ARG(clear, NULL, "clear an alarm: clear [type]", cmd_clear,
-		      1, 1),
-	SHELL_CMD_ARG(flood, NULL, "publish N measurements: flood [N]",
-		      cmd_flood, 1, 1),
+SHELL_SUBCMD_ADD((tedge), event, NULL, "publish an event: event [text]",
+		 cmd_event, 1, 1);
+SHELL_SUBCMD_ADD((tedge), alarm, NULL,
+		 "raise an alarm: alarm [severity] [text]", cmd_alarm, 1, 2);
+SHELL_SUBCMD_ADD((tedge), clear, NULL, "clear an alarm: clear [type]",
+		 cmd_clear, 1, 1);
+SHELL_SUBCMD_ADD((tedge), flood, NULL, "publish N measurements: flood [N]",
+		 cmd_flood, 1, 1);
 #endif
-	SHELL_SUBCMD_SET_END);
-SHELL_CMD_REGISTER(tedge, &sub_tedge, "thin-edge.io client", NULL);
 #endif /* CONFIG_SHELL */
+
+#if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
+/* ------------------------------------------------------------------------ */
+/* What an operator may change from the cloud                                */
+/*                                                                           */
+/* The declaration is const, so it costs flash and no RAM, and the defaults  */
+/* are this application's existing Kconfig values rather than a second set   */
+/* written out beside them: whatever the image was built with is what the    */
+/* device starts from, and anything an operator sets afterwards replaces it. */
+/*                                                                           */
+/* Register the schema in the tenant with "tedge params schema".             */
+/* ------------------------------------------------------------------------ */
+
+#define PUMP_SET "pump"
+
+static const struct tedge_parameter pump_params[] = {
+	TEDGE_PARAM_INT("interval_s", CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S,
+			5, 3600, "Seconds between measurements"),
+	TEDGE_PARAM_BOOL("telemetry", true,
+			 "Publish measurements to the cloud"),
+	TEDGE_PARAM_STRING("measurement_type",
+			   CONFIG_APP_TEDGE_MEASUREMENT_TYPE, 31,
+			   "What the cloud files these measurements under"),
+};
+
+static int32_t param_interval_s(void)
+{
+	int32_t seconds;
+
+	if (tedge_parameter_get_int(PUMP_SET, "interval_s", &seconds) == 0) {
+		return seconds;
+	}
+	return CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S;
+}
+
+static bool param_telemetry_on(void)
+{
+	bool on;
+
+	if (tedge_parameter_get_bool(PUMP_SET, "telemetry", &on) == 0) {
+		return on;
+	}
+	return true;
+}
+
+static const char *param_measurement_type(void)
+{
+	static char type[32];
+
+	if (tedge_parameter_get_string(PUMP_SET, "measurement_type", type,
+				       sizeof(type)) == 0 && type[0] != '\0') {
+		return type;
+	}
+	return CONFIG_APP_TEDGE_MEASUREMENT_TYPE;
+}
+
+static void telemetry_fn(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(telemetry_work, telemetry_fn);
+
+/* The client has already checked every value against the declaration. What
+ * is left is the one rule only this application knows: Cumulocity files a
+ * measurement under its type, and a type with a space in it is not one. */
+static int params_changed(const char *set, char *reason, size_t reason_len,
+			  void *user_data)
+{
+	const char *type = param_measurement_type();
+
+	ARG_UNUSED(set);
+	ARG_UNUSED(user_data);
+
+	for (const char *p = type; *p != '\0'; p++) {
+		if (*p == ' ' || *p == '\t') {
+			snprintf(reason, reason_len,
+				 "measurement_type '%s' cannot contain spaces",
+				 type);
+			return -EINVAL;
+		}
+	}
+	/* Take effect now, rather than after one more of the old interval. */
+	(void)k_work_reschedule(&telemetry_work, K_SECONDS(param_interval_s()));
+	LOG_INF("parameters applied: interval=%ds telemetry=%s type=%s",
+		param_interval_s(), param_telemetry_on() ? "on" : "off", type);
+	return 0;
+}
+#endif /* CONFIG_TEDGE_PARAMETERS && CONFIG_TEDGE_TELEMETRY */
 
 #if defined(CONFIG_TEDGE_TELEMETRY)
 /* The application decides what to send and when; the client only carries
@@ -226,15 +313,26 @@ static void telemetry_fn(struct k_work *work)
 		values[i].unit = d->unit;
 		values[i].value = data_source_sample(i);
 	}
+#if defined(CONFIG_TEDGE_PARAMETERS)
+	if (count > 0 && param_telemetry_on()) {
+		(void)tedge_publish_measurement(param_measurement_type(),
+						values, count, 0);
+	}
+	(void)k_work_reschedule(k_work_delayable_from_work(work),
+				K_SECONDS(param_interval_s()));
+#else
 	if (count > 0) {
 		(void)tedge_publish_measurement(CONFIG_APP_TEDGE_MEASUREMENT_TYPE,
 						values, count, 0);
 	}
 	(void)k_work_reschedule(k_work_delayable_from_work(work),
 				K_SECONDS(CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S));
+#endif
 }
 
+#if !defined(CONFIG_TEDGE_PARAMETERS)
 static K_WORK_DELAYABLE_DEFINE(telemetry_work, telemetry_fn);
+#endif
 #endif
 
 #if defined(CONFIG_TEDGE_LOG_UPLOAD)
@@ -290,6 +388,18 @@ int tedge_glue_start(void)
 		LOG_ERR("tedge_init failed (%d)", rc);
 		return rc;
 	}
+#if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
+	/* Before tedge_start(): the client loads the stored values over the
+	 * declared defaults and reports the set as soon as it connects. */
+	rc = tedge_declare_parameters(PUMP_SET, pump_params,
+				      ARRAY_SIZE(pump_params), params_changed,
+				      NULL);
+	if (rc != 0) {
+		LOG_ERR("could not declare the '%s' parameters (%d)", PUMP_SET,
+			rc);
+		return rc;
+	}
+#endif
 	rc = tedge_start();
 	if (rc != 0) {
 		LOG_ERR("tedge_start failed (%d)", rc);
@@ -297,7 +407,11 @@ int tedge_glue_start(void)
 	}
 #if defined(CONFIG_TEDGE_TELEMETRY)
 	(void)k_work_schedule(&telemetry_work,
+#if defined(CONFIG_TEDGE_PARAMETERS)
+			      K_SECONDS(param_interval_s()));
+#else
 			      K_SECONDS(CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S));
+#endif
 #endif
 #if defined(CONFIG_TEDGE_LOG_UPLOAD)
 	(void)tedge_register_log_type("app-status", status_log, NULL);

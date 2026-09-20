@@ -195,6 +195,39 @@ size_t tedge_log_ring_read(size_t offset, uint8_t *out, size_t len);
 size_t tedge_log_ring_size(void);
 uint32_t tedge_log_ring_dropped(void);
 
+/* --- Parameters (tedge_parameters.c) ------------------------------------- */
+
+/**
+ * Forget stored values that nothing declares any more, once every
+ * declaration is in. Called from tedge_start().
+ */
+void tedge_params_on_start(void);
+
+/**
+ * Apply a change to the set @p set_name, whose values are the members of
+ * the flat object @p json. All or nothing: 0 when every value passed and
+ * the application accepted them, otherwise a negative errno with @p reason
+ * naming the parameter and what was wrong with it, and nothing changed.
+ */
+int tedge_params_apply(const char *set_name, const char *json, char *reason,
+		       size_t reason_len);
+
+/**
+ * Write the Digital Twin Manager registration body for @p set_name into
+ * @p out: the identifier, the JSON Schema generated from the declaration,
+ * and the contexts that make the values editable. Length written, -ENOENT
+ * when the set is not declared, or -ENOMEM when @p len is too small.
+ */
+int tedge_params_schema(const char *set_name, char *out, size_t len);
+
+/* The client's own tunables (tedge_self_params.c). Each is read where its
+ * value is used, so a change needs nothing to be notified. Without
+ * CONFIG_TEDGE_PARAMETERS_SELF the Kconfig value is used directly. */
+void tedge_self_params_declare(void);
+int tedge_self_health_interval_s(void);
+int tedge_self_required_interval_min(void);
+bool tedge_self_remote_access_allowed(void);
+
 /* --- Operations as JSON (tedge_op_json.c) -------------------------------- */
 
 /**
@@ -296,6 +329,16 @@ int tedge_json_value(const char *json, const char *key, char *out, size_t len);
 /** Walk the numeric members; 1 while one was found, 0 at the end. */
 int tedge_json_next_number(const char *json, size_t *pos, char *key,
 			   size_t key_len, char *value, size_t value_len);
+/**
+ * Walk every member of a flat object, whatever its type; 1 while one was
+ * found, 0 at the end. A parameter change is the one message this module
+ * reads that it did not write, and refusing a name nobody declared means
+ * seeing every name that arrived. An object or array value is reported as
+ * the single character "{" or "[", which is all the caller needs in order
+ * to refuse it.
+ */
+int tedge_json_next_member(const char *json, size_t *pos, char *key,
+			   size_t key_len, char *value, size_t value_len);
 
 /* --- Remote access (tedge_remote_access.c) ------------------------------- */
 
@@ -376,6 +419,8 @@ const char *tedge_auth_password(void);
 #define TEDGE_KEY_BOOTSTRAP_USER TEDGE_SETTINGS_ROOT "/bootstrap/user"
 #define TEDGE_KEY_BOOTSTRAP_PASS TEDGE_SETTINGS_ROOT "/bootstrap/pass"
 #define TEDGE_KEY_RESTART        TEDGE_SETTINGS_ROOT "/restart"
+/* One key per parameter: TEDGE_KEY_PARAM "/<set>/<name>". */
+#define TEDGE_KEY_PARAM          TEDGE_SETTINGS_ROOT "/param"
 #define TEDGE_KEY_FIRMWARE       TEDGE_SETTINGS_ROOT "/firmware"
 /* Separate from the marker on purpose: the marker's format must never
  * change, because the image that reads it is the one on the other side of a

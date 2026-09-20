@@ -810,6 +810,120 @@ ZTEST(tedge_op_json, test_something_that_is_not_an_operation)
 		      "no id, nothing to answer");
 }
 
+/* A parameter change is the odd one out: its fragment is named after the
+ * set, and what it carries is an object rather than a few scalars. */
+
+/* The shape Cumulocity actually sends, captured from operation 214989 on a
+ * real device: the "c8y_ParameterUpdate_<set>" fragment is an empty marker
+ * naming the set, and the values are a separate top-level fragment named
+ * after it, carrying the whole set rather than only what changed. */
+ZTEST(tedge_op_json, test_the_shape_cumulocity_really_sends)
+{
+	const char *json =
+		"{\"id\":\"214989\",\"deviceId\":\"79211726\","
+		"\"status\":\"PENDING\","
+		"\"tedge\":{\"required_interval_min\":30,\"log_level\":\"dbg\","
+		"\"health_interval_s\":900},"
+		"\"description\":\"Update parameter 'tedge'\","
+		"\"c8y_ParameterUpdate\":{},\"c8y_ParameterUpdate_tedge\":{}}";
+	char line[512];
+	char set[40];
+	char object[256];
+
+	translate(json, line, sizeof(line));
+
+	zassert_equal(tedge_sr_template(line), 532, "got: %s", line);
+	zassert_true(tedge_sr_field(line, 2, set, sizeof(set)) > 0);
+	zassert_str_equal(set, "tedge",
+			  "the set comes from the marker's suffix");
+	zassert_true(tedge_sr_field(line, 3, object, sizeof(object)) > 0);
+	zassert_str_equal(object,
+			  "{\"required_interval_min\":30,\"log_level\":\"dbg\","
+			  "\"health_interval_s\":900}",
+			  "the values come from the fragment named after the "
+			  "set, not from the empty marker: %s", object);
+}
+
+ZTEST(tedge_op_json, test_an_empty_marker_is_not_mistaken_for_the_values)
+{
+	const char *json =
+		"{\"id\":\"1\",\"c8y_ParameterUpdate_pump\":{},"
+		"\"pump\":{\"interval_s\":45}}";
+	char line[512];
+	char object[128];
+
+	translate(json, line, sizeof(line));
+	zassert_true(tedge_sr_field(line, 3, object, sizeof(object)) > 0);
+	zassert_str_equal(object, "{\"interval_s\":45}",
+			  "the marker comes first in the document: %s", object);
+}
+
+/* An operation built by hand through the REST API puts the values inside
+ * the suffixed fragment; that is how the hardware verification drove every
+ * change, so it stays supported. */
+ZTEST(tedge_op_json, test_a_parameter_change_names_its_set)
+{
+	char line[512];
+	char set[40];
+	char object[256];
+
+	translate(OP_HEAD
+		  "\"c8y_ParameterUpdate_pump\":{\"interval_s\":60,"
+		  "\"auto_mode\":false}}",
+		  line, sizeof(line));
+
+	zassert_equal(tedge_sr_template(line), 532, "got: %s", line);
+	zassert_true(tedge_sr_field(line, 1, set, sizeof(set)) > 0);
+	zassert_str_equal(set, "214925", "the id comes first, as always");
+	zassert_true(tedge_sr_field(line, 2, set, sizeof(set)) > 0);
+	zassert_str_equal(set, "pump", "the set is the fragment's suffix");
+	zassert_true(tedge_sr_field(line, 3, object, sizeof(object)) > 0);
+	zassert_str_equal(object,
+			  "{\"interval_s\":60,\"auto_mode\":false}",
+			  "the object survives the line whole: %s", object);
+}
+
+ZTEST(tedge_op_json, test_a_parameter_change_keeps_its_strings)
+{
+	char line[512];
+	char object[256];
+
+	translate(OP_HEAD
+		  "\"c8y_ParameterUpdate_pump\":{\"site\":\"the shed\"}}",
+		  line, sizeof(line));
+
+	zassert_true(tedge_sr_field(line, 3, object, sizeof(object)) > 0);
+	zassert_str_equal(object, "{\"site\":\"the shed\"}",
+			  "quotes survive being a SmartREST field: %s", object);
+}
+
+ZTEST(tedge_op_json, test_a_brace_inside_a_string_does_not_end_the_object)
+{
+	char line[512];
+	char object[256];
+
+	translate(OP_HEAD
+		  "\"c8y_ParameterUpdate_pump\":{\"site\":\"a } brace\","
+		  "\"interval_s\":9},\"status\":\"PENDING\"}",
+		  line, sizeof(line));
+
+	zassert_true(tedge_sr_field(line, 3, object, sizeof(object)) > 0);
+	zassert_str_equal(object,
+			  "{\"site\":\"a } brace\",\"interval_s\":9}",
+			  "got: %s", object);
+}
+
+ZTEST(tedge_op_json, test_another_set_is_another_name)
+{
+	char line[512];
+	char set[40];
+
+	translate(OP_HEAD "\"c8y_ParameterUpdate_boiler\":{\"on\":true}}", line,
+		  sizeof(line));
+	zassert_true(tedge_sr_field(line, 2, set, sizeof(set)) > 0);
+	zassert_str_equal(set, "boiler");
+}
+
 ZTEST_SUITE(tedge_op_json, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
@@ -853,3 +967,480 @@ ZTEST(tedge_json_value, test_the_search_can_start_inside_a_fragment)
 }
 
 ZTEST_SUITE(tedge_json_value, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* Parameters                                                                */
+/*                                                                           */
+/* tedge_parameters.c is not a pure helper: it allocates, it stores and it   */
+/* publishes. Those three are stubbed here rather than mocked away, because  */
+/* what the tests are really checking is that the three places which have to */
+/* agree — the values, the settings keys and the twin — actually do.         */
+/* ------------------------------------------------------------------------ */
+
+#include <zephyr/settings/settings.h>
+#include <zephyr/types.h>
+#include <stdlib.h>
+
+/* The module heap. */
+void *tedge_alloc(size_t size)
+{
+	return malloc(size);
+}
+
+void tedge_free(void *p)
+{
+	free(p);
+}
+
+/* The twin, stubbed: the last thing published, per fragment. */
+static char twin_fragment[40];
+static char twin_json[512];
+static int twin_publishes;
+
+int tedge_publish_twin(const char *fragment, const char *json)
+{
+	strncpy(twin_fragment, fragment, sizeof(twin_fragment) - 1);
+	strncpy(twin_json, json != NULL ? json : "", sizeof(twin_json) - 1);
+	twin_publishes++;
+	return 0;
+}
+
+/* Settings, stubbed: a flat key/value store, so a test can see exactly
+ * which keys were written and prove that an unchanged value wrote none. */
+#define STORE_SLOTS 16
+static struct {
+	char key[64];
+	uint8_t value[64];
+	size_t len;
+	bool used;
+} store_slot[STORE_SLOTS];
+static int store_writes;
+
+static void store_clear(void)
+{
+	memset(store_slot, 0, sizeof(store_slot));
+	store_writes = 0;
+}
+
+int settings_save_one(const char *name, const void *value, size_t val_len)
+{
+	int free_slot = -1;
+
+	if (val_len > sizeof(store_slot[0].value)) {
+		return -ENOMEM;
+	}
+	for (int i = 0; i < STORE_SLOTS; i++) {
+		if (store_slot[i].used && strcmp(store_slot[i].key, name) == 0) {
+			free_slot = i;
+			break;
+		}
+		if (!store_slot[i].used && free_slot < 0) {
+			free_slot = i;
+		}
+	}
+	if (free_slot < 0) {
+		return -ENOMEM;
+	}
+	strncpy(store_slot[free_slot].key, name,
+		sizeof(store_slot[0].key) - 1);
+	memcpy(store_slot[free_slot].value, value, val_len);
+	store_slot[free_slot].len = val_len;
+	store_slot[free_slot].used = true;
+	store_writes++;
+	return 0;
+}
+
+int settings_delete(const char *name)
+{
+	for (int i = 0; i < STORE_SLOTS; i++) {
+		if (store_slot[i].used && strcmp(store_slot[i].key, name) == 0) {
+			store_slot[i].used = false;
+			return 0;
+		}
+	}
+	return 0;
+}
+
+static ssize_t store_read(void *cb_arg, void *data, size_t len)
+{
+	size_t i = (size_t)(uintptr_t)cb_arg;
+	size_t n = MIN(len, store_slot[i].len);
+
+	memcpy(data, store_slot[i].value, n);
+	return (ssize_t)n;
+}
+
+int settings_load_subtree_direct(const char *subtree,
+				 settings_load_direct_cb cb, void *param)
+{
+	size_t prefix = strlen(subtree);
+
+	for (size_t i = 0; i < STORE_SLOTS; i++) {
+		const char *key = store_slot[i].key;
+		const char *relative;
+
+		if (!store_slot[i].used ||
+		    strncmp(key, subtree, prefix) != 0) {
+			continue;
+		}
+		if (key[prefix] == '\0') {
+			relative = ""; /* the subtree is the value itself */
+		} else if (key[prefix] == '/') {
+			relative = key + prefix + 1;
+		} else {
+			continue; /* "tedge/paramX" is not under "tedge/param" */
+		}
+		(void)cb(relative, store_slot[i].len, store_read,
+			 (void *)(uintptr_t)i, param);
+	}
+	return 0;
+}
+
+/* The set under test: one parameter of every type, so a single declaration
+ * covers validation, the twin and the schema. */
+static const struct tedge_parameter pump_params[] = {
+	TEDGE_PARAM_INT("interval_s", 30, 5, 3600, "Seconds between reads"),
+	TEDGE_PARAM_BOOL("auto_mode", true, "Run the pump automatically"),
+	TEDGE_PARAM_ENUM("profile", "normal", ("normal", "quiet", "boost"),
+			 "Operating profile"),
+	TEDGE_PARAM_STRING("site", "", 8, "Where this device is"),
+};
+
+/* What the application's hook will do, and what it saw. */
+static int hook_verdict;
+static int hook_calls;
+
+static int pump_changed(const char *set, char *reason, size_t reason_len,
+			void *user_data)
+{
+	ARG_UNUSED(set);
+	ARG_UNUSED(user_data);
+	hook_calls++;
+	if (hook_verdict != 0) {
+		snprintf(reason, reason_len, "the pump is running");
+	}
+	return hook_verdict;
+}
+
+static void *params_setup(void)
+{
+	static bool declared_once;
+
+	if (!declared_once) {
+		zassert_ok(tedge_declare_parameters("pump", pump_params,
+						    ARRAY_SIZE(pump_params),
+						    pump_changed, NULL));
+		declared_once = true;
+	}
+	return NULL;
+}
+
+/* Every test starts from the declared defaults, an empty store and a hook
+ * that agrees. */
+static void params_before(void *fixture)
+{
+	char reason[128];
+
+	ARG_UNUSED(fixture);
+	hook_verdict = 0;
+	hook_calls = 0;
+	store_clear();
+	twin_publishes = 0;
+	(void)tedge_params_apply("pump",
+				 "{\"interval_s\":30,\"auto_mode\":true,"
+				 "\"profile\":\"normal\",\"site\":\"\"}",
+				 reason, sizeof(reason));
+	store_clear();
+	twin_publishes = 0;
+	hook_calls = 0;
+}
+
+static int apply(const char *json, char *reason, size_t len)
+{
+	return tedge_params_apply("pump", json, reason, len);
+}
+
+/* --- Validation ---------------------------------------------------------- */
+
+ZTEST(tedge_parameters, test_each_type_round_trips)
+{
+	char reason[128];
+	char site[16];
+	int32_t interval;
+	bool automatic;
+
+	zassert_ok(apply("{\"interval_s\":60,\"auto_mode\":false,"
+			 "\"profile\":\"quiet\",\"site\":\"shed\"}",
+			 reason, sizeof(reason)));
+
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 60);
+	zassert_ok(tedge_parameter_get_bool("pump", "auto_mode", &automatic));
+	zassert_false(automatic);
+	zassert_ok(tedge_parameter_get_string("pump", "site", site,
+					      sizeof(site)));
+	zassert_str_equal(site, "shed");
+	zassert_ok(tedge_parameter_get_string("pump", "profile", site,
+					      sizeof(site)));
+	zassert_str_equal(site, "quiet", "an enum reads as the string it is");
+}
+
+ZTEST(tedge_parameters, test_the_edges_of_a_range_are_inside_it)
+{
+	char reason[128];
+	int32_t interval;
+
+	zassert_ok(apply("{\"interval_s\":5}", reason, sizeof(reason)));
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 5, "the minimum is allowed");
+
+	zassert_ok(apply("{\"interval_s\":3600}", reason, sizeof(reason)));
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 3600, "and so is the maximum");
+}
+
+ZTEST(tedge_parameters, test_a_value_below_its_range_is_refused)
+{
+	char reason[128];
+	int32_t interval;
+
+	zassert_equal(apply("{\"interval_s\":4}", reason, sizeof(reason)),
+		      -ERANGE);
+	zassert_not_null(strstr(reason, "interval_s"),
+			 "the refusal names the parameter: %s", reason);
+	zassert_not_null(strstr(reason, "5..3600"),
+			 "and the limit it broke: %s", reason);
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 30, "and nothing changed");
+}
+
+ZTEST(tedge_parameters, test_a_value_above_its_range_is_refused)
+{
+	char reason[128];
+
+	zassert_equal(apply("{\"interval_s\":3601}", reason, sizeof(reason)),
+		      -ERANGE);
+	zassert_not_null(strstr(reason, "interval_s"), "%s", reason);
+}
+
+ZTEST(tedge_parameters, test_a_number_that_is_not_one_is_refused)
+{
+	char reason[128];
+
+	zassert_equal(apply("{\"interval_s\":\"soon\"}", reason,
+			    sizeof(reason)),
+		      -EINVAL);
+	zassert_not_null(strstr(reason, "whole number"), "%s", reason);
+}
+
+ZTEST(tedge_parameters, test_a_boolean_only_takes_true_or_false)
+{
+	char reason[128];
+
+	zassert_equal(apply("{\"auto_mode\":\"yes\"}", reason, sizeof(reason)),
+		      -EINVAL);
+	zassert_not_null(strstr(reason, "auto_mode"), "%s", reason);
+	zassert_not_null(strstr(reason, "true or false"), "%s", reason);
+}
+
+ZTEST(tedge_parameters, test_a_string_longer_than_declared_is_refused)
+{
+	char reason[128];
+
+	zassert_equal(apply("{\"site\":\"a very long place indeed\"}", reason,
+			    sizeof(reason)),
+		      -EINVAL);
+	zassert_not_null(strstr(reason, "site"), "%s", reason);
+	zassert_not_null(strstr(reason, "at most 8"), "%s", reason);
+}
+
+ZTEST(tedge_parameters, test_an_enum_only_takes_what_it_declared)
+{
+	char reason[128];
+	char profile[16];
+
+	zassert_equal(apply("{\"profile\":\"turbo\"}", reason, sizeof(reason)),
+		      -EINVAL);
+	zassert_not_null(strstr(reason, "profile"), "%s", reason);
+	zassert_not_null(strstr(reason, "normal"),
+			 "the refusal lists what is allowed: %s", reason);
+	zassert_ok(tedge_parameter_get_string("pump", "profile", profile,
+					      sizeof(profile)));
+	zassert_str_equal(profile, "normal");
+}
+
+ZTEST(tedge_parameters, test_a_name_nobody_declared_is_refused)
+{
+	char reason[128];
+
+	zassert_equal(apply("{\"interval_s\":60,\"colour\":\"red\"}", reason,
+			    sizeof(reason)),
+		      -ENOENT);
+	zassert_not_null(strstr(reason, "colour"),
+			 "the refusal names the name it does not know: %s",
+			 reason);
+}
+
+ZTEST(tedge_parameters, test_a_set_nobody_declared_is_refused)
+{
+	char reason[128];
+
+	zassert_equal(tedge_params_apply("boiler", "{\"interval_s\":60}",
+					 reason, sizeof(reason)),
+		      -ENOENT);
+	zassert_not_null(strstr(reason, "boiler"), "%s", reason);
+}
+
+ZTEST(tedge_parameters, test_a_change_is_all_or_nothing)
+{
+	char reason[128];
+	int32_t interval;
+	char profile[16];
+
+	/* The good value comes first, the bad one after it. */
+	zassert_equal(apply("{\"interval_s\":60,\"profile\":\"turbo\"}", reason,
+			    sizeof(reason)),
+		      -EINVAL);
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 30,
+		      "the value before the bad one was not applied either");
+	zassert_ok(tedge_parameter_get_string("pump", "profile", profile,
+					      sizeof(profile)));
+	zassert_str_equal(profile, "normal");
+	zassert_equal(hook_calls, 0, "and the application was never told");
+}
+
+/* --- The application's verdict ------------------------------------------- */
+
+ZTEST(tedge_parameters, test_the_application_can_refuse_a_change)
+{
+	char reason[128];
+	int32_t interval;
+
+	hook_verdict = -EBUSY;
+	zassert_equal(apply("{\"interval_s\":60}", reason, sizeof(reason)),
+		      -EBUSY);
+	zassert_equal(hook_calls, 1, "the hook is called once");
+	zassert_str_equal(reason, "the pump is running",
+			  "and its reason is what the operation carries");
+	zassert_ok(tedge_parameter_get_int("pump", "interval_s", &interval));
+	zassert_equal(interval, 30, "the previous value is what runs");
+	zassert_equal(store_writes, 0, "and a refusal costs no flash");
+}
+
+ZTEST(tedge_parameters, test_a_refused_change_leaves_strings_alone)
+{
+	char reason[128];
+	char site[16];
+
+	zassert_ok(apply("{\"site\":\"shed\"}", reason, sizeof(reason)));
+	hook_verdict = -EBUSY;
+	zassert_equal(apply("{\"site\":\"barn\"}", reason, sizeof(reason)),
+		      -EBUSY);
+	zassert_ok(tedge_parameter_get_string("pump", "site", site,
+					      sizeof(site)));
+	zassert_str_equal(site, "shed", "rolled back to the stored value");
+}
+
+/* --- Storage -------------------------------------------------------------- */
+
+ZTEST(tedge_parameters, test_only_what_changed_is_stored)
+{
+	char reason[128];
+
+	/* interval_s moves; auto_mode is set to the value it already has. */
+	zassert_ok(apply("{\"interval_s\":60,\"auto_mode\":true}", reason,
+			 sizeof(reason)));
+	zassert_equal(store_writes, 1,
+		      "one key written, not one per value in the change");
+}
+
+ZTEST(tedge_parameters, test_a_stored_value_uses_its_own_key)
+{
+	char reason[128];
+	bool found = false;
+
+	zassert_ok(apply("{\"interval_s\":60}", reason, sizeof(reason)));
+	for (int i = 0; i < STORE_SLOTS; i++) {
+		if (store_slot[i].used &&
+		    strcmp(store_slot[i].key, "tedge/param/pump/interval_s") ==
+			    0) {
+			found = true;
+		}
+	}
+	zassert_true(found, "one settings key per parameter");
+}
+
+/* --- The twin -------------------------------------------------------------*/
+
+ZTEST(tedge_parameters, test_the_twin_is_the_whole_set)
+{
+	char reason[128];
+
+	zassert_ok(apply("{\"interval_s\":60,\"profile\":\"boost\"}", reason,
+			 sizeof(reason)));
+	zassert_equal(twin_publishes, 1, "one message per accepted change");
+	zassert_str_equal(twin_fragment, "pump",
+			  "the fragment is named after the set");
+	zassert_str_equal(twin_json,
+			  "{\"interval_s\":60,\"auto_mode\":true,"
+			  "\"profile\":\"boost\",\"site\":\"\"}",
+			  "every declared value, typed, not just what moved");
+}
+
+ZTEST(tedge_parameters, test_a_refused_change_reports_nothing)
+{
+	char reason[128];
+
+	hook_verdict = -EBUSY;
+	(void)apply("{\"interval_s\":60}", reason, sizeof(reason));
+	zassert_equal(twin_publishes, 0,
+		      "what the cloud shows is what the device runs");
+}
+
+/* --- The schema ---------------------------------------------------------- */
+
+ZTEST(tedge_parameters, test_the_schema_describes_the_declaration)
+{
+	char schema[1024];
+
+	zassert_true(tedge_params_schema("pump", schema, sizeof(schema)) > 0);
+
+	zassert_not_null(strstr(schema, "\"identifier\":\"pump\""),
+			 "the identifier is the set's name: %s", schema);
+	zassert_not_null(
+		strstr(schema, "\"contexts\":[\"asset\",\"event\",\"operation\"]"),
+		"asset and operation, or the UI will not let anyone edit it");
+	zassert_not_null(strstr(schema, "\"type\":\"integer\""), "%s", schema);
+	zassert_not_null(strstr(schema, "\"minimum\":5"), "%s", schema);
+	zassert_not_null(strstr(schema, "\"maximum\":3600"), "%s", schema);
+	zassert_not_null(strstr(schema, "\"type\":\"boolean\""), "%s", schema);
+	zassert_not_null(strstr(schema, "\"maxLength\":8"), "%s", schema);
+	zassert_not_null(
+		strstr(schema, "\"enum\":[\"normal\",\"quiet\",\"boost\"]"),
+		"%s", schema);
+	zassert_not_null(strstr(schema, "\"order\":1"),
+			 "the UI lays the fields out in the declared order");
+	zassert_not_null(strstr(schema, "\"description\":\"Seconds between reads\""),
+			 "%s", schema);
+}
+
+ZTEST(tedge_parameters, test_the_schema_says_when_it_does_not_fit)
+{
+	char schema[64];
+
+	zassert_equal(tedge_params_schema("pump", schema, sizeof(schema)),
+		      -ENOMEM);
+	zassert_str_equal(schema, "",
+			  "rather than handing back half a schema");
+}
+
+ZTEST(tedge_parameters, test_no_schema_for_a_set_nobody_declared)
+{
+	char schema[256];
+
+	zassert_equal(tedge_params_schema("boiler", schema, sizeof(schema)),
+		      -ENOENT);
+}
+
+ZTEST_SUITE(tedge_parameters, NULL, params_setup, params_before, NULL, NULL);

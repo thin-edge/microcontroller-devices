@@ -44,10 +44,23 @@ void tedge_health_tick(void)
 		{ .series = "resetCause" },
 	};
 
+	int interval;
+
 	if (next_at != 0 && k_uptime_get() < next_at) {
 		return;
 	}
-	next_at = k_uptime_get() + CONFIG_TEDGE_HEALTH_INTERVAL_S * 1000LL;
+	/* Read every time: an operator may have changed it (the "tedge"
+	 * parameter set), and 0 stops the measurements altogether. */
+#if defined(CONFIG_TEDGE_PARAMETERS_SELF)
+	interval = tedge_self_health_interval_s();
+#else
+	interval = CONFIG_TEDGE_HEALTH_INTERVAL_S;
+#endif
+	if (interval <= 0) {
+		next_at = k_uptime_get() + 60 * 1000LL;
+		return;
+	}
+	next_at = k_uptime_get() + interval * 1000LL;
 
 	values[0].value = (double)(k_uptime_get() / 1000);
 	values[1].value = (double)tedge_heap_free();

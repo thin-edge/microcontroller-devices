@@ -44,6 +44,10 @@ if(CONFIG_TEDGE)
     src/tedge_log_upload.c
     src/tedge_log_ring.c
   )
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_PARAMETERS src/tedge_parameters.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_PARAMETERS_SELF
+    src/tedge_self_params.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_COREDUMP src/tedge_coredump.c)
   zephyr_library_sources_ifdef(CONFIG_TEDGE_CERT_RENEWAL
     src/tedge_cert_renew.c

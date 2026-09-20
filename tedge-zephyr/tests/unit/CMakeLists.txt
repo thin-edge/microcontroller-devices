@@ -23,6 +23,7 @@ target_sources(app PRIVATE
   ../../src/tedge_shell_allow_list.c
   ../../src/tedge_log_ring.c
   ../../src/tedge_op_json.c
+  ../../src/tedge_parameters.c
 )
 
 # The telemetry API is compiled in for the tests, with a small buffer so the
@@ -36,5 +37,10 @@ target_compile_definitions(app PRIVATE
   # A small ring, so "it wrapped" is one test away.
   CONFIG_TEDGE_LOG_RING_BYTES=256
   CONFIG_TEDGE_C8Y_OPERATION_JSON=1
+  # Parameters: room for the mixed set the tests declare, and the
+  # schema printer, which is what the tenant registration needs.
+  CONFIG_TEDGE_PARAMETERS=1
+  CONFIG_TEDGE_PARAMETERS_MAX=8
+  CONFIG_TEDGE_PARAMETERS_SCHEMA=1
 )
 target_include_directories(app PRIVATE ../../include ../../src)

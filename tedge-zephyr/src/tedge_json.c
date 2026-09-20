@@ -126,3 +126,98 @@ int tedge_json_next_number(const char *json, size_t *pos, char *key,
 	*pos = strlen(json);
 	return 0;
 }
+
+/* Copy the string literal starting at the opening quote @p p into @p out,
+ * and return the character after the closing quote. */
+static const char *copy_string(const char *p, char *out, size_t len)
+{
+	size_t n = 0;
+
+	p++; /* the opening quote */
+	while (*p != '\0' && *p != '"') {
+		if (*p == '\\' && p[1] != '\0') {
+			p++; /* keep the escaped character itself */
+		}
+		if (n < len - 1) {
+			out[n++] = *p;
+		}
+		p++;
+	}
+	out[n] = '\0';
+	return (*p == '"') ? p + 1 : p;
+}
+
+/* Skip the object or array starting at @p p, quotes and all. */
+static const char *skip_nested(const char *p)
+{
+	int depth = 0;
+
+	do {
+		if (*p == '"') {
+			char discard[2];
+
+			p = copy_string(p, discard, sizeof(discard));
+			continue;
+		}
+		if (*p == '{' || *p == '[') {
+			depth++;
+		} else if (*p == '}' || *p == ']') {
+			depth--;
+		}
+		p++;
+	} while (*p != '\0' && depth > 0);
+	return p;
+}
+
+int tedge_json_next_member(const char *json, size_t *pos, char *key,
+			   size_t key_len, char *value, size_t value_len)
+{
+	const char *p = json + *pos;
+
+	if (key_len == 0 || value_len < 2) {
+		return -EINVAL;
+	}
+	while (*p != '\0') {
+		size_t n = 0;
+
+		if (*p != '"') {
+			p++;
+			continue;
+		}
+		p = copy_string(p, key, key_len);
+		while (*p == ' ') {
+			p++;
+		}
+		if (*p != ':') {
+			continue; /* a string that was not a member name */
+		}
+		p++;
+		while (*p == ' ') {
+			p++;
+		}
+		if (*p == '"') {
+			p = copy_string(p, value, value_len);
+			*pos = (size_t)(p - json);
+			return 1;
+		}
+		if (*p == '{' || *p == '[') {
+			/* Report it as itself: a parameter is one value, so
+			 * the caller's job is to refuse this, not read it. */
+			value[0] = *p;
+			value[1] = '\0';
+			p = skip_nested(p);
+			*pos = (size_t)(p - json);
+			return 1;
+		}
+		/* A bare token ends at the comma or brace that follows it. */
+		while (*p != '\0' && *p != ',' && *p != '}' && *p != ']' &&
+		       *p != ' ' && n < value_len - 1) {
+			value[n++] = *p++;
+		}
+		value[n] = '\0';
+		*pos = (size_t)(p - json);
+		return (n > 0) ? 1 : 0;
+	}
+	*pos = strlen(json);
+	return 0;
+}

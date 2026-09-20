@@ -201,6 +201,24 @@ SETTINGS_STATIC_HANDLER_DEFINE(tedge_core, TEDGE_SETTINGS_ROOT, NULL,
 			       settings_set_cb, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
+/* The "tedge" shell root                                                    */
+/*                                                                           */
+/* One root command for the whole client, defined here because this file is  */
+/* always compiled when the module is. Everything else — the module's own    */
+/* features and the application's test aids alike — hangs subcommands off it */
+/* with SHELL_SUBCMD_ADD((tedge), ...), so a device ends up with one command */
+/* tree instead of two roots of the same name, only one of which the shell   */
+/* would ever reach.                                                         */
+/* ------------------------------------------------------------------------ */
+
+#if defined(CONFIG_SHELL)
+#include <zephyr/shell/shell.h>
+
+SHELL_SUBCMD_SET_CREATE(tedge_shell_cmds, (tedge));
+SHELL_CMD_REGISTER(tedge, &tedge_shell_cmds, "thin-edge.io client", NULL);
+#endif /* CONFIG_SHELL */
+
+/* ------------------------------------------------------------------------ */
 /* Twin fragments                                                            */
 /* ------------------------------------------------------------------------ */
 
@@ -507,6 +525,15 @@ int tedge_start(void)
 #if defined(CONFIG_TEDGE_LOG_UPLOAD)
 	tedge_log_upload_init();
 #endif
+#if defined(CONFIG_TEDGE_PARAMETERS_SELF)
+	/* After the application's sets, so a declaration of its own wins a
+	 * name clash, and before the sweep, which needs them all. */
+	tedge_self_params_declare();
+#endif
+#if defined(CONFIG_TEDGE_PARAMETERS)
+	/* Every set the application means to declare is declared by now. */
+	tedge_params_on_start();
+#endif
 	running = true;
 	k_thread_create(&client_tid, client_stack,
 			K_THREAD_STACK_SIZEOF(client_stack), client_thread, NULL,
@@ -526,18 +553,3 @@ int tedge_stop(void)
 	running = false;
 	return 0;
 }
-
-#if defined(CONFIG_TEDGE_CONFIG)
-/* Configuration management is selectable only as an experimental feature
- * until its change lands (roadmap P7). The call is here so that an image
- * which selects it links and says so at runtime, rather than failing to
- * build. */
-int tedge_register_config_type(const char *type, tedge_config_reader_t reader,
-			       tedge_config_writer_t writer, void *user_data)
-{
-	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(writer);
-	ARG_UNUSED(user_data);
-	LOG_WRN("configuration management is not implemented yet");
-	return -ENOTSUP;
-}
-#endif

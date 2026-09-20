@@ -16,9 +16,7 @@ west build -b <board> <app> -- -DEXTRA_CONF_FILE=/path/to/tedge-zephyr/profiles/
 
 The measured costs are in each file's header.
 
-`full.conf` asks for everything, including the one feature that is not
-implemented yet (configuration management), so it sets
-`CONFIG_TEDGE_EXPERIMENTAL_FEATURES=y`. It also expects a sysbuild image with
+`full.conf` asks for every implemented feature. It expects a sysbuild image with
 MCUboot and a shell; on a build without them, Kconfig warns that firmware
 update and the shell command were turned back off, which is the warning doing
 its job.

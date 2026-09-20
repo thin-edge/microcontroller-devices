@@ -125,9 +125,9 @@ The client lives in `tedge-zephyr/`, a self-contained Zephyr module named
   watchdog.
 - **The module owns** its threads, a bounded heap, its settings subtree
   (`tedge/`) and its TLS credential tags.
-- **Hooks** let the application register custom operations, log types and
-  config types, veto a restart, add firmware-confirm checks, and narrow
-  remote-access targets.
+- **Hooks** let the application register custom operations and log types,
+  declare the parameters the cloud may change, veto a restart, add
+  firmware-confirm checks, and narrow remote-access targets.
 
 In this repo, the glue between `lib/common` and the module lives in each app.
 
@@ -227,7 +227,7 @@ the strongest reason for the direct transport.
 | P4 | `c8y-direct-telemetry` (done 2026-09-20) | Telemetry (free-form, `te/`-shaped) and device-health measurements, buffered through an outage with the time each reading was taken |
 | P5 | `c8y-direct-diagnostics` (done 2026-09-20) | Diagnostics: an allow-listed shell command (nothing runs by default), log upload from callbacks with the client's own RAM ring, and the last crash dump in the format Zephyr's tooling reads |
 | P6 | `c8y-direct-cert-renewal` (done 2026-09-20) | Certificate renewal: the client renews before expiry, publishes the expiry as twin data and alarms if renewal keeps failing |
-| P7 | `c8y-direct-parameters` (proposed) | Typed device parameters the cloud can see and change (Cumulocity Parameter Update, as thin-edge.io's parameter plugin does), not configuration files |
+| P7 | `c8y-direct-parameters` (done 2026-09-20) | Typed device parameters the cloud can see and change (Cumulocity Parameter Update, as thin-edge.io's parameter plugin does), not configuration files; the client declares a set for itself too, so a device is adjustable in the field whatever its application does |
 | P8 | `gateway-transport` (proposed) | Gateway transport: a thin-edge.io child device with no TLS, no certificate and no cloud token, reusing the P1–P7 handlers |
 | — | separate small change | Full-system reset in `lib/common` (`liveness.c`, `net.c`): a CPU reset hangs MCUboot on the C6 |
 | — | — | Move `tedge-zephyr` into its own repository once the P1 API has settled |

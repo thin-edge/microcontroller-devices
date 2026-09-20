@@ -77,7 +77,8 @@ inventory update, as the other fragments do.
 
 ### D3: A change is all-or-nothing, and validated against the declaration
 
-`c8y_ParameterUpdate` carries the values to change. The client checks every
+The operation carries the set's values — in practice the whole set, since
+that is what Cumulocity sends (D6). The client checks every
 one against its declaration — type, range, length, allowed values — before
 storing any of them. If one fails, **nothing is applied** and the operation
 fails naming the parameter and the limit it broke. A half-applied
@@ -104,13 +105,118 @@ set — on the console, through the `tedge params schema` shell command — for
 whoever registers it in the Digital Twin Manager. It is generated from the
 same table the validation uses, so the two cannot disagree.
 
+What it prints is the whole body of the registration call, not a bare
+schema, because that is what the person pasting it needs:
+
+```json
+{"identifier":"pump",
+ "jsonSchema":{"type":"object","title":"pump","properties":{
+   "interval_s":{"type":"integer","title":"interval_s","order":1,
+                 "default":30,"minimum":5,"maximum":3600,
+                 "description":"Seconds between measurements"}}},
+ "contexts":["asset","event","operation"]}
+```
+
+Three details that are not optional:
+
+- **`identifier` is the set name**, and it is the same string as the twin
+  fragment (D2) and the operation fragment's suffix (D6). One name, three
+  uses — so the client validates it once, at declaration.
+- **`contexts` must contain `asset` and `operation`**, or the UI shows the
+  values but refuses to let anyone edit them.
+- **`title` and `order`** sit beside the JSON Schema keywords so the UI can
+  lay the fields out; `order` comes from the position in the declared
+  table, `title` from the parameter's name.
+
+Registering an already-registered identifier again is documented as not
+working, so a changed declaration means delete then create. The README says
+so, with the `DELETE` call.
+
 ### D6: The operation is answered like every other one
 
-`c8y_ParameterUpdate` arrives as JSON with its id (`c8y-operation-ids`), is
-turned into a line the dispatcher understands, and is completed with
-`506,<id>` or failed with `505,<id>,<reason>`. It runs on the client thread:
-validating and storing a handful of values is microseconds, and there is
-nothing to wait for.
+The operation arrives as JSON with its id (`c8y-operation-ids`), is turned
+into a line the dispatcher understands, and is completed with `506,<id>` or
+failed with `505,<id>,<reason>`. It runs on the client thread: validating
+and storing a handful of values is microseconds, and there is nothing to
+wait for.
+
+**The fragment is named after the set, and it is empty.** It is not a fixed
+`c8y_ParameterUpdate`; the set's name is the suffix, and the client matches
+on the prefix and takes the name from what follows it. But that fragment
+carries no values — it is a marker saying *which set*. The values arrive in
+a separate top-level fragment named after the set, and they are the **whole
+set**, not only what an operator touched:
+
+```json
+{"id":"214989","deviceId":"79211726",
+ "description":"Update parameter 'tedge'",
+ "tedge":{"log_level":"dbg","health_interval_s":900,
+          "required_interval_min":30},
+ "c8y_ParameterUpdate":{}, "c8y_ParameterUpdate_tedge":{}}
+```
+
+That is how one device can offer more than one set, and it is why the
+dispatcher cannot key on an exact fragment name the way it does for every
+other operation. The values are typed JSON — the schema registered in the
+tenant is what gives them their types — so nothing has to be parsed out of
+strings.
+
+An operation built by hand through the REST API more naturally carries the
+values inside the suffixed fragment, so the client accepts that too when
+the named fragment is missing or empty.
+
+See [findings-mechanism.md](./findings-mechanism.md); this shape was
+corrected after a real operation from the tenant failed against the first
+reading of it.
+
+The SmartREST form of the same thing (static template `532`) flattens it
+into *name, type, value* triplets with every value a string. This client
+does not need it: it has taken operations as JSON since
+`c8y-operation-ids`. Template `408` reports a parameter change as an event,
+which this client also does not need, because the twin carries the state
+(D2).
+
+### D8: The client declares a set for itself
+
+Everything in this module is configured at build time, which is the right
+default on a microcontroller: an option that cannot change cannot surprise
+anyone, and it costs no flash. But a handful of those choices are ones
+somebody wants to revisit on a device that is already in the field and
+misbehaving, and reflashing a fleet to turn up a log level is not a plan.
+
+So the client declares a set of its own, `tedge`, through the same API an
+application uses:
+
+| Parameter | What it changes | Where it takes effect |
+|---|---|---|
+| `log_level` | how much the client logs | the logging filter, at once with `CONFIG_LOG_RUNTIME_FILTERING`, otherwise next boot |
+| `health_interval_s` | how often it reports its own health | `tedge_health.c`, next time it is due |
+| `required_interval_min` | the window Cumulocity calls it offline by | republished as `117,<n>` on change |
+| `remote_access` | whether the cloud may tunnel in | checked before a tunnel is opened |
+
+**Only what a running device can honour.** A setting that sizes a buffer, a
+stack or a thread is fixed once the image is linked, and offering it would
+show an operator a value the device quietly ignores — worse than offering
+nothing. So the set holds only values that are read where they are used,
+and each entry above names that place. Whatever the running image does not
+have is not in the set either: no health feature, no `health_interval_s`.
+
+**The application still wins.** The client declares its set *after* the
+application has declared its own, so a name an application already took
+stays the application's — adding a client setting later can never quietly
+take one over.
+
+*Alternative: expose these as custom operations, or as another transport
+message.* Rejected: they are settings, they want validating, reporting and
+remembering, and that machinery now exists. A second mechanism for the same
+shape of thing is how two mechanisms drift.
+
+*Alternative: leave them build-time only.* That is what the client did
+before, and it is why a device that logs too little has to be recovered
+from a bench rather than from a desk.
+
+`CONFIG_TEDGE_PARAMETERS_SELF` turns the whole thing off for an image that
+wants nothing of it.
 
 ### D7: The file-shaped API goes
 
@@ -142,9 +248,12 @@ header says what replaced them, and the archived proposal says why.
 
 ## Open Questions
 
-- What exactly `c8y_ParameterUpdate` carries for a set — the whole set or
-  only the changed values — and whether the tenant's template 532 shape
-  matches what the plugin documents. To be settled against the tenant first.
+- ~~Whether the operation carries the whole set or only the changed
+  values.~~ **Answered, after the change was archived**: the whole set. A
+  real operation from the tenant carried all three of a set's values with
+  one of them changed. The client validates and applies whatever is
+  present, and only writes what actually moved, so whole-set sends cost no
+  extra flash. A value the operation omits keeps its current value.
 - Whether a parameter should be able to be marked read-only (a value the
   device reports but the cloud cannot set), or whether that is just twin
   data.

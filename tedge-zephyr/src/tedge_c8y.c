@@ -447,6 +447,34 @@ static void dispatch_operation(const char *line)
 			       "(CONFIG_TEDGE_RESTART)");
 #endif
 		return;
+	case 532: /* c8y_ParameterUpdate_<set> */
+#if defined(CONFIG_TEDGE_PARAMETERS)
+	{
+		char set[40];
+		char object[OP_LINE_MAX];
+		char reason[160];
+		char frag[64];
+
+		(void)tedge_sr_field(line, 2, set, sizeof(set));
+		(void)tedge_sr_field(line, 3, object, sizeof(object));
+		/* The status has to name the fragment the change arrived as,
+		 * not the set on its own. */
+		snprintf(frag, sizeof(frag), "c8y_ParameterUpdate_%s", set);
+
+		op_executing_now(frag);
+		if (tedge_params_apply(set, object, reason, sizeof(reason)) !=
+		    0) {
+			op_failed(frag, reason);
+		} else {
+			op_succeeded(frag, NULL);
+		}
+	}
+#else
+		op_unsupported("c8y_ParameterUpdate",
+			       "parameters are not built into this image "
+			       "(CONFIG_TEDGE_PARAMETERS)");
+#endif
+		return;
 	case 515:
 #if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
 	{
@@ -1034,10 +1062,17 @@ static int session_start(void)
 	}
 
 	publish_supported_ops();
-	if (CONFIG_TEDGE_REQUIRED_INTERVAL_MIN > 0) {
-		snprintf(line, sizeof(line), "117,%d",
-			 CONFIG_TEDGE_REQUIRED_INTERVAL_MIN);
-		(void)tedge_c8y_publish_sr(line);
+	{
+#if defined(CONFIG_TEDGE_PARAMETERS_SELF)
+		int required = tedge_self_required_interval_min();
+#else
+		int required = CONFIG_TEDGE_REQUIRED_INTERVAL_MIN;
+#endif
+
+		if (required > 0) {
+			snprintf(line, sizeof(line), "117,%d", required);
+			(void)tedge_c8y_publish_sr(line);
+		}
 	}
 	if (tedge_auth_username() == NULL) {
 		/* Only certificate devices get a token. */

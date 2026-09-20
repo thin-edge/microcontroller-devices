@@ -426,6 +426,18 @@ int tedge_ra_request(const char *line, char *reason, size_t rlen)
 	struct session *s = NULL;
 	int idx = 0;
 
+	/* An operator can close the door on a device already in the field,
+	 * through the "tedge" parameter set, without reflashing it. Checked
+	 * before anything is parsed: a refusal should cost nothing. */
+#if defined(CONFIG_TEDGE_PARAMETERS_SELF)
+	if (!tedge_self_remote_access_allowed()) {
+		snprintf(reason, rlen,
+			 "remote access is turned off on this device");
+		LOG_WRN("remote access: refused, turned off by parameter");
+		return -EACCES;
+	}
+#endif
+
 	/* 530,<serial>,<host>,<port>,<connectionKey> */
 	if (tedge_sr_field(line, 2, host, sizeof(host)) <= 0 ||
 	    tedge_sr_field(line, 3, port_s, sizeof(port_s)) <= 0 ||

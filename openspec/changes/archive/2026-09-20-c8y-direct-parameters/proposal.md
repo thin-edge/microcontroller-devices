@@ -42,6 +42,12 @@ with the Modbus application as the example.
 - **An application declares a parameter set:** a name and a table of
   parameters, each with a type (bool, integer, string, enum), a default, and
   its limits (range, length, allowed values).
+- **The client declares one for itself**, named `tedge`: how much it logs,
+  how often it reports its own health, the availability window Cumulocity
+  judges it by, and whether the cloud may tunnel to it. Every application
+  gets these without writing a line, and only settings that a running device
+  can actually honour are offered — nothing that sizes a buffer, a stack or
+  a thread.
 - **Values live in three places that agree:** the client's settings subtree
   (so they survive a reboot), the device twin (so an operator can see them),
   and the application (through a change hook).
@@ -65,8 +71,12 @@ with the Modbus application as the example.
   an application that wants a table of them can encode it, and say so.
 - Registering the schema in the tenant. That is the tenant owner's job, as
   the Smart Functions are; the client only produces the schema.
-- Changing parameters from the device side as a general API. The
-  application owns its own settings; this is about the cloud's view of them.
+- Changing parameters from the device side as a general API. An application
+  owns its own settings; this is about the cloud's view of them. The client
+  is the one exception, and only for itself: it declares a set of its own
+  (`CONFIG_TEDGE_PARAMETERS_SELF`) holding the few of its own settings that
+  can take effect on a running device, so a device is adjustable in the
+  field whether or not its application declares anything.
 
 ## Resource constraints
 
@@ -81,9 +91,9 @@ with the Modbus application as the example.
 
 ### New Capabilities
 
-- `tedge-parameters`: what a device can declare, what an operator can see
-  and change, what happens to a change that does not fit, and what survives
-  a reboot.
+- `tedge-parameters`: what a device can declare — by its application and by
+  the client for itself — what an operator can see and change, what happens
+  to a change that does not fit, and what survives a reboot.
 
 ### Modified Capabilities
 

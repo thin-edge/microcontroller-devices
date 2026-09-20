@@ -326,8 +326,7 @@ int tedge_operation_succeed(struct tedge_operation *op, const char *result);
 int tedge_operation_fail(struct tedge_operation *op, const char *reason);
 
 /* ------------------------------------------------------------------------ */
-/* Log types (CONFIG_TEDGE_LOG_UPLOAD) and configuration types              */
-/* (CONFIG_TEDGE_CONFIG - not implemented yet, -ENOTSUP)                     */
+/* Log types (CONFIG_TEDGE_LOG_UPLOAD)                                       */
 /*                                                                           */
 /* A log type is a callback, not a file: the client asks the application to  */
 /* produce the log when the cloud requests it, and the application writes it */
@@ -378,34 +377,176 @@ int tedge_register_log_type(const char *type, tedge_log_reader_t reader,
 			    void *user_data);
 #endif /* CONFIG_TEDGE && !CONFIG_TEDGE_LOG_UPLOAD */
 
-/** @brief Writes the current configuration of one type (snapshot). */
-typedef int (*tedge_config_reader_t)(tedge_write_fn write, void *ctx,
-				     void *user_data);
+/* ------------------------------------------------------------------------ */
+/* Parameters (CONFIG_TEDGE_PARAMETERS)                                      */
+/*                                                                           */
+/* The settings an operator may change from the cloud. The application       */
+/* declares them once, as a const table: a name, a type, a default and the   */
+/* limits of what the value may hold. The client stores them, validates      */
+/* every change against the declaration, reports the current values as twin  */
+/* state, and tells the application when a change was accepted.              */
+/*                                                                           */
+/* There is deliberately no configuration-file API: no snapshot reader, no   */
+/* chunked writer, no upload and no download. A device with no filesystem    */
+/* has nothing to put in a file, and a blob is something an operator can     */
+/* neither read nor validate. See openspec c8y-direct-parameters.            */
+/* ------------------------------------------------------------------------ */
+
+/** @brief What a parameter holds. */
+enum tedge_param_type {
+	TEDGE_PARAM_TYPE_BOOL,
+	TEDGE_PARAM_TYPE_INT,
+	TEDGE_PARAM_TYPE_STRING,
+	/** A string, restricted to a fixed list of allowed values. */
+	TEDGE_PARAM_TYPE_ENUM,
+};
 
 /**
- * @brief Applies a new configuration of one type, delivered in chunks.
- * @p data is NULL with @p len 0 on the final call. Return a negative errno
- * to reject it.
+ * @brief One declared parameter. Build these with the TEDGE_PARAM_* macros
+ * rather than by hand: they put each value in the right union member.
  */
-typedef int (*tedge_config_writer_t)(const void *data, size_t len,
-				     void *user_data);
+struct tedge_parameter {
+	const char *name;
+	const char *description;
+	enum tedge_param_type type;
+	union {
+		bool b;
+		int32_t i;
+		const char *s;
+	} def;
+	/** TEDGE_PARAM_TYPE_INT: the inclusive range. */
+	int32_t min;
+	int32_t max;
+	/** TEDGE_PARAM_TYPE_STRING: the longest value accepted, excluding the NUL. */
+	uint16_t max_len;
+	/** TEDGE_PARAM_TYPE_ENUM: the allowed values, NULL-terminated. */
+	const char *const *allowed;
+};
 
-#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_CONFIG)
-/* Configuration management is not built in (and not implemented yet). */
-static inline int tedge_register_config_type(const char *type,
-					     tedge_config_reader_t reader,
-					     tedge_config_writer_t writer,
-					     void *user_data)
+/** @cond INTERNAL_HIDDEN */
+#define TEDGE_PARAM_LIST(...) __VA_ARGS__
+/** @endcond */
+
+/** @brief Declare a boolean parameter. */
+#define TEDGE_PARAM_BOOL(_name, _default, _desc)                              \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_BOOL, .def.b = (_default),            \
+	}
+
+/** @brief Declare an integer parameter, accepted within [@p _min, @p _max]. */
+#define TEDGE_PARAM_INT(_name, _default, _min, _max, _desc)                   \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_INT, .def.i = (_default),             \
+		.min = (_min), .max = (_max),                                  \
+	}
+
+/** @brief Declare a string parameter of at most @p _max_len characters. */
+#define TEDGE_PARAM_STRING(_name, _default, _max_len, _desc)                  \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_STRING, .def.s = (_default),          \
+		.max_len = (_max_len),                                         \
+	}
+
+/**
+ * @brief Declare an enumerated parameter.
+ *
+ * @p _values is a parenthesised list of string literals, and @p _default
+ * must be one of them:
+ *
+ *     TEDGE_PARAM_ENUM("profile", "normal", ("normal", "quiet", "boost"),
+ *                      "Operating profile")
+ */
+#define TEDGE_PARAM_ENUM(_name, _default, _values, _desc)                     \
+	{                                                                      \
+		.name = (_name), .description = (_desc),                       \
+		.type = TEDGE_PARAM_TYPE_ENUM, .def.s = (_default),            \
+		.allowed = (const char *const[]){ TEDGE_PARAM_LIST _values,    \
+						  NULL },                      \
+	}
+
+/**
+ * @brief Called once after a change has been validated and stored.
+ *
+ * Read the new values with tedge_parameter_get_*(). Return 0 to accept the
+ * change, or a negative errno and a reason to refuse it — the client then
+ * puts back the values the device was running and fails the operation with
+ * the reason. It runs on the client's thread, so it must return promptly.
+ */
+typedef int (*tedge_parameters_changed_t)(const char *set, char *reason,
+					  size_t reason_len, void *user_data);
+
+#if defined(CONFIG_TEDGE) && !defined(CONFIG_TEDGE_PARAMETERS)
+/* Parameters are not built in: the calls exist so an application compiles. */
+static inline int tedge_declare_parameters(const char *set,
+					   const struct tedge_parameter *params,
+					   size_t count,
+					   tedge_parameters_changed_t on_change,
+					   void *user_data)
 {
-	ARG_UNUSED(type); ARG_UNUSED(reader); ARG_UNUSED(writer);
-	ARG_UNUSED(user_data);
+	ARG_UNUSED(set); ARG_UNUSED(params); ARG_UNUSED(count);
+	ARG_UNUSED(on_change); ARG_UNUSED(user_data);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_bool(const char *set, const char *name,
+					   bool *out)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_int(const char *set, const char *name,
+					  int32_t *out)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out);
+	return -ENOTSUP;
+}
+
+static inline int tedge_parameter_get_string(const char *set, const char *name,
+					     char *out, size_t len)
+{
+	ARG_UNUSED(set); ARG_UNUSED(name); ARG_UNUSED(out); ARG_UNUSED(len);
 	return -ENOTSUP;
 }
 #else
-/** @brief Add a configuration type (snapshot and/or update). */
-int tedge_register_config_type(const char *type, tedge_config_reader_t reader,
-			       tedge_config_writer_t writer, void *user_data);
-#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_CONFIG */
+/**
+ * @brief Declare the set of parameters the cloud may change.
+ *
+ * Call it before tedge_start(). @p params must stay valid for the life of
+ * the program — it is meant to be a file-scope `static const` table, so it
+ * costs flash and no RAM.
+ *
+ * @p set names the set, and is the one name the cloud knows it by: the twin
+ * fragment, the schema's identifier and the operation are all named after
+ * it. Each parameter starts at its declared default, which anything already
+ * stored then replaces.
+ *
+ * @return 0, -EEXIST when the set is already declared, -ENOSPC when there
+ *         is no free slot (CONFIG_TEDGE_PARAMETERS_MAX), -EINVAL when the
+ *         declaration is not self-consistent (a default outside its own
+ *         range or absent from its own allowed values, a duplicate name),
+ *         or -ENOTSUP when parameters are not built in.
+ */
+int tedge_declare_parameters(const char *set,
+			     const struct tedge_parameter *params,
+			     size_t count, tedge_parameters_changed_t on_change,
+			     void *user_data);
+
+/**
+ * @brief Read the current value of a declared parameter.
+ *
+ * @return 0, -ENOENT when the set or the name was never declared, or
+ *         -EINVAL when the parameter is not of that type.
+ */
+int tedge_parameter_get_bool(const char *set, const char *name, bool *out);
+int tedge_parameter_get_int(const char *set, const char *name, int32_t *out);
+/** @p out is always NUL-terminated; -ENOMEM when @p len is too small. */
+int tedge_parameter_get_string(const char *set, const char *name, char *out,
+			       size_t len);
+#endif /* CONFIG_TEDGE && !CONFIG_TEDGE_PARAMETERS */
 
 #ifdef __cplusplus
 }

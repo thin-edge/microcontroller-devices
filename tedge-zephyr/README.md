@@ -9,15 +9,16 @@ already does:
 - firmware update through MCUboot;
 - telemetry;
 - log retrieval;
-- configuration management.
+- parameters an operator can see and change.
 
 > **Status: early.** Onboarding, the connection, device state, restart,
 > remote access, firmware update, certificate renewal and telemetry (with the
 > client's own health) work and are verified on hardware (ESP32-C6,
 > ESP32-S3), as do log retrieval, crash dumps and the allow-listed shell
-> command. Configuration management is not implemented yet: its API calls
-> return `-ENOTSUP`, and the header says which change implements it. The API
-> may still change.
+> command. Parameters are implemented and unit-tested; their hardware
+> verification is still outstanding. Configuration *files* are deliberately
+> not implemented, and the API for them has been removed — see
+> **Parameters** for what replaced them. The API may still change.
 
 ## Transports
 
@@ -96,6 +97,8 @@ shared with the rest of your image:
 | + telemetry and health | 815 KB | 114 KB |
 | + log upload and crash dumps | 824 KB | 100 KB |
 | + the shell command (on an image that already has a shell) | +2.5 KB | 90 KB |
+| + parameters (both sets, no schema printer) | +7.2 KB | — |
+| + the schema printer and its shell commands | +1.3 KB | — |
 
 With the TLS heap in PSRAM on an ESP32-S3, the client costs no internal RAM
 beyond its own buffers.
@@ -290,6 +293,179 @@ that topic; the client then uses `s/ds` and the older statuses.
 what arrives meanwhile (two deep), because a second file transfer or tunnel
 needs a second TLS session and another thread, which a constrained board
 does not have. With ids this is a resource limit, not a correctness one.
+
+### Parameters
+
+`CONFIG_TEDGE_PARAMETERS` gives an operator a typed set of settings they can
+see and change from the cloud. There is deliberately no configuration-file
+API: a device with no filesystem has nothing to put in a file, and a blob is
+something an operator can neither read nor validate. A change travels inside
+its operation, so this needs no HTTP client and no second TLS session.
+
+An application declares one `const` table and hands it over before
+`tedge_start()`:
+
+```c
+static const struct tedge_parameter pump_params[] = {
+	TEDGE_PARAM_INT("interval_s", 30, 5, 3600, "Seconds between reads"),
+	TEDGE_PARAM_BOOL("auto_mode", true, "Run the pump automatically"),
+	TEDGE_PARAM_ENUM("profile", "normal", ("normal", "quiet", "boost"),
+			 "Operating profile"),
+	TEDGE_PARAM_STRING("site", "", 32, "Where this device is"),
+};
+
+tedge_declare_parameters("pump", pump_params, ARRAY_SIZE(pump_params),
+			 on_parameters_changed, NULL);
+```
+
+The table stays in flash. What costs RAM is one current value per parameter
+(`CONFIG_TEDGE_PARAMETERS_MAX`, 16 by default) plus one heap allocation per
+string, sized by the declaration and made once.
+
+**The set's name is the one name the cloud knows it by** — `"pump"` above is
+the twin fragment, the schema's identifier and the suffix of the operation
+fragment, all three. That is also how one device offers more than one set.
+
+**What the cloud sees.** On every connect, and after every accepted change,
+the client publishes the whole set as twin state:
+
+```
+te/device/<id>///twin/pump  {"interval_s":30,"auto_mode":true,"profile":"normal","site":""}
+```
+
+Twin data is state rather than an event, so a reboot never leaves the cloud
+showing a value the device is not running.
+
+**What a change looks like.** Cumulocity sends the *whole* set, not just
+what was edited, in a top-level fragment named after it; the
+`c8y_ParameterUpdate_pump` fragment beside it is an empty marker naming the
+set:
+
+```json
+{"id":"214989","description":"Update parameter 'pump'",
+ "pump":{"interval_s":60,"auto_mode":true,"profile":"quiet","site":""},
+ "c8y_ParameterUpdate":{}, "c8y_ParameterUpdate_pump":{}}
+```
+
+Only values that actually moved are written to flash, so a whole-set send
+costs no more than an edit of one. Values inside the suffixed fragment are
+accepted too, which is the shape you get building an operation by hand
+through the REST API.
+
+**What a bad value does.** The client checks every value in a change
+against the declaration — type, range, length, allowed values — *before* it
+applies any of them, and a single failure leaves every parameter as it was:
+
+```
+505,<id>,"interval_s: 4000 is outside 5..3600"
+```
+
+A half-applied set is how a device ends up in a state nobody can reproduce,
+so it is all or nothing. The refusal names the parameter and the limit it
+broke, and an undeclared name is refused the same way.
+
+**Your hook is the last word.** It is called once, after the values are in
+place, and may still refuse a combination only the application understands:
+
+```c
+static int on_parameters_changed(const char *set, char *reason,
+				 size_t reason_len, void *user_data)
+{
+	if (bad_combination()) {
+		snprintf(reason, reason_len, "the pump is running");
+		return -EBUSY;   /* the client puts the old values back */
+	}
+	return 0;
+}
+```
+
+Read the current values with `tedge_parameter_get_bool()`,
+`tedge_parameter_get_int()` and `tedge_parameter_get_string()` (an enum
+reads as the string it is).
+
+**What survives a reboot.** An accepted value is written to its own settings
+key, `tedge/param/<set>/<name>`, and only when it actually changed — an
+operator pressing "save" with nothing altered costs no flash. At startup the
+stored values replace the declared defaults; a stored value whose parameter
+the running firmware no longer declares, or which no longer fits a narrowed
+range, is dropped.
+
+**One value, one type.** A parameter is a bool, an integer, a string or an
+enum — nothing nested and nothing repeated. An application that wants
+structure should encode it in a string and own the parsing.
+
+#### The client's own set
+
+With `CONFIG_TEDGE_PARAMETERS_SELF` (on by default) the client declares a
+set of its own, named `tedge`, so a device can be adjusted in the field
+whether or not your application declares anything:
+
+| Parameter | Type | What it changes |
+|---|---|---|
+| `log_level` | enum | how much the client logs — `off`, `err`, `wrn`, `inf`, `dbg` |
+| `health_interval_s` | int | seconds between its own health measurements, 0 to stop them |
+| `required_interval_min` | int | minutes of silence after which Cumulocity calls the device offline — but see the note below |
+| `remote_access` | bool | whether the cloud may open a tunnel at all |
+
+Each one is present only if the feature behind it is built in: no health,
+no `health_interval_s`. **Only settings a running device can honour are
+offered** — nothing that sizes a buffer, a stack or a thread, because those
+are fixed once the image is linked and a value the device quietly ignores is
+worse than no value.
+
+> **`required_interval_min` is create-only as far as the device is
+> concerned.** The device reports it with SmartREST template `117`, and
+> Cumulocity uses that to *create* `c8y_RequiredAvailability`, not to update
+> one that already exists. On a device that has had an availability set —
+> which is any device that has connected once with this client — changing
+> the parameter changes what the device reports and remembers, and the
+> platform keeps judging it by the value already in the cloud. Change that
+> one in the cloud. The parameter is still worth having: it is what a fresh
+> device registers with, and it records the intent.
+
+`log_level` is the one worth knowing about: raising it on a device that is
+misbehaving, from a desk rather than a bench, is most of why this set
+exists. It takes effect immediately with `CONFIG_LOG_RUNTIME_FILTERING`,
+and at the next boot without it. `remote_access` is the other: an operator
+can close the door on a device without reflashing it.
+
+Your own set is declared before the client's, so a name you have already
+taken stays yours.
+
+#### Registering the set in your tenant
+
+The tenant needs the `dtm` and `device-parameter` microservices, and the
+user doing the registering needs `ROLE_DIGITAL_TWIN_DEFINITIONS_CREATE` and
+`ROLE_DIGITAL_TWIN_DEFINITIONS_ADMIN`.
+
+The schema has to match the declaration in the firmware, and writing it
+twice by hand is how the two drift. With `CONFIG_TEDGE_PARAMETERS_SCHEMA`
+the device prints it, generated from the same table it validates against:
+
+```
+uart:~$ tedge params schema pump
+{"identifier":"pump","jsonSchema":{...},"contexts":["asset","event","operation"]}
+```
+
+Paste that into the Digital Twin Manager:
+
+```sh
+c8y api --raw POST /service/dtm/definitions/properties --file schema.json
+```
+
+`contexts` must contain both `asset` and `operation`, or the UI shows the
+values but will not let anyone edit them — which is why the device emits the
+whole registration body rather than a bare schema. Re-registering an
+existing identifier does not work, so a changed declaration means deleting
+it first:
+
+```sh
+c8y api DELETE "/service/dtm/definitions/properties/pump?contexts=asset,event,operation"
+```
+
+`tedge params list` shows what the running image declares. Turn
+`CONFIG_TEDGE_PARAMETERS_SCHEMA` off once the sets are registered; it is
+only needed to produce them.
 
 ### Firmware update
 

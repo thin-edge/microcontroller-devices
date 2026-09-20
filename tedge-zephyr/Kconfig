@@ -66,9 +66,9 @@ config TEDGE_FEATURE_AVAILABLE_REMOTE_ACCESS
 	bool
 	default y
 
-config TEDGE_FEATURE_AVAILABLE_CONFIG
+config TEDGE_FEATURE_AVAILABLE_PARAMETERS
 	bool
-	default y if TEDGE_EXPERIMENTAL_FEATURES
+	default y
 
 config TEDGE_FEATURE_AVAILABLE_CERT_RENEWAL
 	bool
@@ -608,10 +608,53 @@ config TEDGE_REMOTE_ACCESS_IDLE_TIMEOUT_S
 
 endif # TEDGE_REMOTE_ACCESS
 
-config TEDGE_CONFIG
-	bool "Configuration management"
-	depends on TEDGE_FEATURE_AVAILABLE_CONFIG
-	select TEDGE_HTTP
+config TEDGE_PARAMETERS
+	bool "Parameters"
+	depends on TEDGE_FEATURE_AVAILABLE_PARAMETERS
+	help
+	  Settings an operator may change from the cloud. The application
+	  declares a named set of typed parameters with their defaults and
+	  limits; the client stores them, validates every change against the
+	  declaration, and reports the current values as twin state. Nothing
+	  is uploaded or downloaded, so this needs no HTTP client and no
+	  filesystem.
+
+if TEDGE_PARAMETERS
+
+config TEDGE_PARAMETERS_MAX
+	int "Maximum declared parameters, across all sets"
+	default 16
+	range 1 100
+	help
+	  One current value is kept in RAM per declared parameter. The
+	  declaration itself is the application's const data and costs
+	  nothing here. Cumulocity accepts at most 100 parameters in one
+	  change.
+
+config TEDGE_PARAMETERS_SELF
+	bool "Offer the client's own tunables as a parameter set"
+	default y
+	help
+	  Declares a set named "tedge" holding the few client settings that
+	  are worth revisiting on a device already in the field: how much it
+	  logs, how often it reports its own health, the availability window
+	  Cumulocity judges it by, and whether the cloud may tunnel to it.
+	  Every application gets these without writing a line, and its own
+	  parameters live in a set of its own. Raising the log level takes
+	  effect immediately only with CONFIG_LOG_RUNTIME_FILTERING;
+	  otherwise it applies at the next boot.
+
+config TEDGE_PARAMETERS_SCHEMA
+	bool "Print the JSON Schema of a declared set"
+	default y
+	depends on SHELL
+	help
+	  Adds "tedge params schema", which prints what has to be registered
+	  in the tenant's Digital Twin Manager for a set. It is generated
+	  from the same table the client validates against, so the two cannot
+	  drift. Costs text; turn it off once the sets are registered.
+
+endif # TEDGE_PARAMETERS
 
 config TEDGE_CERT_RENEWAL
 	bool "Certificate renewal"

@@ -89,7 +89,9 @@ The public API SHALL let the host application:
 - provide the device identity: external ID, name, type, and firmware name and
   version (with a documented default for each);
 - push telemetry: measurements, events and alarms;
-- register its own operation handlers, log types and configuration types;
+- register its own operation handlers and log types;
+- declare a set of typed parameters the cloud may change, and be told when
+  a change is accepted;
 - prepare for or veto a restart requested by the cloud;
 - add its own health checks that must pass before a newly updated firmware image
   is confirmed;
@@ -152,6 +154,12 @@ restart hook the chance to respond.
   upload
 - **THEN** it still compiles and links, and the registration returns "not
   supported"
+
+#### Scenario: Application is told about a parameter change
+
+- **WHEN** the cloud changes a declared parameter and the change is valid
+- **THEN** the application's hook is called once with the new values, and
+  may still refuse them
 
 ### Requirement: Example integrations
 
