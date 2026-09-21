@@ -228,7 +228,7 @@ DEVICES.md. Flash with `--app-only` onto already-onboarded devices.
 - [ ] 12.2 WROOM-32: `erase-flash` + factory image at `0x0` with plain
       esptool; boots into the Improv provisioner (checks the `0x1000`
       padding); provision and read the protocol from a client
-- [ ] 12.3 C6 `tedge` Modbus: flash the rc bundle with `flash.sh`, provision
+- [x] 12.3 C6 `tedge` Modbus: flash the rc bundle with `flash.sh`, provision
       through lab-ztp-provisioner, confirm enrolment and that Cumulocity shows
       `modbus-server-tedge-ota-esp32c6-devkitc 0.4.0-rc1`
 - [ ] 12.4 QT Py S3 and S3-DevKitC: factory image flash + Improv provisioning
