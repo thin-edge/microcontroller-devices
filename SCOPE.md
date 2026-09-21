@@ -207,10 +207,17 @@ the strongest reason for the direct transport.
 - **Fallback:** basic-auth credentials obtained via the Cumulocity bootstrap
   user. The client must create the device (`100`) before subscribing, or its
   first session misses operations.
-- **Delivery:** the BLE Wi-Fi provisioner returns the registration URL as the
-  Improv RPC result. The provisioner stores only the one-time password; all
-  crypto stays in the application image. The tenant URL comes from a per-fleet
-  Kconfig default, overridable from the shell. A SoftAP/captive-portal
+- **Delivery:** zero-touch, through
+  [lab-ztp-provisioner](https://github.com/reubenmiller/lab-ztp-provisioner)
+  (openspec change `ztp-ble-provisioner`). The provisioner image, built with
+  `CONFIG_APP_PROV_ZTP`, is a BLE peripheral for the server's relays; one
+  session delivers Wi-Fi, the tenant, the external ID and a one-time password
+  the server has already registered, sealed end to end. The application hands
+  them to the client (`tedge_set_c8y_url()`, `tedge_set_enroll_otp()`), so the
+  device enrols on first connect with no console and no per-fleet build. This
+  supersedes the earlier sketch of returning a registration URL as the Improv
+  result. Without ZTP, the tenant comes from `CONFIG_TEDGE_C8Y_URL` and the
+  device prints a registration URL as before. A SoftAP/captive-portal
   provisioner works too (Spike E: 71% of the `prov` partition against 92%
   for BLE, AP+STA credential test, the iPhone's portal sheet opens by
   itself). It becomes a supported alternative once it shows a success page,
