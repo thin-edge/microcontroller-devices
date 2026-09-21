@@ -299,8 +299,29 @@ int tedge_fw_poll_event(struct tedge_fw_event *ev);
 void tedge_fw_arm_confirm_deadline(void);
 /** Confirm a test boot, or report a rollback. Called once per session. */
 void tedge_fw_on_connected(void);
-/** The running image's version, from MCUboot's header. */
+/**
+ * The running image's version: the application's own version string
+ * (tedge_identity's firmware_version), or MCUboot's header MAJOR.MINOR.PATCH
+ * when the application gives none.
+ */
 int tedge_fw_running_version(char *buf, size_t len);
+
+/* Pure decisions (tedge_fw_decision.c), unit-tested. */
+/** @p app_version when set, else @p header_version, into @p buf. */
+int tedge_fw_version_pick(const char *app_version, const char *header_version,
+			  char *buf, size_t len);
+/** Whether a request for @p name @p version asks for what is running. */
+bool tedge_fw_is_running(const char *running_name, const char *running_version,
+			 const char *name, const char *version);
+
+enum tedge_fw_boot {
+	TEDGE_FW_BOOT_TEST,     /**< test boot of the new image: confirm it */
+	TEDGE_FW_BOOT_DONE,     /**< the pending version is running, confirmed */
+	TEDGE_FW_BOOT_REVERTED, /**< confirmed, but not the pending version */
+};
+/** What the image running after an install means for the pending job. */
+enum tedge_fw_boot tedge_fw_boot_outcome(bool confirmed, const char *running,
+					 const char *pending);
 /** Text for the operation while the device installs and swaps. */
 const char *tedge_fw_downtime_hint(void);
 /** Publish @p json on the free-form progress topic (QoS 0); no-op on Core MQTT. */

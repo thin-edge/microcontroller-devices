@@ -1496,3 +1496,68 @@ ZTEST(tedge_otp, test_basic_credential_never_truncates)
 }
 
 ZTEST_SUITE(tedge_otp, NULL, NULL, NULL, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* Firmware versions                                                         */
+/*                                                                           */
+/* The bootloader's header holds only MAJOR.MINOR.PATCH, so a pre-release    */
+/* installed by version must be recognised by the application's own string. */
+/* ------------------------------------------------------------------------ */
+
+ZTEST(tedge_fw, test_application_version_wins)
+{
+	char v[24];
+
+	zassert_ok(tedge_fw_version_pick("0.4.0-rc1", "0.4.0", v, sizeof(v)));
+	zassert_str_equal(v, "0.4.0-rc1");
+}
+
+ZTEST(tedge_fw, test_header_when_the_application_gives_none)
+{
+	char v[24];
+
+	zassert_ok(tedge_fw_version_pick("", "0.4.0", v, sizeof(v)));
+	zassert_str_equal(v, "0.4.0");
+	zassert_ok(tedge_fw_version_pick(NULL, "0.4.0", v, sizeof(v)));
+	zassert_str_equal(v, "0.4.0");
+	zassert_equal(tedge_fw_version_pick("", "", v, sizeof(v)), -ENOENT);
+	zassert_equal(tedge_fw_version_pick("0.4.0-rc1", "0.4.0", v, 4),
+		      -ENOSPC);
+}
+
+ZTEST(tedge_fw, test_the_running_pre_release_is_refused)
+{
+	zassert_true(tedge_fw_is_running("app", "0.4.0-rc1", "app",
+					 "0.4.0-rc1"));
+}
+
+ZTEST(tedge_fw, test_the_final_release_over_its_pre_release_is_accepted)
+{
+	zassert_false(tedge_fw_is_running("app", "0.4.0-rc1", "app", "0.4.0"));
+	zassert_false(tedge_fw_is_running("app", "0.4.0", "app", "0.4.0-rc1"));
+	/* Same version under another firmware name is another image. */
+	zassert_false(tedge_fw_is_running("app", "0.4.0", "other", "0.4.0"));
+	/* Nothing known about the running image: never refuse. */
+	zassert_false(tedge_fw_is_running("app", "", "app", "0.4.0"));
+}
+
+ZTEST(tedge_fw, test_a_pre_release_is_installed_not_rolled_back)
+{
+	/* Test boot of 0.4.0-rc1: confirm it. */
+	zassert_equal(tedge_fw_boot_outcome(false, "0.4.0-rc1", "0.4.0-rc1"),
+		      TEDGE_FW_BOOT_TEST);
+	/* Confirmed and it is the one that was installed. */
+	zassert_equal(tedge_fw_boot_outcome(true, "0.4.0-rc1", "0.4.0-rc1"),
+		      TEDGE_FW_BOOT_DONE);
+	/* What a header-only version would have concluded. */
+	zassert_equal(tedge_fw_boot_outcome(true, "0.4.0", "0.4.0-rc1"),
+		      TEDGE_FW_BOOT_REVERTED);
+}
+
+ZTEST(tedge_fw, test_a_reverted_image_is_reported)
+{
+	zassert_equal(tedge_fw_boot_outcome(true, "0.3.1", "0.4.0"),
+		      TEDGE_FW_BOOT_REVERTED);
+}
+
+ZTEST_SUITE(tedge_fw, NULL, NULL, NULL, NULL, NULL);

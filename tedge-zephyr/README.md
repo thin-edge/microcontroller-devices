@@ -487,6 +487,16 @@ server accepted a connection, that a sensor answers, that the peer you
 depend on is reachable. Returning non-zero leaves the image unconfirmed, and
 it is rolled back.
 
+**The version is the application's own string.** The client reports the
+running firmware as `firmware_name` and `firmware_version` from
+`tedge_identity` (by default the application's `APP_VERSION_STRING`), and
+compares the version of a requested install with it — to refuse the version
+already running, and after the reboot to tell a confirmed install from a
+rollback. MCUboot's image header is only used when the application gives no
+version: it holds `MAJOR.MINOR.PATCH` alone, so a pre-release such as
+`0.4.0-rc1` would read back as `0.4.0` and look rolled back. Put exactly the
+reported version in the cloud's firmware repository.
+
 **An image that never confirms rolls itself back.** It resets the device
 after `CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S` (default 900 s) so the
 bootloader can restore the previous image; the restored image then reports

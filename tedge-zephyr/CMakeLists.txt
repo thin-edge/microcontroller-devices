@@ -35,7 +35,10 @@ if(CONFIG_TEDGE)
     src/tedge_http_upload.c
     src/tedge_url.c
   )
-  zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE src/tedge_firmware.c)
+  zephyr_library_sources_ifdef(CONFIG_TEDGE_FIRMWARE_UPDATE
+    src/tedge_firmware.c
+    src/tedge_fw_decision.c
+  )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_SHELL_COMMAND
     src/tedge_shell_cmd.c
     src/tedge_shell_allow_list.c
