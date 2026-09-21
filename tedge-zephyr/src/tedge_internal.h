@@ -163,6 +163,14 @@ int tedge_url_split(const char *url, bool *tls, char *host, size_t host_len,
 		    uint16_t *port, const char **path);
 /** True when @p host is the tenant or inside its parent domain. */
 bool tedge_url_is_tenant(const char *host);
+
+/* One-time passwords (tedge_otp.c). The device generates 32 characters;
+ * one supplied through tedge_set_enroll_otp() may be up to TEDGE_OTP_MAX. */
+#define TEDGE_OTP_MAX 64
+bool tedge_otp_valid(const char *password);
+/* "<external id>:<password>" into @p out; -ENAMETOOLONG rather than truncate. */
+int tedge_basic_credential(char *out, size_t size, const char *external_id,
+			   const char *password);
 /** Resolve a redirect target against the URL it came from. */
 int tedge_url_resolve(const char *base, const char *location, char *out,
 		      size_t len);
@@ -415,6 +423,9 @@ const char *tedge_auth_password(void);
 #define TEDGE_SETTINGS_ROOT      "tedge"
 #define TEDGE_KEY_C8Y_URL        TEDGE_SETTINGS_ROOT "/c8y/url"
 #define TEDGE_KEY_ENROLL_OTP     TEDGE_SETTINGS_ROOT "/enroll/otp"
+/* Present when the password came from tedge_set_enroll_otp(): it must never
+ * be revealed through tedge_registration_url(). */
+#define TEDGE_KEY_ENROLL_OTP_EXT TEDGE_SETTINGS_ROOT "/enroll/otp_ext"
 #define TEDGE_KEY_ENROLL_CERT    TEDGE_SETTINGS_ROOT "/enroll/cert"
 #define TEDGE_KEY_BOOTSTRAP_USER TEDGE_SETTINGS_ROOT "/bootstrap/user"
 #define TEDGE_KEY_BOOTSTRAP_PASS TEDGE_SETTINGS_ROOT "/bootstrap/pass"

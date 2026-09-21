@@ -59,6 +59,7 @@ if(CONFIG_TEDGE)
   )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA
     src/tedge_enroll.c
+    src/tedge_otp.c
     src/tedge_pkcs7.c
   )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_BOOTSTRAP src/tedge_bootstrap.c)

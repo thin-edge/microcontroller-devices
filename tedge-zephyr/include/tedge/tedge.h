@@ -165,6 +165,29 @@ enum tedge_state tedge_get_state(void);
 int tedge_set_c8y_url(const char *host);
 
 /**
+ * @brief Use a one-time password issued outside the device.
+ *
+ * For devices registered with Cumulocity by someone else — typically a
+ * zero-touch provisioning server that has already registered the external ID
+ * with this password. The client then enrolls with it on the first attempt
+ * instead of generating its own, so no registration URL needs to be shown.
+ *
+ * Stored in settings. Call before tedge_start(), with the external ID the
+ * password was issued for set through tedge_init(). The client never logs it
+ * above debug level and deletes it once a certificate is issued.
+ *
+ * Supplying a password re-onboards the device: a certificate from an earlier
+ * enrollment is discarded (the key pair is kept), since it belongs to the old
+ * registration and another tenant would refuse it. Call it only when a new
+ * password has actually been issued, not on every boot.
+ *
+ * @return 0; -EINVAL for an empty password, one longer than 64 characters, or
+ *         one with characters outside printable ASCII; -ENOTSUP with
+ *         bootstrap authentication.
+ */
+int tedge_set_enroll_otp(const char *password);
+
+/**
  * @brief Set the bootstrap credentials (CONFIG_TEDGE_AUTH_BOOTSTRAP), when
  * they are not built in. Call before tedge_start(). Not stored in settings.
  */
@@ -175,7 +198,10 @@ int tedge_set_bootstrap_credentials(const char *user, const char *password);
  * pre-filled) into @p buf, so the application can show it (console,
  * display, provisioning result).
  *
- * @return URL length, -ENOENT if the device is already enrolled.
+ * @return URL length, -ENOENT if the device is already enrolled, -EACCES
+ *         when the password was supplied through tedge_set_enroll_otp():
+ *         whoever issued it has registered the device already, and it must
+ *         not be shown.
  */
 int tedge_registration_url(char *buf, size_t len);
 
