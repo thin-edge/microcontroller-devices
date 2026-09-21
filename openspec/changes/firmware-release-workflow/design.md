@@ -528,10 +528,11 @@ it.
 
 ## Open Questions
 
-- Which ESP32-CAM and `tedge-agent` builds make the manifest — decided by
-  the capacity measurement (1d). (WROOM protocol apps: settled, see 1e.)
-- Does `opcua-server` `tedge-full` run on the C6 (no PSRAM) and the QT Py
-  (2 MB PSRAM)? Same: measured.
+- Could OPC-UA live beside the client if open62541's allocations came from
+  PSRAM (the S3 boards have megabytes of it)? Measured: today it runs out of
+  internal heap at both levels on the C6 and the S3-DevKitC.
+- Which extras to add to the CAM's `tedge-ota` images: certificate renewal
+  and parameters link beside SNMP and Modbus (not yet run on the board).
 - Worth slimming SNMP's static tables (MIB leaf table to flash, smaller
   varbind/request buffers) so `snmp-agent` `tedge-ota` fits the WROOM? A
   separate change if wanted; ~24 KB must go.

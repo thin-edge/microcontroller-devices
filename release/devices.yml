@@ -5,6 +5,9 @@
 # the README's supported-devices table all come from this file; a build that
 # is not listed here is not released. scripts/release/matrix.py validates it.
 #
+# OPC-UA runs out of memory beside the client on every board but the QT Py
+# (DEVICES.md), so it ships standalone elsewhere.
+#
 # A tedge-* build is listed only once it has been built *and run* on the
 # board (connection, telemetry, a firmware update that confirms, a tunnel if
 # remote access is in, a protocol read alongside): `measured` points at the
@@ -47,7 +50,22 @@ devices:
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
-        measured: DEVICES.md#features-per-board
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
 
   - id: esp32s3-devkitc
     name: ESP32-S3-DevKitC-1 (N16R8)
@@ -62,7 +80,22 @@ devices:
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
-        measured: DEVICES.md#features-per-board
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
 
   - id: qtpy-esp32s3
     name: Adafruit QT Py ESP32-S3 (N4R2)
@@ -77,7 +110,25 @@ devices:
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
-        measured: DEVICES.md#features-per-board
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: opcua-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
 
   - id: esp32-devkitc
     name: ESP32-WROOM-32 DevKitC
@@ -113,3 +164,9 @@ devices:
       - app: snmp-agent
         variant: tedge-ota
         measured: DEVICES.md#the-esp32-cam-is-deliberately-small
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21

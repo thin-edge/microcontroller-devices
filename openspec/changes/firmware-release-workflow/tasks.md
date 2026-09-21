@@ -74,14 +74,14 @@ DEVICES.md. Flash with `--app-only` onto already-onboarded devices.
       validated settings into `lib/common/tedge-boards/esp32_devkitc.conf`
 - [x] 4.3b WROOM `tedge-agent`: once group 2 exists, build and run `tedge-ota`
       with remote access, then try adding certificate renewal and parameters
-- [ ] 4.4 ESP32-C6: `tedge-full` and `tedge-ota` for `opcua-server`,
+- [x] 4.4 ESP32-C6: `tedge-full` and `tedge-ota` for `opcua-server`,
       `snmp-agent` and `tedge-agent` (Modbus is known); OPC-UA `tedge-full`
       is the likeliest failure (no PSRAM)
-- [ ] 4.5 ESP32-S3-DevKitC: `tedge-full` and `tedge-ota` for all four apps
-- [ ] 4.6 QT Py S3 (rpi5): `tedge-full` and `tedge-ota` for all four apps
-- [ ] 4.7 ESP32-CAM (rpi5): `tedge-ota` for all four apps and whether any
+- [x] 4.5 ESP32-S3-DevKitC: `tedge-full` and `tedge-ota` for all four apps
+- [x] 4.6 QT Py S3 (rpi5): `tedge-full` and `tedge-ota` for all four apps
+- [x] 4.7 ESP32-CAM (rpi5): `tedge-ota` for all four apps and whether any
       extra (parameters, log upload) fits in dram1 alongside SNMP
-- [ ] 4.8 For each failing `tedge-full`, define that board's `tedge-ota`
+- [x] 4.8 For each failing `tedge-full`, define that board's `tedge-ota`
       extras (trim until the runtime check passes); summarise all boards in
       DEVICES.md "Features per board"
 

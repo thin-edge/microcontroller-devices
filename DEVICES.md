@@ -123,6 +123,65 @@ SNMP carries ~33 KB of static tables and buffers (MIB leaves 13.5 KB,
 varbinds 6.7 KB, request buffers 8.5 KB) and open62541 more; either would have
 to shrink by 16–24 KB before the client fits beside it.
 
+### Release builds measured on the boards (2026-09-21)
+
+Every `tedge-*` build in `release/devices.yml` points here or at the WROOM
+table above. Each ran on the board, installed **over the air** from the
+previous one (so each image's HTTPS download and the next one's
+boot-and-confirm are both exercised), then served its protocol to a client
+for 10 minutes; builds with remote access also carried an SSH session
+(400 KB) through a tunnel with the protocol read alongside. C6, S3-DevKitC
+and QT Py were provisioned through lab-ztp-provisioner with the release
+image; the CAM was registered through the Cumulocity CA. RAM is the fullest
+internal region (`scripts/release/size.py`).
+
+| Board | Build | RAM | Result |
+|---|---|---|---|
+| ESP32-C6 | modbus full | 91.9% | ✅ ZTP → enrolled, reports `0.4.0-rc1`; tunnel 405 KB/14 s with Modbus alongside |
+| ESP32-C6 | modbus ota | 86.0% | ✅ 571/571 reads |
+| ESP32-C6 | snmp full | 99.2% | ✅ 567/567; tunnel 405 KB/10 s, 38/38 alongside |
+| ESP32-C6 | snmp ota | 93.3% | ✅ 567/567 |
+| ESP32-C6 | tedge-agent full | 90.1% | ✅ tunnel 405 KB/10 s |
+| ESP32-C6 | tedge-agent ota | 84.2% | ✅ |
+| ESP32-C6 | opcua full | 99.1% | ❌ `UA_Server_newWithConfig() failed` (no memory) |
+| ESP32-C6 | opcua ota | 93.2% | ❌ server starts, every session `BadOutOfMemory` |
+| S3-DevKitC | modbus full | — | ✅ ZTP → enrolled; tunnel 405 KB/12 s with Modbus alongside |
+| S3-DevKitC | modbus ota | 81.9% | ✅ 573/573 |
+| S3-DevKitC | snmp full | 98.8% | ✅ 570/570; tunnel 405 KB/8 s, 38/38 alongside |
+| S3-DevKitC | snmp ota | 91.2% | ✅ 568/568 |
+| S3-DevKitC | tedge-agent full | 87.2% | ✅ tunnel 405 KB/8 s |
+| S3-DevKitC | tedge-agent ota | 79.7% | ✅ |
+| S3-DevKitC | opcua full | 98.7% | ❌ server did not start; the app refused the update and it rolled back |
+| S3-DevKitC | opcua ota | 91.1% | ❌ 0/561 reads (out of memory per session, as on the C6) |
+| QT Py S3 | modbus full | 88.5% | ✅ ZTP → enrolled |
+| QT Py S3 | modbus ota | 81.0% | ✅ serving (the Pi's tedge-dot holds its one Modbus connection) |
+| QT Py S3 | opcua ota | 90.2% | ✅ 490/490 |
+| QT Py S3 | snmp full | 97.8% | ✅ 569/569; tunnel 405 KB/12 s, 34/35 alongside |
+| QT Py S3 | snmp ota | 90.3% | ✅ 562/562 |
+| QT Py S3 | tedge-agent full | 86.2% | ✅ tunnel 405 KB/9 s (a first attempt moved nothing; the retest passed) |
+| QT Py S3 | tedge-agent ota | 78.7% | ✅ |
+| QT Py S3 | opcua full | 97.7% | ❌ server did not start; refused and rolled back |
+| ESP32-CAM | modbus ota | dram1 92.5% | ✅ 567/567 |
+| ESP32-CAM | tedge-agent ota | dram1 85.2% | ✅ installed over the air from Modbus |
+| ESP32-CAM | snmp ota | dram1 96.6% | ✅ in service since 2026-09-20 (above) |
+| ESP32-CAM | every full, opcua ota | — | ❌ do not link (dram1 over by 2.6–23 KB) |
+
+OPC-UA is the one protocol that does not live beside the client on these
+boards: open62541 allocates from the libc heap, which the client's TLS and
+network buffers leave too small — at `full` it cannot create the server, at
+`ota` it cannot open sessions on the C6 and the S3-DevKitC. The QT Py's `ota`
+image served, but with the margin that close, the S3-DevKitC result is the
+one to believe for a new board. OPC-UA ships `standalone` on every board
+except the QT Py's `tedge-ota`.
+
+What fits on top of the CAM's `tedge-ota` (link only, not yet run):
+certificate renewal and parameters beside SNMP or Modbus; remote access and
+log upload do not (over by 1–5.4 KB). The agent has room for all four.
+
+Telemetry was published throughout, but the test tenant had no mapping for
+`te/.../m/...`, so measurements could not be seen in Cumulocity; the
+`remoteAccess` twin mapping did work.
+
 ## What decides whether a board fits
 
 **Not flash** — that never exceeded 26%. It is internal DRAM, and

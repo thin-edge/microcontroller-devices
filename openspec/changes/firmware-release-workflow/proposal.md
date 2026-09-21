@@ -102,37 +102,22 @@ Apps: `modbus-server` (Modbus TCP), `opcua-server` (OPC-UA), `snmp-agent`
 (SNMP) and the new `tedge-agent` (no industrial protocol). Boards: those with
 an MCUboot + provisioner layout.
 
-| Device | Zephyr board | standalone | tedge-full | tedge-ota |
-|---|---|---|---|---|
-| ESP32-C6-DevKitC (N4) | `esp32c6_devkitc/esp32c6/hpcore` | 3 protocol apps | all 4 apps¹ | all 4 apps |
-| ESP32-S3-DevKitC-1 (N16R8) | `esp32s3_devkitc/esp32s3/procpu` | 3 protocol apps | all 4 apps | all 4 apps |
-| Adafruit QT Py ESP32-S3 (N4R2) | `adafruit_qt_py_esp32s3/esp32s3/procpu` | 3 protocol apps | all 4 apps¹ | all 4 apps |
-| ESP32-WROOM-32 DevKitC | `esp32_devkitc/esp32/procpu` | 3 protocol apps | none (measured) | `modbus-server` (ota + remote access, measured); `tedge-agent` (to measure)² |
-| ESP32-CAM | `esp32_devkitc/esp32/procpu` + CAM overlays | — | per measurement | `snmp-agent` (in service today); others per measurement |
+Measured on the boards (DEVICES.md, "Release builds measured on the boards"):
 
-¹ Verified today only for `modbus-server`. The C6 has no PSRAM, so its
-mbedTLS heap is in internal RAM (Modbus `tedge-full` at 79.1 % DRAM);
-OPC-UA's heavier stack may not leave room. Where `tedge-full` doesn't fit or
-run, that build is dropped and `tedge-ota` carries what does fit.
-
-² **Measured 2026-09-21** on the rpi5 WROOM (3c:71:bf:10:c2:e4, no PSRAM),
-8 KB TLS records, 56 KB mbedTLS heap in internal DRAM:
-
-| App | ota | ota + remote access | full |
+| Device | standalone | tedge-full | tedge-ota |
 |---|---|---|---|
-| `modbus-server` | links 96.3 %; **runs**: ZTP enrolment, OTA 800 KB in 32 s, confirmed | links 99.9 % with 10 net conns; **runs**: OTA confirmed, SSH tunnel 409 KB in 19 s with 86/86 Modbus reads alongside, min free heap 21.6 KB | over by 8.4 KB |
-| `snmp-agent` | over by 24 KB | over by 27 KB | over by 40 KB |
-| `opcua-server` | over by 16 KB | over by 19 KB | over by 30 KB |
+| ESP32-C6-DevKitC (N4) | 3 protocol apps | Modbus, SNMP, agent | Modbus, SNMP, agent |
+| ESP32-S3-DevKitC-1 (N16R8) | 3 protocol apps | Modbus, SNMP, agent | Modbus, SNMP, agent |
+| Adafruit QT Py ESP32-S3 (N4R2) | 3 protocol apps | Modbus, SNMP, agent | Modbus, OPC-UA, SNMP, agent |
+| ESP32-WROOM-32 DevKitC | 3 protocol apps | — | Modbus (+ remote access), agent (+ remote access, cert renewal) |
+| ESP32-CAM | — | — | SNMP, Modbus, agent |
 
-So the WROOM ships `modbus-server` `tedge-ota` with remote access as its
-extra (certificate renewal and parameters don't fit alongside), and no
-`tedge` image for SNMP or OPC-UA: SNMP carries ~33 KB of static tables
-(MIB leaves 13.5 KB, varbinds 6.7 KB, request buffers 8.5 KB) and
-open62541 is larger still. `tedge-agent` has no protocol stack and is
-expected to fit more; it is measured once it exists.
+OPC-UA runs out of memory beside the client on the C6 and the S3-DevKitC at
+either level (open62541 cannot create the server at `full` and cannot open
+sessions at `ota`), so it ships `standalone` there; only the QT Py's `ota`
+image served it. Every `full` build overflows the CAM's dram1.
 
-Expected size: about 40 builds (9 standalone + up to 24 `tedge` on the C6/S3
-boards, plus the WROOM and CAM rows the measurements admit).
+Release size: 36 builds (15 standalone, 21 tedge).
 
 ## Non-goals
 
