@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Device-management agent. Shared options come from the lib/common module and
+# the client's from tedge-zephyr (both auto-sourced via Kconfig.zephyr below).
+
+mainmenu "thin-edge.io Device Agent Firmware"
+
+config APP_TEDGE_MEASUREMENT_TYPE
+	string "Measurement type of the device's own telemetry"
+	depends on TEDGE_TELEMETRY
+	default "device"
+
+config APP_TEDGE_MEASUREMENT_INTERVAL_S
+	int "Seconds between device telemetry measurements"
+	depends on TEDGE_TELEMETRY
+	default 60
+
+source "Kconfig.zephyr"
