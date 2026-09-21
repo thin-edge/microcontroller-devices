@@ -21,21 +21,121 @@ config APP_WIFI_PROV_CONNECT_TIMEOUT_S
 	default 30
 	range 5 120
 
+choice APP_PROV_PROTOCOL
+	prompt "Provisioning protocol"
+	default APP_PROV_IMPROV
+	help
+	  Exactly one protocol per image. Two 128-bit service UUIDs do not fit
+	  one 31-byte advertising PDU, so a second BLE service would be
+	  invisible to any client that scans by UUID; and the prov partition
+	  has no room for both.
+
+config APP_PROV_IMPROV
+	bool "Improv Wi-Fi over BLE"
+	help
+	  Wi-Fi SSID and password only, from any stock Improv client.
+
+config APP_PROV_ZTP
+	bool "lab-ztp-provisioner over BLE (Wi-Fi and Cumulocity)"
+	select APP_PROV_ZTP_CRYPTO
+	help
+	  The device is a peripheral for a lab-ztp-provisioner relay (the web
+	  or desktop app on a phone or laptop), which forwards its signed
+	  enrollment request to a ZTP server and writes the server's bundle
+	  back. One session delivers Wi-Fi credentials and Cumulocity
+	  onboarding: tenant, external ID and a one-time password the server
+	  has already registered. The server profile must select
+	  `crypto: {suite: p256}`.
+
 config APP_WIFI_PROV_SOFTAP
-	bool "SoftAP captive portal instead of Improv over BLE (spike)"
+	bool "SoftAP captive portal (spike)"
 	depends on ESP32_WIFI_AP_STA_MODE
 	help
 	  c8y-direct-spikes, Spike E: an open access point "<hostname>-setup"
 	  with DHCP, a catch-all DNS responder and an HTTP form, instead of
-	  the Improv Wi-Fi BLE service. Use overlay-softap.conf and
-	  softap.overlay.
+	  a BLE service. Use overlay-softap.conf and softap.overlay.
+
+endchoice
 
 config APP_WIFI_PROV_REQUIRE_AUTH
 	bool "Require a sw0 press to authorize provisioning"
+	depends on APP_PROV_IMPROV
 	help
 	  Start in the Improv "authorization required" state and refuse Wi-Fi
 	  settings until sw0 is pressed on the device, which authorizes for 60 s.
 	  Proves physical presence, since the link is not encrypted.
+
+config APP_PROV_ZTP_CRYPTO
+	bool
+	help
+	  The p256 crypto suite of the lab-ztp-provisioner protocol (ECDSA
+	  P-256 / SHA-256 signatures; P-256 ECDH + HKDF-SHA256 +
+	  ChaCha20-Poly1305 sealing), all over PSA. One curve only: Mbed TLS
+	  has no Ed25519, and the prov partition has no room for a second.
+	select MBEDTLS
+	select MBEDTLS_PSA_CRYPTO_C
+	select PSA_WANT_ECC_SECP_R1_256
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_BASIC
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_IMPORT
+	select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_EXPORT
+	select PSA_WANT_KEY_TYPE_ECC_PUBLIC_KEY
+	select PSA_WANT_ALG_ECDSA
+	select PSA_WANT_ALG_SHA_256
+	select PSA_WANT_ALG_ECDH
+	select PSA_WANT_ALG_HKDF
+	select PSA_WANT_KEY_TYPE_DERIVE
+	select PSA_WANT_KEY_TYPE_CHACHA20
+	select PSA_WANT_ALG_CHACHA20_POLY1305
+	# The identity key persists in PSA ITS; the board conf picks the
+	# settings-backed ITS store, as the tedge profiles do.
+	select SECURE_STORAGE
+	select SETTINGS
+	select BASE64
+
+config APP_PROV_ZTP_PSA_KEY_ID
+	hex "PSA key ID of the ZTP identity key"
+	depends on APP_PROV_ZTP_CRYPTO
+	default 0x0007E572
+	range 0x00000001 0x3FFFFFFF
+	help
+	  Persistent key ID in PSA ITS. Distinct from CONFIG_TEDGE_PSA_KEY_ID
+	  (the Cumulocity device key, 0x0007E571 by default): the two answer
+	  to different trust roots, and re-provisioning must not replace the
+	  key the device holds a Cumulocity certificate for.
+
+if APP_PROV_ZTP
+
+config APP_PROV_ZTP_RX_BYTES
+	int "Largest server response the device accepts (bytes)"
+	default 4096
+	range 1024 16384
+	help
+	  Size of the buffer the relay writes the server's response into. The
+	  device sends it to the server as max_response_bytes, so a bundle that
+	  would not fit comes back as a rejection with a reason instead of a
+	  truncated write. A Wi-Fi + Cumulocity bundle is about 2.5 KB.
+
+config APP_PROV_ZTP_SERVER_PUBKEY
+	string "Pinned ZTP server public key (base64, P-256)"
+	default ""
+	help
+	  Reserved for verifying the server's signature on the bundle. Empty
+	  (the only supported value for now) means trust on first use: the
+	  bundle is applied unverified, with a warning. The sealed Cumulocity
+	  token is protected either way; what TOFU leaves open is a hostile
+	  relay choosing the Wi-Fi network and the tenant.
+
+endif # APP_PROV_ZTP
+
+config APP_PROV_ZTP_CRYPTO_SELFTEST
+	bool "Run the ZTP p256 crypto self-test at boot"
+	select APP_PROV_ZTP_CRYPTO
+	help
+	  Before provisioning starts, check every PSA operation the ZTP p256
+	  suite needs against reference vectors from the lab-ztp-provisioner
+	  Go implementation, and log PASS/FAIL with timings. For bring-up and
+	  for new boards; see overlay-ztp-selftest.conf.
 
 endmenu
 
