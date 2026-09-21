@@ -27,7 +27,7 @@ zephyr_library_sources(status_led.c)
 # hand-off with its sw0 gesture classifier. The provisioner itself (Improv over
 # BLE) is its own application: apps/wifi-provisioner.
 zephyr_library_sources_ifdef(CONFIG_APP_BOOT_REQUEST boot_request.c)
-zephyr_library_sources_ifdef(CONFIG_APP_WIFI_CRED_STORE prov_identity.c)
+zephyr_library_sources_ifdef(CONFIG_APP_WIFI_CRED_STORE prov_identity.c prov_c8y.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PROV_HANDOFF
   prov_handoff.c
   button_gesture.c

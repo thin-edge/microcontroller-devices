@@ -13,6 +13,9 @@
 
 #include "boot_request.h"
 #include "identity.h"
+#if defined(CONFIG_APP_WIFI_CRED_STORE)
+#include "prov_c8y.h"
+#endif
 #include "status_led.h"
 
 #include <zephyr/kernel.h>
@@ -122,6 +125,11 @@ int tedge_glue_start(void)
 		LOG_ERR("tedge_init failed (%d)", rc);
 		return rc;
 	}
+#if defined(CONFIG_APP_WIFI_CRED_STORE)
+	/* Tenant and one-time password from the ZTP provisioner, if it left
+	 * any. The external ID already came through app_identity_device_id(). */
+	(void)prov_c8y_handoff();
+#endif
 #if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
 	/* Before tedge_start(): the client loads the stored values over the
 	 * declared defaults and reports the set as soon as it connects. */
