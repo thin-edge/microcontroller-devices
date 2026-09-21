@@ -1,0 +1,196 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build every (device, app, variant) in release/devices.yml. On a vX.Y.Z tag,
+# publish them as a GitHub Release; otherwise (pull requests, manual runs) only
+# build, so a board that stops building is caught before a tag. See README.md,
+# "Releasing".
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "lib/**"
+      - "tedge-zephyr/**"
+      - "sysbuild/**"
+      - "west.yml"
+      - "release/**"
+      - "scripts/release/**"
+      - "scripts/flash.sh"
+      - ".github/workflows/release.yml"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+# Container jobs otherwise run steps with sh; the build step uses arrays.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The image every release is built with, pinned so a release does not
+  # change toolchain under it (Zephyr SDK 1.0.1). Bump it in a pull request;
+  # this workflow's build matrix is the check.
+  ZEPHYR_BUILD_IMAGE: zephyrprojectrtos/zephyr-build@sha256:3bdc7362967b2cc6f8ec10c1ad9f2ff940ac7a40cf901edc1e22292971afc803
+
+jobs:
+  matrix:
+    name: Manifest and version
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+      extraversion: ${{ steps.version.outputs.extraversion }}
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Unit tests of the release scripts
+        run: python3 -m unittest discover -s scripts/release/tests
+      - name: Check the version against the ref
+        id: version
+        run: scripts/release/check-version.sh "${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Build matrix from release/devices.yml
+        id: matrix
+        run: python3 scripts/release/matrix.py --github-output >> "$GITHUB_OUTPUT"
+      # Job-level `container:` cannot read the workflow env, only outputs.
+      - id: image
+        run: echo "image=$ZEPHYR_BUILD_IMAGE" >> "$GITHUB_OUTPUT"
+
+  workspace:
+    name: Zephyr workspace
+    needs: matrix
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.matrix.outputs.image }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .west
+            zephyr
+            modules
+            bootloader
+          key: west-${{ hashFiles('app/west.yml') }}-v1
+          lookup-only: true
+      - name: Fetch Zephyr, modules and blobs
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git config --global --add safe.directory '*'
+          west init -l app
+          west update --narrow -o=--depth=1 || west update --narrow -o=--depth=1
+          west blobs fetch hal_espressif
+          (cd modules/crypto/mbedtls && git submodule update --init --recursive --depth=1)
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .west
+            zephyr
+            modules
+            bootloader
+          key: west-${{ hashFiles('app/west.yml') }}-v1
+
+  build:
+    name: ${{ matrix.firmware_name }}
+    needs: [matrix, workspace]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.matrix.outputs.image }}
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    env:
+      # The image registers the SDK for its non-root user only; see
+      # tedge-zephyr.yml.
+      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            .west
+            zephyr
+            modules
+            bootloader
+          key: west-${{ hashFiles('app/west.yml') }}-v1
+          fail-on-cache-miss: true
+      - name: Set the version for this ref
+        working-directory: app
+        run: |
+          git config --global --add safe.directory '*'
+          scripts/release/check-version.sh --apply "${{ github.ref_name }}"
+      - name: Signing key
+        env:
+          MCUBOOT_SIGNING_KEY: ${{ secrets.MCUBOOT_SIGNING_KEY }}
+        run: |
+          # Without the secret (forks, or before a key exists) the images are
+          # signed with MCUboot's public development key, and say so.
+          if [ -n "$MCUBOOT_SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$MCUBOOT_SIGNING_KEY" > "$RUNNER_TEMP/mcuboot-key.pem"
+            echo "KEY_FILE=$RUNNER_TEMP/mcuboot-key.pem" >> "$GITHUB_ENV"
+          fi
+      - name: Build, size-check and package
+        working-directory: app
+        # The same script a developer runs in the container (README, "Releasing").
+        run: scripts/release/build.sh "${{ matrix.firmware_name }}" --build-dir ../build --out ../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.firmware_name }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: dist
+          merge-multiple: true
+      - name: c8y-firmware.json, SHA256SUMS and notes
+        run: |
+          python3 scripts/release/c8y-manifest.py dist > dist/c8y-firmware.json
+          python3 scripts/release/notes.py dist --tag "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" > notes.md
+          cd dist
+          sha256sum -- *.factory.bin *.app.bin *.zip c8y-firmware.json > SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "${{ github.ref_name }}" in *-*) pre=--prerelease ;; esac
+          gh release create "${{ github.ref_name }}" $pre \
+            --title "${{ github.ref_name }}" --notes-file notes.md \
+            dist/*.factory.bin dist/*.app.bin dist/*.zip \
+            dist/c8y-firmware.json dist/SHA256SUMS

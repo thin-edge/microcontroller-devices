@@ -33,3 +33,6 @@ credentials/
 *.key
 *.csr
 *.pem.local
+
+# Release packaging output (scripts/release/build.sh)
+dist/
