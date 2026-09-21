@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unit tests for the Wi-Fi provisioner image's ZTP protocol code: the canonical
+# enrollment request, the text response/manifest parsers and the p256 crypto,
+# each checked against output of lab-ztp-provisioner's Go implementation.
+name: wifi-provisioner
+
+on:
+  pull_request:
+    paths:
+      - "apps/wifi-provisioner/**"
+      - "lib/common/prov_c8y.*"
+      - "tests/ztp_provisioner/**"
+      - ".github/workflows/wifi-provisioner.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/wifi-provisioner/**"
+      - "lib/common/prov_c8y.*"
+      - "tests/ztp_provisioner/**"
+
+jobs:
+  unit:
+    name: ZTP unit tests (native_sim)
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/zephyr-build:latest
+      options: --user root
+    env:
+      # See tedge-zephyr.yml: the image registers the SDK for its non-root
+      # user only, and this job runs as root.
+      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Set up the Zephyr workspace
+        run: |
+          west init -l app
+          west update --narrow -o=--depth=1
+          west zephyr-export
+      - name: Unit tests (native_sim)
+        working-directory: app
+        run: |
+          west build -b native_sim/native/64 tests/ztp_provisioner \
+            -d ../build-ztp --pristine
+          ../build-ztp/zephyr/zephyr.exe

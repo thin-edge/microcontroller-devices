@@ -169,3 +169,14 @@ c8y deviceregistration register-ca --id <external-id> --one-time-password <otp>
 
 If onboarding misbehaves, delete the stale device user first:
 `c8y users delete --id device_<external-id>`.
+
+A device provisioned through **lab-ztp-provisioner** (`overlay-ztp.conf`)
+prints no registration URL: the ZTP server registered it before it booted the
+application, and it enrols on its first connection. It logs `Cumulocity tenant
+from ZTP: …` and `Enrolling as "<external-id>" with the one-time password from
+ZTP` at boot. Its external ID is the one in the bundle (e.g. `zephyr-<host>`
+with the profile's prefix), not the hostname. If it does not enrol, check that
+the provisioner left its data — the application logs `ZTP one-time password
+not accepted (…)` and keeps it for the next boot when the client refuses it —
+and that the server's token has not expired before the device first came
+online.

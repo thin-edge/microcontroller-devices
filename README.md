@@ -514,6 +514,88 @@ Credentials survive reboots, application updates (`--app-only`, and a
 `slot1` swap) and a reflash of the provisioner. To wipe them without the
 button, use `scripts/flash.sh <build> --erase-storage`.
 
+### Provisioning Wi-Fi and Cumulocity with lab-ztp-provisioner
+
+Improv carries only an SSID and a password. Built with
+`CONFIG_APP_PROV_ZTP=y` instead, the provisioner speaks the BLE protocol of
+[lab-ztp-provisioner](https://github.com/reubenmiller/lab-ztp-provisioner):
+one session delivers the Wi-Fi credentials **and** Cumulocity onboarding —
+tenant, external ID and a one-time password the server has already registered
+with Cumulocity. The device enrols with the Cumulocity CA on its first
+connection, and nobody reads a registration URL off a console or opens the
+Cumulocity UI.
+
+It is a build-time choice (`APP_PROV_PROTOCOL`), one protocol per image: two
+128-bit service UUIDs do not fit one advertisement, and the `prov` partition
+has no room for both. Build the provisioner with `overlay-ztp.conf`, and leave
+the Wi-Fi and tenant overlays out — the bundle supplies both:
+
+```sh
+OVR="/ws/app/tedge-zephyr/profiles/full.conf;\
+/ws/app/apps/modbus-server/boards/esp32c6_devkitc_esp32c6_hpcore_tedge.conf"
+
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  west build --sysbuild -b esp32c6_devkitc/esp32c6/hpcore apps/modbus-server \
+  --pristine -d build-ztp -- "-DEXTRA_CONF_FILE=$OVR" \
+  -Dwifi-provisioner_EXTRA_CONF_FILE=/ws/app/apps/wifi-provisioner/overlay-ztp.conf
+```
+
+On the server, the device's profile must select the **p256** crypto suite —
+Mbed TLS, and so every Zephyr build, has no Ed25519 — and mint a token:
+
+```yaml
+name: zephyr
+crypto:
+  suite: p256
+payload:
+  wifi:
+    networks:
+      - { ssid: my-network, password: …, key_mgmt: WPA-PSK }
+  cumulocity:
+    issuer: { mode: local, credential_ref: my-tenant }
+```
+
+Any lab-ztp-provisioner relay drives it — the web app, the desktop app, or
+`scripts/ztp_provision.py` on the bench:
+
+```sh
+scripts/ztp_provision.py scan
+scripts/ztp_provision.py enroll --server https://ztp.local:8443 --insecure --wait 600
+```
+
+What happens: the device advertises `ztp`; the relay writes the time and asks
+for an enrollment request, which the device signs with its own P-256 key (kept
+in PSA ITS, never exported); the relay forwards it, the server answers, the
+relay writes the answer back. The device joins the Wi-Fi network first —
+nothing is stored unless that works — then stores the Cumulocity data for the
+application and reboots into it. The application hands the tenant and password
+to `tedge-zephyr` (`tedge_set_c8y_url()`, `tedge_set_enroll_otp()`) and uses
+the external ID from the bundle as its identity from then on. A *pending*
+answer (the operator has not approved the device yet) leaves it provisionable:
+the relay simply asks again.
+
+**Trust model — read before deploying:**
+
+- The **one-time password is end-to-end encrypted** to a key the device makes
+  for the session (P-256 ECDH, HKDF-SHA256, ChaCha20-Poly1305). The relay, the
+  BLE link and the server's own logs only ever see ciphertext.
+- The rest of the bundle, the **Wi-Fi password included, is not**. It travels
+  in the clear over BLE, as with Improv.
+- The device **does not yet verify the server's signature** on the bundle
+  (trust on first use, logged as a warning on every provisioning). A hostile
+  relay could therefore choose the Wi-Fi network and the tenant. It cannot
+  read the real token, and cannot enrol as the device.
+  `CONFIG_APP_PROV_ZTP_SERVER_PUBKEY` is reserved for pinning the server key;
+  setting it today makes the device refuse every bundle rather than pretend to
+  check.
+- A provisioned device keeps its certificate. Re-provisioning it for a
+  **different tenant** does not work yet: erase `storage` first
+  (`scripts/flash.sh <build> --erase-storage`).
+
+Sizes (measured): the provisioner is 96.9% of `prov` on the ESP32-C6 and 75.5%
+on the WROOM-32; the application grows by 65 bytes of RAM. Unit tests, checked
+against the Go server's own output: `tests/ztp_provisioner` on `native_sim`.
+
 ### Flash layouts
 
 | | 4 MB: ESP32-C6, QT Py S3, WROOM-32 | 16 MB: ESP32-S3-DevKitC-1 |

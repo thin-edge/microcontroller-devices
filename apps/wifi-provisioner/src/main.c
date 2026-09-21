@@ -14,16 +14,26 @@
 
 #if defined(CONFIG_APP_WIFI_PROV_SOFTAP)
 #include "softap.h"
+#elif defined(CONFIG_APP_PROV_ZTP)
+#include "ztp.h"
 #else
 #include "improv.h"
 #endif
 #include "net.h"
+#if defined(CONFIG_APP_PROV_ZTP_CRYPTO_SELFTEST)
+#include "ztp_selftest.h"
+#endif
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
 int main(void)
 {
 	LOG_INF("Wi-Fi provisioner starting");
+
+#if defined(CONFIG_APP_PROV_ZTP_CRYPTO_SELFTEST)
+	/* Diagnostic only: a failure is logged, provisioning still starts. */
+	(void)ztp_selftest_run();
+#endif
 
 	int rc = app_net_init();
 
@@ -32,6 +42,8 @@ int main(void)
 	}
 #if defined(CONFIG_APP_WIFI_PROV_SOFTAP)
 	softap_run();
+#elif defined(CONFIG_APP_PROV_ZTP)
+	ztp_run();
 #else
 	improv_run();
 #endif

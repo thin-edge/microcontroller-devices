@@ -790,6 +790,11 @@ int app_net_init(void)
 
 #if defined(CONFIG_APP_PROV_HANDOFF)
 	if (!have_creds) {
+		/* Record the identity first: a factory-fresh device has never been
+		 * online, and without it the provisioner advertises — and a ZTP
+		 * server registers the device — under the provisioner's fallback
+		 * name instead of this application's. */
+		app_prov_identity_update();
 		app_prov_handoff_no_credentials(); /* reboots when it can */
 	}
 	app_prov_button_start();

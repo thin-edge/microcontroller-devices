@@ -36,7 +36,12 @@
 LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
 
 #define KEY_ID ((psa_key_id_t)CONFIG_TEDGE_PSA_KEY_ID)
-#define OTP_LEN 32
+#define OTP_LEN 32 /* passwords the device generates */
+/* Passwords supplied by the application (tedge_set_enroll_otp), e.g. minted
+ * by a provisioning server, may be any length up to this. */
+#define OTP_MAX TEDGE_OTP_MAX
+
+#define BASE64_LEN(n) ((((n) + 2) / 3) * 4)
 /* One call to tedge_auth_prepare() polls for about this long before it hands
  * control back to the core (which checks the network and calls again). */
 #define ENROLL_WINDOW_MS (2 * 60 * 1000)
@@ -49,7 +54,7 @@ static uint8_t key_der_buf[160];
 static size_t key_der_len;
 static const uint8_t *key_der;
 
-static char otp[OTP_LEN + 1];
+static char otp[OTP_MAX + 1];
 static bool credentials_ready;
 
 /* Transient buffers from the module heap, only while enrolling. */
@@ -137,8 +142,12 @@ static void ensure_otp(void)
 	if (otp[0] != '\0') {
 		return;
 	}
-	if (settings_get(TEDGE_KEY_ENROLL_OTP, otp, OTP_LEN) == OTP_LEN) {
-		otp[OTP_LEN] = '\0';
+	/* A stored password wins, whatever its length: it may have been
+	 * issued outside the device and already registered in Cumulocity. */
+	size_t n = settings_get(TEDGE_KEY_ENROLL_OTP, otp, OTP_MAX);
+
+	if (n > 0 && n <= OTP_MAX) {
+		otp[n] = '\0';
 		return;
 	}
 	psa_generate_random(rnd, sizeof(rnd));
@@ -147,6 +156,42 @@ static void ensure_otp(void)
 	}
 	otp[OTP_LEN] = '\0';
 	(void)settings_save_one(TEDGE_KEY_ENROLL_OTP, otp, OTP_LEN);
+}
+
+int tedge_set_enroll_otp(const char *password)
+{
+	size_t n;
+
+	if (!tedge_otp_valid(password)) {
+		return -EINVAL;
+	}
+	n = strlen(password);
+	memcpy(otp, password, n);
+	otp[n] = '\0';
+
+	/* A supplied password means the device is being onboarded (again),
+	 * typically for another tenant or external ID. A certificate from an
+	 * earlier enrollment belongs to that old registration: kept, it would
+	 * be presented instead of enrolling, and the new tenant would refuse
+	 * it. The key pair stays; only the certificate is discarded. */
+	if (cert_der_len > 0 || credentials_ready) {
+		LOG_WRN("discarding the certificate of the previous enrollment");
+	}
+	(void)settings_delete(TEDGE_KEY_ENROLL_CERT);
+	cert_der_len = 0;
+	credentials_ready = false;
+
+	(void)settings_save_one(TEDGE_KEY_ENROLL_OTP_EXT, "1", 1);
+	return settings_save_one(TEDGE_KEY_ENROLL_OTP, otp, n);
+}
+
+/* Whether the stored password was supplied from outside. Persisted, so a
+ * reboot before enrollment does not turn it back into a showable one. */
+static bool otp_supplied(void)
+{
+	char flag;
+
+	return settings_get(TEDGE_KEY_ENROLL_OTP_EXT, &flag, sizeof(flag)) > 0;
 }
 
 int tedge_registration_url(char *buf, size_t len)
@@ -158,6 +203,12 @@ int tedge_registration_url(char *buf, size_t len)
 	}
 	if (credentials_ready || cert_der_len > 0) {
 		return -ENOENT; /* already enrolled */
+	}
+	if (otp_supplied()) {
+		/* Whoever issued it already registered the device, and it may
+		 * have reached the device sealed end to end: showing it would
+		 * undo that. There is nothing for an operator to do. */
+		return -EACCES;
 	}
 	ensure_otp();
 	n = snprintf(buf, len,
@@ -439,14 +490,19 @@ const uint8_t *tedge_credentials_cert(size_t *len)
 
 static int enroll_once(void)
 {
-	char basic[128];
-	char basic_b64[180];
-	char auth_hdr[220];
+	/* external ID (<= 63) + ':' + password (<= OTP_MAX) */
+	char basic[64 + 1 + OTP_MAX + 1];
+	char basic_b64[BASE64_LEN(sizeof(basic) - 1) + 1];
+	char auth_hdr[sizeof("Authorization: Basic \r\n") + sizeof(basic_b64)];
 	size_t olen;
 	int ret;
 
-	snprintf(basic, sizeof(basic), "%s:%s", tedge_identity()->external_id,
-		 otp);
+	ret = tedge_basic_credential(basic, sizeof(basic),
+				     tedge_identity()->external_id, otp);
+	if (ret < 0) {
+		LOG_ERR("external ID and password are too long for a credential");
+		return ret;
+	}
 	ret = mbedtls_base64_encode((unsigned char *)basic_b64,
 				    sizeof(basic_b64), &olen,
 				    (const unsigned char *)basic, strlen(basic));
@@ -477,6 +533,7 @@ static int enroll_once(void)
 	}
 	(void)settings_save_one(TEDGE_KEY_ENROLL_CERT, cert_der, cert_der_len);
 	(void)settings_delete(TEDGE_KEY_ENROLL_OTP);
+	(void)settings_delete(TEDGE_KEY_ENROLL_OTP_EXT);
 	memset(otp, 0, sizeof(otp));
 	LOG_INF("enrolled: certificate stored (%zu B)", cert_der_len);
 	return 0;
@@ -502,6 +559,12 @@ int tedge_auth_prepare(char *id_out, size_t id_len)
 		return ret;
 	}
 	if (cert_der_len > 0) {
+		/* Enrolled: any password still stored is a leftover of that
+		 * enrollment (a newly supplied one would have discarded the
+		 * certificate, see tedge_set_enroll_otp()). */
+		(void)settings_delete(TEDGE_KEY_ENROLL_OTP);
+		(void)settings_delete(TEDGE_KEY_ENROLL_OTP_EXT);
+		memset(otp, 0, sizeof(otp));
 		return register_credentials();
 	}
 

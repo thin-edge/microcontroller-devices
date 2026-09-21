@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# The provisioner's option, so ztp_crypto.c builds unchanged.
+config APP_PROV_ZTP_PSA_KEY_ID
+	hex
+	default 0x0007E572
+
+source "Kconfig.zephyr"

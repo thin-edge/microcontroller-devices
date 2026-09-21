@@ -1444,3 +1444,55 @@ ZTEST(tedge_parameters, test_no_schema_for_a_set_nobody_declared)
 }
 
 ZTEST_SUITE(tedge_parameters, NULL, params_setup, params_before, NULL, NULL);
+
+/* ------------------------------------------------------------------------ */
+/* One-time passwords                                                        */
+/* ------------------------------------------------------------------------ */
+
+/* A password issued by a provisioning server is not the 32 characters the
+ * device would generate itself; any length up to the maximum must pass. */
+ZTEST(tedge_otp, test_supplied_lengths_accepted)
+{
+	char buf[TEDGE_OTP_MAX + 2];
+
+	zassert_true(tedge_otp_valid("x"));
+	zassert_true(tedge_otp_valid("fixture-token"));
+	memset(buf, 'a', TEDGE_OTP_MAX);
+	buf[TEDGE_OTP_MAX] = '\0';
+	zassert_true(tedge_otp_valid(buf), "the maximum length must be accepted");
+	buf[TEDGE_OTP_MAX] = 'a';
+	buf[TEDGE_OTP_MAX + 1] = '\0';
+	zassert_false(tedge_otp_valid(buf), "one past the maximum must not");
+}
+
+ZTEST(tedge_otp, test_unusable_passwords_rejected)
+{
+	zassert_false(tedge_otp_valid(NULL));
+	zassert_false(tedge_otp_valid(""));
+	zassert_false(tedge_otp_valid("has space"));
+	zassert_false(tedge_otp_valid("tab\there"));
+	zassert_false(tedge_otp_valid("new\nline"));
+}
+
+/* The longest external ID with the longest password must fit the buffer
+ * the enrollment request builds, and anything longer must be an error, not
+ * a silently shortened credential. */
+ZTEST(tedge_otp, test_basic_credential_never_truncates)
+{
+	char id[64], pw[TEDGE_OTP_MAX + 1];
+	char out[64 + 1 + TEDGE_OTP_MAX + 1]; /* as in tedge_enroll.c */
+
+	memset(id, 'i', sizeof(id) - 1);
+	id[sizeof(id) - 1] = '\0';
+	memset(pw, 'p', sizeof(pw) - 1);
+	pw[sizeof(pw) - 1] = '\0';
+
+	zassert_equal(tedge_basic_credential(out, sizeof(out), id, pw),
+		      63 + 1 + TEDGE_OTP_MAX);
+	zassert_equal(out[63], ':');
+	zassert_equal(tedge_basic_credential(out, 16, id, pw), -ENAMETOOLONG);
+	zassert_equal(tedge_basic_credential(out, sizeof(out), "dev", "pw"), 6);
+	zassert_str_equal(out, "dev:pw");
+}
+
+ZTEST_SUITE(tedge_otp, NULL, NULL, NULL, NULL, NULL);

@@ -276,6 +276,12 @@ static int bootstrap_session(void)
 /* Interface used by the transport                                           */
 /* ------------------------------------------------------------------------ */
 
+int tedge_set_enroll_otp(const char *password)
+{
+	ARG_UNUSED(password);
+	return -ENOTSUP; /* bootstrap devices have no one-time password */
+}
+
 int tedge_registration_url(char *buf, size_t len)
 {
 	ARG_UNUSED(buf);
