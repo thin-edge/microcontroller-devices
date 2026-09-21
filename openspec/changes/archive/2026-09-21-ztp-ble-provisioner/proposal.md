@@ -102,18 +102,17 @@ image and MCUboot layout.
 
 ### Modified Capabilities
 
+- `wifi-provisioning`: the image implements exactly one protocol, chosen at
+  build time, and the Improv requirement applies to Improv builds only. (Folded
+  in from `ztp-provisioning` once `ble-wifi-provisioning` had been archived.)
 - `tedge-c8y-onboarding`: the one-time password and tenant host may now be
   supplied from outside instead of generated on-device, and the client must
   honour an externally issued password. Adds `tedge_set_enroll_otp()` to the
   public API.
 
-The `wifi-provisioning` and `boot-layout` capabilities are **not** listed as
-modified: they do not exist in `openspec/specs/` yet, because the
-`ble-wifi-provisioning` change that introduces them is still pending. The
-requirements this change would otherwise add to them — which protocol the
-image speaks, and the `prov/c8y/` subtree in the shared `storage` partition —
-live in `ztp-provisioning` instead. If `ble-wifi-provisioning` archives first,
-fold them across before this change is archived.
+`boot-layout` is not modified: the `prov/c8y/` subtree this change adds to the
+shared `storage` partition is ZTP-specific, and is specified in
+`ztp-provisioning`.
 
 ## Impact
 

@@ -1,26 +1,8 @@
-## ADDED Requirements
+# ztp-provisioning Specification
 
-### Requirement: The provisioning image speaks one protocol, chosen at build time
-
-The provisioning image SHALL implement exactly one provisioning protocol,
-selected by the Kconfig choice `APP_PROV_PROTOCOL`: `APP_PROV_IMPROV` (the
-default) or `APP_PROV_ZTP`. The image SHALL NOT register the GATT services of
-both protocols, and SHALL NOT advertise more than one 128-bit service UUID.
-Application images SHALL continue to contain no Bluetooth under either
-selection.
-
-#### Scenario: Default build is unchanged
-
-- **WHEN** a provisioning image is built without setting `APP_PROV_PROTOCOL`
-- **THEN** it speaks Improv Wi-Fi and behaves exactly as before this change
-
-#### Scenario: ZTP build advertises only the ZTP service
-
-- **WHEN** a provisioning image is built with `APP_PROV_ZTP`
-- **THEN** its advertisement carries the ZTP service UUID and the local name
-  `ztp`, the Improv service is absent from the GATT table, and the
-  advertisement fits the 31-byte primary PDU
-
+## Purpose
+How a device is provisioned through a lab-ztp-provisioner relay instead of Improv: the device is a BLE peripheral that signs an enrollment request with its own P-256 key, and a relay forwards it to a ZTP server whose bundle delivers Wi-Fi credentials and Cumulocity onboarding (tenant, external ID, and a one-time password sealed end to end). Covers the GATT service and framing, the envelope, the text response, module dispatch, the all-or-nothing apply, the trust model, clock correction, and the handoff to the application through `prov/c8y/*`. Choosing between protocols is in `wifi-provisioning`; how the client uses the password is in `tedge-c8y-onboarding`.
+## Requirements
 ### Requirement: The device serves the ZTP GATT service as a peripheral
 
 With `APP_PROV_ZTP` selected, the device SHALL advertise and serve the ZTP
@@ -252,3 +234,4 @@ unaccepted response.
   in the ZTP server, and the relay retries
 - **THEN** the second attempt carries a fresh timestamp, returns a bundle, and
   provisioning completes without reflashing or power-cycling the device
+
