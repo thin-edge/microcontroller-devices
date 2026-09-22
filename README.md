@@ -1249,11 +1249,93 @@ On an ESP32-WROOM-32 use `profiles/ota.conf`, `tedge-boards/esp32-devkitc.conf`,
 `tedge-boards/extras/remote-access.conf` and
 `CONFIG_TEDGE_CERT_RENEWAL=y` — the most that fits (DEVICES.md).
 
-> **Measurements need a mapping in the tenant.** Over the Cumulocity MQTT
-> Service the client publishes measurements on `te/device/<id>///m/<type>`,
-> which the tenant has to map to Cumulocity measurements. A tenant without
-> that mapping shows the device connected, with firmware, restart and remote
-> access working, and no measurements — for every app, not just this one.
+> **Measurements need a mapping in the tenant.** See
+> [Telemetry in Cumulocity](#telemetry-in-cumulocity) for the topics and
+> payloads a Smart Function has to map.
+
+## Telemetry in Cumulocity
+
+Every `tedge-*` image publishes its app's measurements, and the client's own
+health, on thin-edge.io topics over the Cumulocity MQTT Service. Cumulocity
+only turns them into measurements where a **Smart Function** maps them; a
+tenant without one shows the device connected, with firmware, restart and
+remote access working, and no measurements. The simplest mapping that covers
+every app subscribes to `te/device/+///m/+` and takes the measurement type
+from the last topic segment.
+
+Every payload is flat: `time` (UTC) and one number per series, two decimals,
+**no units** (the tables below give them, for the mapping to add). The format
+is the client's; see `tedge-zephyr/README.md`, "What the client publishes".
+
+**`modbus-server`** — `te/device/<id>///m/pump`, every 30 s (the pump
+simulation it also serves over Modbus; values are 0 or ambient until a client
+starts the pump):
+
+```json
+{"time":"2026-09-21T20:15:30Z","flow_lpm":42.17,"pressure_bar":3.08,"motor_temp_c":51.42,"rpm":1487.00,"vibration_mms":2.31,"run_hours":128.55}
+```
+
+| Series | Unit | | Series | Unit |
+|---|---|---|---|---|
+| `flow_lpm` | L/min | | `rpm` | rpm |
+| `pressure_bar` | bar | | `vibration_mms` | mm/s |
+| `motor_temp_c` | °C | | `run_hours` | h |
+
+**`opcua-server`** — `te/device/<id>///m/server`, every 30 s (the environment
+simulation):
+
+```json
+{"time":"2026-09-21T20:15:30Z","temperature":21.54,"humidity":48.25,"pressure":1013.20}
+```
+
+| Series | Unit |
+|---|---|
+| `temperature` | °C |
+| `humidity` | %RH |
+| `pressure` | hPa |
+
+**`snmp-agent`** — `te/device/<id>///m/agent`, every 30 s:
+
+```json
+{"time":"2026-09-21T20:15:30Z","uptime":3725.00}
+```
+
+`uptime` in seconds.
+
+**`tedge-agent`** — `te/device/<id>///m/device`, every 60 s (`rssi` is left
+out while the device is not associated):
+
+```json
+{"time":"2026-09-21T20:15:30Z","uptime":3725.00,"heap_free":23084.00,"rssi":-62.00}
+```
+
+| Series | Unit |
+|---|---|
+| `uptime` | s |
+| `heap_free` | B (system heap) |
+| `rssi` | dBm |
+
+**Every `tedge-*` image** — `te/device/<id>///m/tedge_health`, every 900 s
+(the client's own health; the operator can change the interval with the
+`tedge` parameter `health_interval_s`):
+
+```json
+{"time":"2026-09-22T06:24:04Z","uptime":26114.00,"freeHeap":15920.00,"droppedMessages":0.00,"resetCause":2.00}
+```
+
+| Series | Meaning |
+|---|---|
+| `uptime` | seconds since boot |
+| `freeHeap` | bytes free in the client's own heap |
+| `droppedMessages` | telemetry dropped while offline because its buffer was full |
+| `resetCause` | Zephyr reset-cause bits of the last boot: 1 pin, 2 software, 4 brown-out, 8 power-on, 16 watchdog, 256 CPU lockup |
+
+The measurement type is a Kconfig default
+(`CONFIG_APP_TEDGE_MEASUREMENT_TYPE`). On `tedge-full` images an operator can
+change the interval (`interval_s`) and switch telemetry off (`telemetry`)
+through the app's parameters, and on the Modbus app also the type
+(`measurement_type`): a mapping keyed on the topic's last segment keeps
+working when they do.
 
 ## Point libraries (for a tedge-dot collector)
 

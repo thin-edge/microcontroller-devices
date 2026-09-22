@@ -107,7 +107,9 @@ def notes(manifest, metas, tag, repo):
                     "certificate expires, a year after enrolment."]
         out += ["",
                 "Measurements are published on `te/device/<id>///m/<type>` over the "
-                "Cumulocity MQTT Service; the tenant has to map that topic to see them.",
+                "Cumulocity MQTT Service and need a Smart Function in the tenant; "
+                f"[Telemetry in Cumulocity]({readme}#telemetry-in-cumulocity) lists "
+                "each app's topic, payload and units.",
                 ""]
     out += ["## Signing", ""]
     for s in signing.values():
