@@ -30,14 +30,16 @@ nm_for() {
 }
 
 # --- MODE=module: the client's cost in a host application -------------------
-MB=/ws/app/apps/modbus-server/boards
+# The client at the minimal profile, with each board's tedge-zephyr settings.
+TB=/ws/app/lib/common/tedge-boards
+MIN=/ws/app/tedge-zephyr/profiles/minimal.conf
 # label : board : app : overlays (on top of the Wi-Fi credentials)
 CASES=${CASES:-"
 c6 modbus, no client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:
-c6 modbus + client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MB/esp32c6_devkitc_esp32c6_hpcore_tedge.conf;/ws/app/tedge.local.conf
+c6 modbus + client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/esp32c6-devkitc.conf;/ws/app/tedge.local.conf
 s3 modbus, no client:esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:
-s3 modbus + client (PSRAM):esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:$MB/esp32s3_devkitc_esp32s3_procpu_tedge.conf;/ws/app/tedge.local.conf
-c6 modbus + client + remote access:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MB/esp32c6_devkitc_esp32c6_hpcore_tedge.conf;/ws/app/tedge.local.conf;/ws/app/build_measure_extra/ra.conf
+s3 modbus + client (PSRAM):esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:$MIN;$TB/esp32s3-devkitc.conf;/ws/app/tedge.local.conf
+c6 modbus + client + remote access:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/esp32c6-devkitc.conf;/ws/app/tedge.local.conf;/ws/app/build_measure_extra/ra.conf
 c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:tedge-zephyr/samples/minimal:!/ws/app/tedge-zephyr/samples/minimal/overlay-c8y.conf;/ws/app/tedge.local.conf
 "}
 echo "| case | image_B | text_B | libc_B | tlsheap_B |"

@@ -1,0 +1,6 @@
+smartFunctionFile: firmware-progress.js
+description: "tedge-zephyr firmware download progress to c8y_FirmwareDownload events"
+tags: [tedge-zephyr, firmware]
+input:
+  transport: mqtt
+  topicPattern: "te/device/*///progress/firmware"

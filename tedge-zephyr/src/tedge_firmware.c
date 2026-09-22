@@ -77,16 +77,16 @@ int tedge_fw_poll_event(struct tedge_fw_event *ev)
 int tedge_fw_running_version(char *buf, size_t len)
 {
 	struct mcuboot_img_header hdr;
+	char header[16] = "";
 
 	if (boot_read_bank_header(PARTITION_ID(slot0_partition), &hdr,
-				  sizeof(hdr)) != 0) {
-		return -EIO;
+				  sizeof(hdr)) == 0) {
+		snprintf(header, sizeof(header), "%u.%u.%u",
+			 hdr.h.v1.sem_ver.major, hdr.h.v1.sem_ver.minor,
+			 hdr.h.v1.sem_ver.revision);
 	}
-	return (snprintf(buf, len, "%u.%u.%u", hdr.h.v1.sem_ver.major,
-			 hdr.h.v1.sem_ver.minor, hdr.h.v1.sem_ver.revision) <
-		(int)len)
-		       ? 0
-		       : -ENOSPC;
+	return tedge_fw_version_pick(tedge_identity()->firmware_version, header,
+				     buf, len);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -417,8 +417,8 @@ int tedge_fw_request(const char *line, char *reason, size_t rlen)
 	/* Re-installing what is already running costs a download and the
 	 * downtime of a swap, for no change. */
 	(void)tedge_fw_running_version(running, sizeof(running));
-	if (running[0] != '\0' && strcmp(running, version) == 0 &&
-	    strcmp(name, tedge_identity()->firmware_name) == 0) {
+	if (tedge_fw_is_running(tedge_identity()->firmware_name, running, name,
+				version)) {
 		LOG_INF("firmware: refused %s %s: it is already running", name,
 			version);
 		snprintf(reason, rlen, "%s %s is already running", name, version);
@@ -473,7 +473,8 @@ void tedge_fw_on_connected(void)
 	image_total = size_load();
 	(void)tedge_fw_running_version(version, sizeof(version));
 
-	if (confirmed && strcmp(version, job.version) != 0) {
+	switch (tedge_fw_boot_outcome(confirmed, version, job.version)) {
+	case TEDGE_FW_BOOT_REVERTED:
 		/* We are running a confirmed image that is not the one that was
 		 * installed: MCUboot reverted it. */
 		LOG_WRN("firmware: %s did not come up; running %s", job.version,
@@ -484,10 +485,11 @@ void tedge_fw_on_connected(void)
 		publish_progress("failed", -1, image_total, "rolled back");
 		marker_clear();
 		return;
-	}
-	if (confirmed) {
+	case TEDGE_FW_BOOT_DONE:
 		marker_clear(); /* already confirmed, nothing to do */
 		return;
+	case TEDGE_FW_BOOT_TEST:
+		break;
 	}
 
 	if (hooks != NULL && hooks->firmware_confirm_check != NULL) {

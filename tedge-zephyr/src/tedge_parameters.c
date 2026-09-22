@@ -564,12 +564,21 @@ int tedge_declare_parameters(const char *set_name,
 		}                                                              \
 	} while (0)
 
+/* A JSON string, escaped straight into the output one character at a
+ * time: descriptions are as long as their author made them, and the only
+ * limit is the output buffer, which the caller hears about (n >= len). */
 static size_t quoted(char *out, size_t len, size_t n, const char *s)
 {
-	char escaped[96];
+	char in[2] = { 0 };
+	char escaped[8];
 
-	tedge_json_escape(s != NULL ? s : "", escaped, sizeof(escaped));
-	APPEND("\"%s\"", escaped);
+	APPEND("\"");
+	for (; s != NULL && *s != '\0'; s++) {
+		in[0] = *s;
+		tedge_json_escape(in, escaped, sizeof(escaped));
+		APPEND("%s", escaped);
+	}
+	APPEND("\"");
 	return n;
 }
 

@@ -1,0 +1,6 @@
+smartFunctionFile: twin.js
+description: "tedge-zephyr twin messages (remote access, agent, parameter sets) to managed object fragments"
+tags: [tedge-zephyr, twin]
+input:
+  transport: mqtt
+  topicPattern: "te/device/*///twin/*"

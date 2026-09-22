@@ -10,6 +10,8 @@ west build -b <board> <app> -- -DEXTRA_CONF_FILE=/path/to/tedge-zephyr/profiles/
   TLS session.
 - `full.conf`: every feature, for boards with room (ESP32-C6, ESP32-S3; on the
   S3 with the mbedTLS heap in PSRAM).
+- `ota.conf`: `minimal.conf` plus firmware update — the smallest image that can
+  still be updated over the air. Two TLS sessions (MQTT and the download).
 - `remote-access-enabler.conf`: connection, health, restart and one
   remote-access tunnel, for a device that only gives the cloud access to LAN
   hosts. Fits an ESP32-WROOM-32 with nothing else on it.

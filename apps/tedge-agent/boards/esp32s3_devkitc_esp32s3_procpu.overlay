@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * ESP32-S3-DevKitC-1 — flash size and layout.
+ *
+ * Console: **left as the board devicetree sets it**, i.e. `uart0` on the
+ * board's UART port (the one marked UART, not the one marked USB). That port
+ * carries a USB-serial bridge with DTR/RTS wired to EN/BOOT, so esptool can
+ * reset the board into download mode on its own — no BOOT/RESET button press
+ * to flash, and no losing the first lines of boot output to a USB re-enumeration.
+ * That makes it the better default for this board, so this overlay deliberately
+ * does *not* re-route the console onto USB-Serial-JTAG the way the ESP32-C6
+ * overlay does.
+ *
+ * If you would rather use the native USB port, add:
+ *
+ *     &usb_serial { status = "okay"; };
+ *     &usb_otg    { status = "disabled"; };   // shares GPIO19/20 with the above
+ *     / { chosen {
+ *             zephyr,console   = &usb_serial;
+ *             zephyr,shell-uart = &usb_serial;
+ *     }; };
+ *
+ * and be aware that a board running unrelated factory firmware on that port may
+ * refuse every esptool reset strategy until you hold BOOT and tap RESET once.
+ *
+ * Flash size: the board devicetree includes `esp32s3_wroom_n8.dtsi`, which
+ * declares an 8 MB part. The board in hand is an **N16R8** — `esptool flash-id`
+ * reports 16 MB (manufacturer 0x1c, device 0x7118) on an ESP32-S3 rev v0.2 with
+ * MAC 7c:0c:5f:5a:6e:b8, plus 8 MB of octal PSRAM that this firmware does not
+ * use. The shared layout (lib/common/dts/layout-esp32s3-16M.dtsi) declares the
+ * real size and replaces the upstream AMP partitions with the MCUboot + Wi-Fi
+ * provisioner layout, which MCUboot and the provisioner are built with too. A
+ * plain build (no --sysbuild) still boots from 0x0. It needs a 16 MB part.
+ *
+ * No `&wifi` node is enabled here: unlike the QT Py S3 and the S2 Feather, the
+ * ESP32-S3-DevKitC board devicetree already sets it to "okay".
+ */
+
+#include "../../../lib/common/dts/layout-esp32s3-16M.dtsi"
+
+/* Status LED: the WS2812 RGB LED. */
+#include "../../../lib/common/dts/rgb-led-esp32s3-devkitc.dtsi"
+
+/* The board's 8 MB octal PSRAM. Declaring it does not enable it: that takes
+ * CONFIG_ESP_SPIRAM (see the _tedge board overlay). */
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};

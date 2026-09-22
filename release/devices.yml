@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The devices a release ships images for, and which (app, variant) builds
+# each one gets. The release workflow's build matrix, the release notes and
+# the README's supported-devices table all come from this file; a build that
+# is not listed here is not released. scripts/release/matrix.py validates it.
+#
+# OPC-UA runs out of memory beside the client on every board but the QT Py
+# (DEVICES.md), so it ships standalone elsewhere.
+#
+# A tedge-* build is listed only once it has been built *and run* on the
+# board (connection, telemetry, a firmware update that confirms, a tunnel if
+# remote access is in, a protocol read alongside): `measured` points at the
+# DEVICES.md entry that records it.
+#
+# `pr: true` marks the builds a pull request builds (a release builds all of
+# them): every device, app, variant and extra, with each board's tightest
+# images. Every device needs at least one.
+#
+# Adding a device: its board needs a provisioner layout
+# (sysbuild/provisioning.cmake) and board files for each app it builds.
+
+# How each variant is built. `profile` and the device's `tedge_board_conf` go
+# into EXTRA_CONF_FILE (profile first, so the board's sizes win), then the
+# build's `extra_conf`. `provisioner` selects the Wi-Fi provisioner image.
+variants:
+  standalone:
+    description: the protocol server alone; Wi-Fi over Improv BLE
+    provisioner: improv
+  tedge-full:
+    description: every thin-edge.io feature; Wi-Fi and Cumulocity over lab-ztp-provisioner
+    profile: tedge-zephyr/profiles/full.conf
+    provisioner: ztp
+  tedge-ota:
+    description: connection, telemetry, restart and firmware update, plus what else fits; Wi-Fi and Cumulocity over lab-ztp-provisioner
+    profile: tedge-zephyr/profiles/ota.conf
+    provisioner: ztp
+
+provisioners:
+  improv: null
+  ztp: apps/wifi-provisioner/overlay-ztp.conf
+
+devices:
+  - id: esp32c6-devkitc
+    name: ESP32-C6-DevKitC-1 (N4)
+    board: esp32c6_devkitc/esp32c6/hpcore
+    chip: esp32c6
+    flash_size: 4MB
+    esptool_before: usb-reset
+    tedge_board_conf: lib/common/tedge-boards/esp32c6-devkitc.conf
+    builds:
+      - { app: modbus-server, variant: standalone, pr: true }
+      - { app: opcua-server, variant: standalone }
+      - { app: snmp-agent, variant: standalone }
+      - app: modbus-server
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        pr: true
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        pr: true
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+
+  - id: esp32s3-devkitc
+    name: ESP32-S3-DevKitC-1 (N16R8)
+    board: esp32s3_devkitc/esp32s3/procpu
+    chip: esp32s3
+    flash_size: 16MB
+    esptool_before: default-reset
+    tedge_board_conf: lib/common/tedge-boards/esp32s3-devkitc.conf
+    builds:
+      - { app: modbus-server, variant: standalone }
+      - { app: opcua-server, variant: standalone, pr: true }
+      - { app: snmp-agent, variant: standalone }
+      - app: modbus-server
+        variant: tedge-full
+        pr: true
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        pr: true
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+
+  - id: qtpy-esp32s3
+    name: Adafruit QT Py ESP32-S3 (N4R2)
+    board: adafruit_qt_py_esp32s3/esp32s3/procpu
+    chip: esp32s3
+    flash_size: 4MB
+    esptool_before: usb-reset
+    tedge_board_conf: lib/common/tedge-boards/qtpy-esp32s3.conf
+    builds:
+      - { app: modbus-server, variant: standalone }
+      - { app: opcua-server, variant: standalone }
+      - { app: snmp-agent, variant: standalone, pr: true }
+      - app: modbus-server
+        variant: tedge-full
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: opcua-server
+        variant: tedge-ota
+        pr: true
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-full
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: snmp-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-full
+        pr: true
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+
+  - id: esp32-devkitc
+    name: ESP32-WROOM-32 DevKitC
+    board: esp32_devkitc/esp32/procpu
+    chip: esp32
+    flash_size: 4MB
+    esptool_before: default-reset
+    tedge_board_conf: lib/common/tedge-boards/esp32-devkitc.conf
+    builds:
+      - { app: modbus-server, variant: standalone }
+      - { app: opcua-server, variant: standalone, pr: true }
+      - { app: snmp-agent, variant: standalone }
+      - app: modbus-server
+        variant: tedge-ota
+        pr: true
+        extra_conf: [lib/common/tedge-boards/extras/remote-access.conf]
+        measured: DEVICES.md#what-a-wroom-can-carry-measured-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        pr: true
+        extra_conf:
+          - lib/common/tedge-boards/extras/remote-access.conf
+          - lib/common/tedge-boards/extras/cert-renewal.conf
+        measured: DEVICES.md#what-a-wroom-can-carry-measured-2026-09-21
+
+  - id: esp32-cam
+    name: ESP32-CAM (ESP32 + 4 MB PSRAM)
+    board: esp32_devkitc/esp32/procpu
+    chip: esp32
+    flash_size: 4MB
+    esptool_before: default-reset
+    tedge_board_conf: lib/common/tedge-boards/esp32-cam.conf
+    dtc_overlays: [lib/common/dts/esp32cam-status-led.overlay]
+    builds:
+      - app: snmp-agent
+        variant: tedge-ota
+        pr: true
+        measured: DEVICES.md#the-esp32-cam-is-deliberately-small
+      - app: modbus-server
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent
+        variant: tedge-ota
+        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21

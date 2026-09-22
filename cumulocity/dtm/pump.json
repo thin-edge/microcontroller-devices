@@ -1,0 +1,38 @@
+{
+  "identifier": "pump",
+  "jsonSchema": {
+    "type": "object",
+    "title": "pump",
+    "properties": {
+      "interval_s": {
+        "title": "interval_s",
+        "order": 1,
+        "description": "Seconds between measurements",
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "maximum": 3600
+      },
+      "telemetry": {
+        "title": "telemetry",
+        "order": 2,
+        "description": "Publish measurements to the cloud",
+        "type": "boolean",
+        "default": true
+      },
+      "measurement_type": {
+        "title": "measurement_type",
+        "order": 3,
+        "description": "What the cloud files these measurements under",
+        "type": "string",
+        "maxLength": 31,
+        "default": "pump"
+      }
+    }
+  },
+  "contexts": [
+    "asset",
+    "event",
+    "operation"
+  ]
+}

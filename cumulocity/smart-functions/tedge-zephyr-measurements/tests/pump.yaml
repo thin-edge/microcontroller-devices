@@ -1,0 +1,21 @@
+inputs:
+  - payload: '{"time":"2026-09-22T06:40:00Z","flow_lpm":42.17,"pressure_bar":3.08,"motor_temp_c":51.42,"rpm":1487.00,"vibration_mms":2.31,"run_hours":128.55}'
+    payloadFormat: json
+    topic: "te/device/tedge-modbus7c0c5f5a6eb8///m/pump"
+    clientID: "tedge-modbus7c0c5f5a6eb8"
+    time: "2026-09-22T06:40:01.000Z"
+expectedOutput:
+  - cumulocityType: measurement
+    externalSource:
+      - externalId: tedge-modbus7c0c5f5a6eb8
+        type: c8y_Serial
+    payload:
+      type: c8y_Pump
+      time: "2026-09-22T06:40:00.000Z"
+      pump:
+        flow: {value: 42.17, unit: l/min}
+        pressure: {value: 3.08, unit: bar}
+        motorTemperature: {value: 51.42, unit: C}
+        speed: {value: 1487, unit: rpm}
+        vibration: {value: 2.31, unit: mm/s}
+        runHours: {value: 128.55, unit: h}

@@ -17,6 +17,7 @@
 #include "boot_request.h"
 #include "data_source.h"
 #include "identity.h"
+#include "opcua_server.h"
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
 #include "prov_c8y.h"
 #endif
@@ -73,10 +74,29 @@ static void reset(void *user_data)
 	boot_request_reboot();
 }
 
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+/* An update is only kept if this image can do its job. The OPC-UA server
+ * starts on its own thread, so the device connects to the cloud even when
+ * open62541 could not start (out of memory, say): refusing here leaves the
+ * image unconfirmed and the bootloader restores the previous one. */
+static int firmware_confirm_check(void *user_data)
+{
+	ARG_UNUSED(user_data);
+	if (opcua_server_failed()) {
+		LOG_ERR("the OPC-UA server did not start; refusing this firmware");
+		return -EIO;
+	}
+	return 0;
+}
+#endif
+
 static const struct tedge_hooks hooks = {
 	.on_state = on_state,
 	.restart_request = restart_request,
 	.reset = reset,
+#if defined(CONFIG_TEDGE_FIRMWARE_UPDATE)
+	.firmware_confirm_check = firmware_confirm_check,
+#endif
 };
 
 #if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)

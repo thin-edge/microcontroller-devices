@@ -4,7 +4,7 @@ build*/
 twister-out*/
 *.pyc
 __pycache__/
-build_*.log
+build*.log
 
 # West clones Zephyr and modules as siblings of this repo when it is used as
 # the manifest repo; ignore them if they land inside the tree.
@@ -33,3 +33,6 @@ credentials/
 *.key
 *.csr
 *.pem.local
+
+# Release packaging output (scripts/release/build.sh)
+dist/

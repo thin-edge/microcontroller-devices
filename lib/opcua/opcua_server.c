@@ -32,6 +32,7 @@ static struct k_thread opcua_thread;
 
 static UA_Server *server;
 static volatile bool running;
+static volatile bool failed;
 
 static void configure_server(UA_Server *srv)
 {
@@ -81,12 +82,14 @@ static void opcua_thread_fn(void *a, void *b, void *c)
 	if (rc != UA_STATUSCODE_GOOD) {
 		LOG_ERR("Server config failed: %s (0x%08x)",
 			UA_StatusCode_name(rc), rc);
+		failed = true;
 		return;
 	}
 
 	server = UA_Server_newWithConfig(&config);
 	if (server == NULL) {
 		LOG_ERR("UA_Server_newWithConfig() failed");
+		failed = true;
 		return;
 	}
 
@@ -94,12 +97,14 @@ static void opcua_thread_fn(void *a, void *b, void *c)
 
 	rc = address_space_setup(server);
 	if (rc != UA_STATUSCODE_GOOD) {
+		failed = true;
 		goto cleanup;
 	}
 
 	rc = UA_Server_run_startup(server);
 	if (rc != UA_STATUSCODE_GOOD) {
 		LOG_ERR("Server startup failed: %s", UA_StatusCode_name(rc));
+		failed = true;
 		goto cleanup;
 	}
 
@@ -145,6 +150,11 @@ int opcua_server_start(void)
 			OPCUA_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(&opcua_thread, "opcua");
 	return 0;
+}
+
+bool opcua_server_failed(void)
+{
+	return failed;
 }
 
 void opcua_server_stop(void)

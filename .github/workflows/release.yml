@@ -1,0 +1,194 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build the images in release/devices.yml. On a vX.Y.Z tag, build every one and
+# publish them as a GitHub Release; on a pull request build the `pr: true`
+# subset, so a board that stops building is caught before a tag; a manual run
+# builds everything unless told otherwise. See README.md, "Releasing".
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "Which images to build"
+        type: choice
+        options: [all, pr]
+        default: all
+  pull_request:
+    paths:
+      - "apps/**"
+      - "lib/**"
+      - "tedge-zephyr/**"
+      - "sysbuild/**"
+      - "west.yml"
+      - "release/**"
+      - "scripts/release/**"
+      - "scripts/flash.sh"
+      - ".github/workflows/release.yml"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Pinned so a release does not change toolchain under it. The SDK, its
+  # toolchains and ccache come through zephyrproject-rtos/action-zephyr-setup,
+  # which caches them; the Zephyr workspace revisions are pinned by west.yml.
+  ZEPHYR_SDK_VERSION: "1.0.1"
+  ZEPHYR_TOOLCHAINS: "xtensa-espressif_esp32_zephyr-elf:xtensa-espressif_esp32s3_zephyr-elf:riscv64-zephyr-elf"
+
+jobs:
+  matrix:
+    name: Manifest and version
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Unit tests of the release scripts
+        run: python3 -m unittest discover -s scripts/release/tests
+      - name: Check the version against the ref
+        id: version
+        run: scripts/release/check-version.sh "${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Build matrix from release/devices.yml
+        id: matrix
+        run: |
+          subset="all"
+          if [ "${{ github.event_name }}" = pull_request ] || [ "${{ inputs.images }}" = pr ]; then
+            subset="pr"
+          fi
+          echo "Building the '$subset' images"
+          python3 scripts/release/matrix.py --subset "$subset" --github-output >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.group }}
+    needs: matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    env:
+      # Hash paths relative to the workspace, so an object compiled in one
+      # build directory is found again from another.
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      # Ubuntu 24.04's own Python refuses pip installs (PEP 668); the setup
+      # action and the packaging step both pip-install.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The Zephyr workspace (zephyr, modules, bootloader, blobs, submodules),
+      # restored before the setup action so its `west update` finds every
+      # project already at its revision. .west is left out: the action runs
+      # `west init`, which refuses an existing one.
+      - name: Restore the Zephyr workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            zephyr
+            modules
+            bootloader
+          key: west-ws-${{ hashFiles('app/west.yml') }}-v2
+      - name: Zephyr SDK, west workspace and ccache
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          sdk-version: ${{ env.ZEPHYR_SDK_VERSION }}
+          toolchains: ${{ env.ZEPHYR_TOOLCHAINS }}
+          # One compiler cache per job group. Zephyr compiles every file with
+          # -imacros autoconf.h, so objects only carry over between identical
+          # configurations: a cache shared per chip restored another app's
+          # objects and hit 0.2% of compiles. Per group, a re-run or a small
+          # change recompiles almost nothing.
+          ccache-cache-key: ${{ matrix.group }}
+      - name: Espressif blobs, mbedTLS submodule, packaging tools
+        run: |
+          west blobs fetch hal_espressif
+          (cd modules/crypto/mbedtls && git submodule update --init --recursive --depth=1)
+          pip3 install esptool -r bootloader/mcuboot/scripts/requirements.txt
+      - name: Set the version for this ref
+        working-directory: app
+        run: scripts/release/check-version.sh --apply "${{ github.ref_name }}"
+      - name: Signing key
+        env:
+          MCUBOOT_SIGNING_KEY: ${{ secrets.MCUBOOT_SIGNING_KEY }}
+        run: |
+          # Without the secret (forks, or before a key exists) the images are
+          # signed with MCUboot's public development key, and say so.
+          if [ -n "$MCUBOOT_SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$MCUBOOT_SIGNING_KEY" > "$RUNNER_TEMP/mcuboot-key.pem"
+            echo "KEY_FILE=$RUNNER_TEMP/mcuboot-key.pem" >> "$GITHUB_ENV"
+          fi
+      - name: Build, size-check and package
+        working-directory: app
+        # The same script a developer runs in the container (README, "Releasing"),
+        # once per build of this (device, app); later builds reuse the first
+        # one's compiler cache.
+        run: |
+          set -e
+          for name in ${{ matrix.builds }}; do
+            echo "::group::$name"
+            scripts/release/build.sh "$name" --build-dir "../build/$name" --out ../dist
+            echo "::endgroup::"
+          done
+          ccache -s
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.group }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [matrix, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: dist
+          merge-multiple: true
+      - name: c8y-firmware.json, SHA256SUMS and notes
+        run: |
+          python3 scripts/release/c8y-manifest.py dist > dist/c8y-firmware.json
+          python3 scripts/release/notes.py dist --tag "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" > notes.md
+          cd dist
+          sha256sum -- *.factory.bin *.app.bin *.zip c8y-firmware.json > SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "${{ github.ref_name }}" in *-*) pre=--prerelease ;; esac
+          gh release create "${{ github.ref_name }}" $pre \
+            --title "${{ github.ref_name }}" --notes-file notes.md \
+            dist/*.factory.bin dist/*.app.bin dist/*.zip \
+            dist/c8y-firmware.json dist/SHA256SUMS

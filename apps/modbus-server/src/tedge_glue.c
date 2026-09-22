@@ -29,6 +29,8 @@
 
 #if defined(CONFIG_SHELL)
 #include <zephyr/shell/shell.h>
+#endif
+#if defined(CONFIG_SHELL) && defined(CONFIG_MBEDTLS_MEMORY_DEBUG)
 #include <mbedtls/memory_buffer_alloc.h>
 #endif
 
@@ -98,8 +100,9 @@ static const struct tedge_hooks hooks = {
 };
 
 #if defined(CONFIG_SHELL)
-/* Test aid (task 8.3): the client's state and the TLS heap in use, so a
- * reconnect cycle can be checked for leaks. */
+/* The client's state, and with CONFIG_MBEDTLS_MEMORY_DEBUG the TLS heap in
+ * use, so a reconnect cycle can be checked for leaks (task 8.3). Allowed from
+ * the cloud in release images as a health check. */
 static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
 {
 	static const char *const names[] = {
@@ -107,15 +110,21 @@ static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
 		"awaiting-registration", "connecting", "connected", "updating",
 	};
 	enum tedge_state state = tedge_get_state();
-	size_t cur = 0, cur_blocks = 0, peak = 0, peak_blocks = 0;
+	const char *name = ((size_t)state < ARRAY_SIZE(names)) ? names[state] : "?";
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
+#if defined(CONFIG_MBEDTLS_MEMORY_DEBUG)
+	size_t cur = 0, cur_blocks = 0, peak = 0, peak_blocks = 0;
+
 	mbedtls_memory_buffer_alloc_cur_get(&cur, &cur_blocks);
 	mbedtls_memory_buffer_alloc_max_get(&peak, &peak_blocks);
 	shell_print(sh, "tedge state=%s tls_heap cur=%zu (%zu blocks) peak=%zu",
-		    ((size_t)state < ARRAY_SIZE(names)) ? names[state] : "?", cur,
-		    cur_blocks, peak);
+		    name, cur, cur_blocks, peak);
+#else
+	shell_print(sh, "tedge state=%s uptime=%llds", name,
+		    (long long)(k_uptime_get() / 1000));
+#endif
 	return 0;
 }
 

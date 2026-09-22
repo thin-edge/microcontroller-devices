@@ -115,6 +115,32 @@ MQTT the same values go out as direct inventory updates instead.
 | `te/device/<id>///twin/tedge_RemoteAccess` | `{"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}` | remote-access capacity, published on every connect and whenever a session opens or ends |
 | `te/device/<id>/service/tedge-zephyr/status/health` | `{"status":"up","time":<unix seconds>}` | the client is connected |
 
+Telemetry from `tedge_publish_measurement()`, `tedge_publish_event()` and
+`tedge_raise_alarm()` uses the same `te/` topics:
+
+| Topic | Payload | Meaning |
+|---|---|---|
+| `te/device/<id>///m/<type>` | `{"time":"2026-09-21T20:15:30Z","temperature":21.54,"humidity":48.25}` | a measurement: one key per series |
+| `te/device/<id>///m/tedge_health` | `{"time":"…","uptime":26114.00,"freeHeap":15920.00,"droppedMessages":0.00,"resetCause":2.00}` | the client's own health (below), every `CONFIG_TEDGE_HEALTH_INTERVAL_S` |
+| `te/device/<id>///e/<type>` | `{"time":"…","text":"door opened"}` | an event |
+| `te/device/<id>///a/<type>` | `{"time":"…","severity":"major","text":"pump overheating"}` | an alarm (`critical`, `major`, `minor`, `warning`) |
+| `te/device/<id>///a/<type>` | *(empty)* | the alarm is cleared |
+
+A measurement payload is flat: `time` (UTC, seconds; left out until the
+clock is set) and one **number** per series, always with two decimals — no
+nesting and **no units**, although the API takes them; a mapping that wants
+units supplies them. Payloads are at most 224 bytes. Measurements go at
+QoS 0, events and alarms at QoS 1. The thin-edge.io convention, which a
+generic Smart Function can follow, is that each key becomes both fragment
+and series: `{"temperature":21.54}` →
+`{"temperature":{"temperature":{"value":21.54}}}`.
+
+`tedge_health`: `uptime` in seconds since boot; `freeHeap`, bytes free in
+the client's own heap (not the system heap); `droppedMessages`, telemetry
+lost while offline because the buffer was full; `resetCause`, Zephyr's
+`hwinfo` reset-cause bits for the last boot (1 pin, 2 software, 4
+brown-out, 8 power-on, 16 watchdog, 256 CPU lockup).
+
 Twin values are **state, not events**: the client republishes all of them
 after every reconnect, so a reboot never leaves a stale value, and nothing
 relies on retained messages.
@@ -270,6 +296,11 @@ Anything containing `;`, `|`, `&`, `` ` ``, `$`, `<`, `>` or a newline is
 refused whatever the list says, so an allowed prefix cannot become a doorway
 to a second command. Compiling the feature in is not consent to run
 something: only you know what is safe to expose in your image.
+
+**`help` lists what may run.** Sending `help` (or `?`) answers with the
+allow-list, one command per line, without executing anything — not with
+Zephyr's own `help`, which would name every command in the image, most of
+them refused. A refused command's reason says so too.
 
 Zephyr cannot interrupt a running command. After
 `CONFIG_TEDGE_SHELL_COMMAND_TIMEOUT_S` the operation is reported as failed,
@@ -486,6 +517,16 @@ Check what would make the device useless in the field: that your protocol
 server accepted a connection, that a sensor answers, that the peer you
 depend on is reachable. Returning non-zero leaves the image unconfirmed, and
 it is rolled back.
+
+**The version is the application's own string.** The client reports the
+running firmware as `firmware_name` and `firmware_version` from
+`tedge_identity` (by default the application's `APP_VERSION_STRING`), and
+compares the version of a requested install with it — to refuse the version
+already running, and after the reboot to tell a confirmed install from a
+rollback. MCUboot's image header is only used when the application gives no
+version: it holds `MAJOR.MINOR.PATCH` alone, so a pre-release such as
+`0.4.0-rc1` would read back as `0.4.0` and look rolled back. Put exactly the
+reported version in the cloud's firmware repository.
 
 **An image that never confirms rolls itself back.** It resets the device
 after `CONFIG_TEDGE_FIRMWARE_CONFIRM_TIMEOUT_S` (default 900 s) so the

@@ -9,10 +9,14 @@ Last verified **2026-09-20** against `tedge-dev05.preprod.c8y.io`.
 Authentication is **x.509 from the Cumulocity CA** everywhere
 (`CONFIG_TEDGE_AUTH_C8Y_CA`); no board uses bootstrap basic-auth.
 
-All three applications — `modbus-server`, `snmp-agent` and `opcua-server` —
-can carry the client: each has a `src/tedge_glue.c` built when
-`CONFIG_TEDGE=y`. Whether a given *board* can is a separate question,
-answered below.
+All three protocol applications — `modbus-server`, `snmp-agent` and
+`opcua-server` — can carry the client: each has a `src/tedge_glue.c` built
+when `CONFIG_TEDGE=y`; `apps/tedge-agent` is the client with no protocol.
+Whether a given *board* can is a separate question, answered below.
+
+**What is released** for each board is [`release/devices.yml`](release/devices.yml);
+every `tedge-*` build listed there points at the entry below that records
+its run on the board.
 
 ## Where they are
 
@@ -23,7 +27,7 @@ answered below.
 | QT Py ESP32-S3 (N4R2) | `rpi5` `/dev/ttyACM0` | Modbus | `tedge-modbusf412fa5a9424` |
 | ESP32-CAM | `rpi5` `/dev/ttyUSB1` | SNMP | `tedge-snmpe465b86f97cc` |
 | ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB0` | OPC-UA | — |
-| ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB2` | remote-access enabler | `tedge-3c71bf10c2e4` |
+| ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB2` | SNMP, no client (Wi-Fi from ZTP); the WROOM capacity test board | — |
 
 `rpi5` is `root@rpi5-d83add9f145a.local` (192.168.68.72). Flash from there
 with `/root/espenv/bin/esptool`. The Pi 4 (`rpi4-d83add90fe56.local`,
@@ -86,12 +90,124 @@ this image size. `SWAP_USING_MOVE` is faster and still supports rollback;
 `OVERWRITE_ONLY` is fastest and gives up rollback. Do not read a slow update
 as a stuck operation.
 
-### Why the WROOMs cannot
+### What a WROOM can carry (measured 2026-09-21)
 
-192 KB DRAM segment and no PSRAM, against an OPC-UA server plus the client.
-`full.conf` overflows by **47,560 B**. The features that need a *second*
-concurrent TLS session — firmware update (HTTPS download) and remote access
-(tunnel) — are what has to go, and it is still marginal.
+192 KB dram0 and no PSRAM. The client fits beside **Modbus** or with **no
+protocol** (`apps/tedge-agent`), at the ota level plus remote access; not
+beside SNMP or OPC-UA at any level. Measured on the rpi5 WROOM
+(3c:71:bf:10:c2:e4) with `lib/common/tedge-boards/esp32-devkitc.conf`:
+8 KB TLS records, a 56 KB mbedTLS heap in internal RAM, 10 network
+connections. Each image was flashed `--app-only`, run against
+thin-edge-io.eu-latest and the board restored from a full flash backup
+afterwards.
+
+| App | Build | dram0 | Result |
+|---|---|---|---|
+| modbus-server | ota | 96.3% | enrolled; OTA 800 KB in 32 s, confirmed; 23 KB system heap free |
+| modbus-server | ota + remote access | 99.9% | OTA confirmed; SSH tunnel 409 KB in 19 s with 86/86 Modbus reads alongside; min 21.6 KB heap; 76 B `malloc` arena |
+| modbus-server | + certificate renewal | no room at 10 connections | — |
+| modbus-server | full | over by 8.4 KB | — |
+| tedge-agent | ota + remote access + certificate renewal | 99.7% | enrolled (CA registration); restart; SSH tunnel 405 KB in 21 s; OTA 0.4.0 → 0.4.1 confirmed; `main` used 1.2 KB of its 4 KB stack |
+| tedge-agent | + parameters | over by 440 B | — |
+| tedge-agent | full | over by 3.7 KB | — |
+| snmp-agent | ota / + remote access / full | over by 24 / 27 / 40 KB | — |
+| opcua-server | ota / + remote access / full | over by 16 / 19 / 30 KB | — |
+
+What only a run showed: at the WROOM application default of 6 network
+connections the image links, but a tunnel request fails ("Not enough
+connection contexts", operation "the cloud connection failed (-2)"); the
+board file raises it to 10. HTTPS firmware download and the tunnel both work
+with 8 KB TLS records.
+
+SNMP carries ~33 KB of static tables and buffers (MIB leaves 13.5 KB,
+varbinds 6.7 KB, request buffers 8.5 KB) and open62541 more; either would have
+to shrink by 16–24 KB before the client fits beside it.
+
+### Release builds measured on the boards (2026-09-21)
+
+Every `tedge-*` build in `release/devices.yml` points here or at the WROOM
+table above. Each ran on the board, installed **over the air** from the
+previous one (so each image's HTTPS download and the next one's
+boot-and-confirm are both exercised), then served its protocol to a client
+for 10 minutes; builds with remote access also carried an SSH session
+(400 KB) through a tunnel with the protocol read alongside. C6, S3-DevKitC
+and QT Py were provisioned through lab-ztp-provisioner with the release
+image; the CAM was registered through the Cumulocity CA. RAM is the fullest
+internal region (`scripts/release/size.py`).
+
+| Board | Build | RAM | Result |
+|---|---|---|---|
+| ESP32-C6 | modbus full | 91.9% | ✅ ZTP → enrolled, reports `0.4.0-rc1`; tunnel 405 KB/14 s with Modbus alongside |
+| ESP32-C6 | modbus ota | 86.0% | ✅ 571/571 reads |
+| ESP32-C6 | snmp full | 99.2% | ✅ 567/567; tunnel 405 KB/10 s, 38/38 alongside |
+| ESP32-C6 | snmp ota | 93.3% | ✅ 567/567 |
+| ESP32-C6 | tedge-agent full | 90.1% | ✅ tunnel 405 KB/10 s |
+| ESP32-C6 | tedge-agent ota | 84.2% | ✅ |
+| ESP32-C6 | opcua full | 99.1% | ❌ `UA_Server_newWithConfig() failed` (no memory) |
+| ESP32-C6 | opcua ota | 93.2% | ❌ server starts, every session `BadOutOfMemory` |
+| S3-DevKitC | modbus full | — | ✅ ZTP → enrolled; tunnel 405 KB/12 s with Modbus alongside |
+| S3-DevKitC | modbus ota | 81.9% | ✅ 573/573 |
+| S3-DevKitC | snmp full | 98.8% | ✅ 570/570; tunnel 405 KB/8 s, 38/38 alongside |
+| S3-DevKitC | snmp ota | 91.2% | ✅ 568/568 |
+| S3-DevKitC | tedge-agent full | 87.2% | ✅ tunnel 405 KB/8 s |
+| S3-DevKitC | tedge-agent ota | 79.7% | ✅ |
+| S3-DevKitC | opcua full | 98.7% | ❌ server did not start; the app refused the update and it rolled back |
+| S3-DevKitC | opcua ota | 91.1% | ❌ 0/561 reads (out of memory per session, as on the C6) |
+| QT Py S3 | modbus full | 88.5% | ✅ ZTP → enrolled |
+| QT Py S3 | modbus ota | 81.0% | ✅ serving (the Pi's tedge-dot holds its one Modbus connection) |
+| QT Py S3 | opcua ota | 90.2% | ✅ 490/490 |
+| QT Py S3 | snmp full | 97.8% | ✅ 569/569; tunnel 405 KB/12 s, 34/35 alongside |
+| QT Py S3 | snmp ota | 90.3% | ✅ 562/562 |
+| QT Py S3 | tedge-agent full | 86.2% | ✅ tunnel 405 KB/9 s (a first attempt moved nothing; the retest passed) |
+| QT Py S3 | tedge-agent ota | 78.7% | ✅ |
+| QT Py S3 | opcua full | 97.7% | ❌ server did not start; refused and rolled back |
+| ESP32-CAM | modbus ota | dram1 92.5% | ✅ 567/567 |
+| ESP32-CAM | tedge-agent ota | dram1 85.2% | ✅ installed over the air from Modbus |
+| ESP32-CAM | snmp ota | dram1 96.6% | ✅ in service since 2026-09-20 (above) |
+| ESP32-CAM | every full, opcua ota | — | ❌ do not link (dram1 over by 2.6–23 KB) |
+
+OPC-UA is the one protocol that does not live beside the client on these
+boards: open62541 allocates from the libc heap, which the client's TLS and
+network buffers leave too small — at `full` it cannot create the server, at
+`ota` it cannot open sessions on the C6 and the S3-DevKitC. The QT Py's `ota`
+image served, but with the margin that close, the S3-DevKitC result is the
+one to believe for a new board. OPC-UA ships `standalone` on every board
+except the QT Py's `tedge-ota`.
+
+What fits on top of the CAM's `tedge-ota` (link only, not yet run):
+certificate renewal and parameters beside SNMP or Modbus; remote access and
+log upload do not (over by 1–5.4 KB). The agent has room for all four.
+
+Telemetry was published throughout, but the test tenant had no mapping for
+`te/.../m/...`, so measurements could not be seen in Cumulocity; the
+`remoteAccess` twin mapping did work.
+
+### Shell diagnostics measured (2026-09-22)
+
+`lib/common/tedge-boards/extras/shell-diagnostics.conf` adds the cloud shell
+command (allow-list: `kernel uptime`, `kernel version`, `net iface`,
+`net conn`, `wifi status`, `tedge params list`, `tedge diag`; `help` lists
+them). It costs about 16 KB of internal RAM.
+
+| Board | Build | RAM | Result |
+|---|---|---|---|
+| S3-DevKitC | modbus full + shell | 93.6% | ✅ OTA in; 570/570 reads over 10 min; tunnel 405 KB/11 s with 36/36 reads alongside; every command answers; a command off the list is refused; the next OTA download from it succeeds |
+| S3-DevKitC | tedge-agent full + shell | 91.1% | ✅ OTA in; tunnel 405 KB/7 s; every command answers; OTA out of it succeeds |
+| ESP32-C6 | modbus full + shell | 95.3% | ⚠️ passes the same checks, but logs `esp32c6_wifi_adapter: memory allocation failed` at boot |
+| ESP32-C6 | tedge-agent full + shell | 93.3% | ❌ after ~30 min up (a tunnel and the commands had run), three firmware downloads in a row failed (`download failed (-5)`); fine again after a reboot. A device in that state needs a cable to change image |
+| any | snmp full + shell | — | ❌ does not link (over by 7–13 KB) |
+| QT Py S3 | modbus full + shell | 92.6% | ✅ ZTP → enrolled; clean boot (no Wi-Fi allocation failure); every command answers, one off the list refused; OTA out to the agent and back in; tunnel 405 KB/9 s. **Long soak (downloads after 30+ min up) pending**, after the release |
+| QT Py S3 | tedge-agent full + shell | 90.2% | ✅ OTA in from Modbus + shell, confirmed; OTA out back to Modbus succeeds. Long soak pending, as above |
+
+So the Modbus and agent `tedge-full` images of the S3-DevKitC and the QT Py
+carry it. On the C6, with no PSRAM, the shell's RAM takes the Wi-Fi driver
+and the second TLS session past their margin. The QT Py's run was short; the
+C6's failure only showed after half an hour up, so a longer soak on the QT Py
+follows the first release.
+
+Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
+tunnel of its own, which holds the device's single session for a moment; an
+SSH connection straight after it can find the slot busy.
 
 ## What decides whether a board fits
 
@@ -148,8 +264,8 @@ the same image streams 1 MB happily. See
 ## Rebuilding one
 
 ```sh
-OVR="/ws/app/tedge-zephyr/profiles/full.conf;\
-/ws/app/apps/<app>/boards/<board>_tedge.conf;\
+OVR="/ws/app/tedge-zephyr/profiles/<full|ota>.conf;\
+/ws/app/lib/common/tedge-boards/<device>.conf;\
 /ws/app/overlay-wifi-credentials.conf;/ws/app/tedge.local.conf"
 
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
@@ -158,6 +274,13 @@ docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
 
 ESPTOOL=~/flashenv/bin/esptool ./scripts/flash.sh build-x --port <port> --app-only
 ```
+
+The profile picks the features (`tedge-zephyr/profiles/`); the board file
+(`lib/common/tedge-boards/`, one per device, whatever the app) sizes the TLS
+heap, PSRAM, connections and network buffers, and goes after the profile so
+its sizes win. The ESP32-CAM also needs
+`-DEXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay`
+(and the same with the `wifi-provisioner_` prefix).
 
 A board moving from a plain build to MCUboot needs `--erase-all` once,
 which also erases its credentials. A device with no certificate comes up in
