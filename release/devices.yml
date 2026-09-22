@@ -80,7 +80,8 @@ devices:
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
-        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: modbus-server
         variant: tedge-ota
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
@@ -92,7 +93,8 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: tedge-agent
         variant: tedge-full
-        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: tedge-agent
         variant: tedge-ota
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21

@@ -86,8 +86,8 @@ reason, and nothing is applied.
 
 ## Shell diagnostics
 
-`tedge-full` Modbus and agent images on the ESP32-C6 and S3-DevKitC carry
-the shell command (`lib/common/tedge-boards/extras/shell-diagnostics.conf`)
+The ESP32-S3-DevKitC's `tedge-full` Modbus and agent images carry the shell
+command (`lib/common/tedge-boards/extras/shell-diagnostics.conf`)
 for general checks from the device's **Shell** tab. Send `help` to see what
 the device runs:
 
@@ -95,10 +95,14 @@ the device runs:
 |---|---|
 | `kernel uptime`, `kernel version` | how long it has run, what it runs |
 | `net iface`, `net conn` | addresses, gateway, open sockets |
-| `net ping -c 3 <host>` | whether it reaches a host on its LAN |
 | `wifi status` | SSID, RSSI, channel, security |
 | `tedge params list` | the parameter sets it declares |
-| `tedge diag` (Modbus) | the client's state and uptime |
+| `tedge diag` | the client's state and uptime |
+
+`net ping` is not offered: Zephyr prints the replies after the command
+returns, so the cloud would only ever see the `PING <host>` line.
 
 Anything else is refused with the reason. Output travels in one SmartREST
-field, so a long answer is cut.
+field, so a long answer is cut. The other boards' images leave it out: on
+the ESP32-C6 its ~16 KB of RAM left too little for the Wi-Fi driver and the
+firmware download (DEVICES.md, "Shell diagnostics measured").

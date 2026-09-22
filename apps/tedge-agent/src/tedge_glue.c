@@ -26,6 +26,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#if defined(CONFIG_SHELL)
+#include <zephyr/shell/shell.h>
+#endif
 #if defined(CONFIG_WIFI)
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/wifi_mgmt.h>
@@ -83,6 +86,29 @@ static const struct tedge_hooks hooks = {
 	.restart_request = restart_request,
 	.reset = reset,
 };
+
+#if defined(CONFIG_SHELL)
+/* The client's state, for the cloud's shell command (a general health check
+ * on the device; see lib/common/tedge-boards/extras/shell-diagnostics.conf). */
+static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
+{
+	static const char *const names[] = {
+		"stopped",   "waiting-network", "waiting-time",
+		"awaiting-registration", "connecting", "connected", "updating",
+	};
+	enum tedge_state state = tedge_get_state();
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	shell_print(sh, "tedge state=%s uptime=%llds",
+		    ((size_t)state < ARRAY_SIZE(names)) ? names[state] : "?",
+		    (long long)(k_uptime_get() / 1000));
+	return 0;
+}
+
+/* Hangs off the client's own "tedge" root, which tedge-zephyr defines. */
+SHELL_SUBCMD_ADD((tedge), diag, NULL, "client state", cmd_diag, 1, 0);
+#endif /* CONFIG_SHELL */
 
 #if defined(CONFIG_TEDGE_TELEMETRY)
 #if defined(CONFIG_SYS_HEAP_RUNTIME_STATS)

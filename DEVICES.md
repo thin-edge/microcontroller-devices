@@ -182,6 +182,30 @@ Telemetry was published throughout, but the test tenant had no mapping for
 `te/.../m/...`, so measurements could not be seen in Cumulocity; the
 `remoteAccess` twin mapping did work.
 
+### Shell diagnostics measured (2026-09-22)
+
+`lib/common/tedge-boards/extras/shell-diagnostics.conf` adds the cloud shell
+command (allow-list: `kernel uptime`, `kernel version`, `net iface`,
+`net conn`, `wifi status`, `tedge params list`, `tedge diag`; `help` lists
+them). It costs about 16 KB of internal RAM.
+
+| Board | Build | RAM | Result |
+|---|---|---|---|
+| S3-DevKitC | modbus full + shell | 93.6% | ✅ OTA in; 570/570 reads over 10 min; tunnel 405 KB/11 s with 36/36 reads alongside; every command answers; a command off the list is refused; the next OTA download from it succeeds |
+| S3-DevKitC | tedge-agent full + shell | 91.1% | ✅ OTA in; tunnel 405 KB/7 s; every command answers; OTA out of it succeeds |
+| ESP32-C6 | modbus full + shell | 95.3% | ⚠️ passes the same checks, but logs `esp32c6_wifi_adapter: memory allocation failed` at boot |
+| ESP32-C6 | tedge-agent full + shell | 93.3% | ❌ after ~30 min up (a tunnel and the commands had run), three firmware downloads in a row failed (`download failed (-5)`); fine again after a reboot. A device in that state needs a cable to change image |
+| any | snmp full + shell | — | ❌ does not link (over by 7–13 KB) |
+| QT Py S3 | modbus / agent full + shell | 92.6% / 90.2% | links; not run |
+
+So only the S3-DevKitC's Modbus and agent `tedge-full` images carry it. On
+the C6, with no PSRAM, the shell's RAM takes the Wi-Fi driver and the second
+TLS session past their margin.
+
+Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
+tunnel of its own, which holds the device's single session for a moment; an
+SSH connection straight after it can find the slot busy.
+
 ## What decides whether a board fits
 
 **Not flash** — that never exceeded 26%. It is internal DRAM, and
