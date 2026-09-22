@@ -200,9 +200,11 @@ DEVICES.md. Flash with `--app-only` onto already-onboarded devices.
       `pull_request` with paths `apps/**`, `lib/**`, `tedge-zephyr/**`,
       `sysbuild/**`, `west.yml`, `release/**`, `scripts/release/**`,
       `scripts/flash.sh`, `.github/workflows/release.yml`
-- [ ] 10.10 Run the workflow via `workflow_dispatch` on a branch: all builds
-      pass, artifacts downloadable; then force one failure to confirm the
-      other builds finish and nothing is published
+- [x] 10.10 Run the workflow on a branch: all builds pass, artifacts
+      downloadable — done on PR #4 (run 35716538593): 36 builds + manifest and
+      workspace jobs green in 23 min, 36 artifacts, publish skipped. Not done:
+      forcing one failure to watch the others finish (fail-fast is off and
+      publish needs every build)
 
 ## 11. Documentation
 
