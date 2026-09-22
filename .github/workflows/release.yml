@@ -81,6 +81,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    env:
+      # Hash paths relative to the workspace, so an object compiled in one
+      # build directory is found again from another.
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,9 +113,12 @@ jobs:
           app-path: app
           sdk-version: ${{ env.ZEPHYR_SDK_VERSION }}
           toolchains: ${{ env.ZEPHYR_TOOLCHAINS }}
-          # One compiler cache per chip: every app and variant for that chip
-          # compiles the same Zephyr, HAL, mbedTLS and MCUboot sources.
-          ccache-cache-key: ${{ matrix.chip }}
+          # One compiler cache per job group. Zephyr compiles every file with
+          # -imacros autoconf.h, so objects only carry over between identical
+          # configurations: a cache shared per chip restored another app's
+          # objects and hit 0.2% of compiles. Per group, a re-run or a small
+          # change recompiles almost nothing.
+          ccache-cache-key: ${{ matrix.group }}
       - name: Espressif blobs, mbedTLS submodule, packaging tools
         run: |
           west blobs fetch hal_espressif

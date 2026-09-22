@@ -1484,7 +1484,7 @@ The workflow runs one job per (device, app), building its variants one after
 another, on a plain runner set up by `zephyrproject-rtos/action-zephyr-setup`
 (Zephyr SDK and only the three toolchains used, both cached). The Zephyr
 workspace is cached by `west.yml`, and compiled objects by ccache, one cache
-per chip, so a run after the first rebuilds little.
+per job, so a run after the first rebuilds little.
 
 Which number to bump: **PATCH** for fixes, **MINOR** for new features or
 devices, **MAJOR** for a change that needs a reflash by cable (a new

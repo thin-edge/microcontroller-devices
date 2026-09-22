@@ -228,8 +228,12 @@ per job on average — more than the 173 s build — the separate workspace job
 - **Workspace cache** (`zephyr`, `modules`, `bootloader`, keyed on
   `west.yml`) restored before the action, so its `west update` has nothing
   to fetch; `.west` is left out because the action runs `west init`.
-- **ccache, one cache per chip**, through the action: every app and variant
-  for a chip compiles the same Zephyr, HAL, mbedTLS and MCUboot sources.
+- **ccache, one cache per job group** (device and app), through the action,
+  with `CCACHE_BASEDIR` so build-directory paths do not break the hash. A
+  cache shared per chip was tried first and hit 0.2% of compiles: Zephyr
+  compiles every file with `-imacros autoconf.h`, which differs between
+  apps and variants, and the chip's jobs each restored whichever app saved
+  last.
 - **One job per (device, app)**, building its variants in turn: 19 jobs for a
   release (one wave), each paying its setup once, later builds reusing the
   first's compiler cache.
