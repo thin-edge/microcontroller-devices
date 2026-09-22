@@ -1,15 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build every (device, app, variant) in release/devices.yml. On a vX.Y.Z tag,
-# publish them as a GitHub Release; otherwise (pull requests, manual runs) only
-# build, so a board that stops building is caught before a tag. See README.md,
-# "Releasing".
+# Build the images in release/devices.yml. On a vX.Y.Z tag, build every one and
+# publish them as a GitHub Release; on a pull request build the `pr: true`
+# subset, so a board that stops building is caught before a tag; a manual run
+# builds everything unless told otherwise. See README.md, "Releasing".
 name: release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      images:
+        description: "Which images to build"
+        type: choice
+        options: [all, pr]
+        default: all
   pull_request:
     paths:
       - "apps/**"
@@ -29,26 +35,24 @@ concurrency:
 permissions:
   contents: read
 
-# Container jobs otherwise run steps with sh; the build step uses arrays.
 defaults:
   run:
     shell: bash
 
 env:
-  # The image every release is built with, pinned so a release does not
-  # change toolchain under it (Zephyr SDK 1.0.1). Bump it in a pull request;
-  # this workflow's build matrix is the check.
-  ZEPHYR_BUILD_IMAGE: zephyrprojectrtos/zephyr-build@sha256:3bdc7362967b2cc6f8ec10c1ad9f2ff940ac7a40cf901edc1e22292971afc803
+  # Pinned so a release does not change toolchain under it. The SDK, its
+  # toolchains and ccache come through zephyrproject-rtos/action-zephyr-setup,
+  # which caches them; the Zephyr workspace revisions are pinned by west.yml.
+  ZEPHYR_SDK_VERSION: "1.0.1"
+  ZEPHYR_TOOLCHAINS: "xtensa-espressif_esp32_zephyr-elf:xtensa-espressif_esp32s3_zephyr-elf:riscv64-zephyr-elf"
 
 jobs:
   matrix:
     name: Manifest and version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
-      extraversion: ${{ steps.version.outputs.extraversion }}
-      image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,82 +66,59 @@ jobs:
         run: scripts/release/check-version.sh "${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
       - name: Build matrix from release/devices.yml
         id: matrix
-        run: python3 scripts/release/matrix.py --github-output >> "$GITHUB_OUTPUT"
-      # Job-level `container:` cannot read the workflow env, only outputs.
-      - id: image
-        run: echo "image=$ZEPHYR_BUILD_IMAGE" >> "$GITHUB_OUTPUT"
-
-  workspace:
-    name: Zephyr workspace
-    needs: matrix
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ needs.matrix.outputs.image }}
-      options: --user root
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: app
-      - id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .west
-            zephyr
-            modules
-            bootloader
-          key: west-${{ hashFiles('app/west.yml') }}-v1
-          lookup-only: true
-      - name: Fetch Zephyr, modules and blobs
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          git config --global --add safe.directory '*'
-          west init -l app
-          west update --narrow -o=--depth=1 || west update --narrow -o=--depth=1
-          west blobs fetch hal_espressif
-          (cd modules/crypto/mbedtls && git submodule update --init --recursive --depth=1)
-      - if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .west
-            zephyr
-            modules
-            bootloader
-          key: west-${{ hashFiles('app/west.yml') }}-v1
+          subset="all"
+          if [ "${{ github.event_name }}" = pull_request ] || [ "${{ inputs.images }}" = pr ]; then
+            subset="pr"
+          fi
+          echo "Building the '$subset' images"
+          python3 scripts/release/matrix.py --subset "$subset" --github-output >> "$GITHUB_OUTPUT"
 
   build:
-    name: ${{ matrix.firmware_name }}
-    needs: [matrix, workspace]
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ needs.matrix.outputs.image }}
-      options: --user root
+    name: ${{ matrix.group }}
+    needs: matrix
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
-    env:
-      # The image registers the SDK for its non-root user only; see
-      # tedge-zephyr.yml.
-      ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
     steps:
       - uses: actions/checkout@v4
         with:
           path: app
-      - uses: actions/cache/restore@v4
+      # Ubuntu 24.04's own Python refuses pip installs (PEP 668); the setup
+      # action and the packaging step both pip-install.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The Zephyr workspace (zephyr, modules, bootloader, blobs, submodules),
+      # restored before the setup action so its `west update` finds every
+      # project already at its revision. .west is left out: the action runs
+      # `west init`, which refuses an existing one.
+      - name: Restore the Zephyr workspace
+        uses: actions/cache@v4
         with:
           path: |
-            .west
             zephyr
             modules
             bootloader
-          key: west-${{ hashFiles('app/west.yml') }}-v1
-          fail-on-cache-miss: true
+          key: west-ws-${{ hashFiles('app/west.yml') }}-v2
+      - name: Zephyr SDK, west workspace and ccache
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          sdk-version: ${{ env.ZEPHYR_SDK_VERSION }}
+          toolchains: ${{ env.ZEPHYR_TOOLCHAINS }}
+          # One compiler cache per chip: every app and variant for that chip
+          # compiles the same Zephyr, HAL, mbedTLS and MCUboot sources.
+          ccache-cache-key: ${{ matrix.chip }}
+      - name: Espressif blobs, mbedTLS submodule, packaging tools
+        run: |
+          west blobs fetch hal_espressif
+          (cd modules/crypto/mbedtls && git submodule update --init --recursive --depth=1)
+          pip3 install esptool -r bootloader/mcuboot/scripts/requirements.txt
       - name: Set the version for this ref
         working-directory: app
-        run: |
-          git config --global --add safe.directory '*'
-          scripts/release/check-version.sh --apply "${{ github.ref_name }}"
+        run: scripts/release/check-version.sh --apply "${{ github.ref_name }}"
       - name: Signing key
         env:
           MCUBOOT_SIGNING_KEY: ${{ secrets.MCUBOOT_SIGNING_KEY }}
@@ -151,11 +132,20 @@ jobs:
           fi
       - name: Build, size-check and package
         working-directory: app
-        # The same script a developer runs in the container (README, "Releasing").
-        run: scripts/release/build.sh "${{ matrix.firmware_name }}" --build-dir ../build --out ../dist
+        # The same script a developer runs in the container (README, "Releasing"),
+        # once per build of this (device, app); later builds reuse the first
+        # one's compiler cache.
+        run: |
+          set -e
+          for name in ${{ matrix.builds }}; do
+            echo "::group::$name"
+            scripts/release/build.sh "$name" --build-dir "../build/$name" --out ../dist
+            echo "::endgroup::"
+          done
+          ccache -s
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.firmware_name }}
+          name: firmware-${{ matrix.group }}
           path: dist/
           if-no-files-found: error
 
@@ -163,7 +153,7 @@ jobs:
     name: Publish the release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [matrix, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

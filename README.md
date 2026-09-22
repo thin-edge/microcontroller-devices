@@ -1475,8 +1475,16 @@ the files (`scripts/release/check-version.sh`), builds every entry of
 and publishes a GitHub Release only if every build succeeded. A tag with a
 suffix, `v0.5.0-rc1`, publishes a pre-release; its images report
 `0.5.0-rc1` (the suffix is lowercase letters, digits and dots). Pull requests
-that touch the firmware or the release files build the same matrix without
-publishing, and so does a manual run (**Actions → release → Run workflow**).
+that touch the firmware or the release files build the builds marked
+`pr: true` in the manifest — every device, app, variant and extra, with each
+board's tightest images — without publishing; a manual run (**Actions →
+release → Run workflow**) builds all of them, or that subset.
+
+The workflow runs one job per (device, app), building its variants one after
+another, on a plain runner set up by `zephyrproject-rtos/action-zephyr-setup`
+(Zephyr SDK and only the three toolchains used, both cached). The Zephyr
+workspace is cached by `west.yml`, and compiled objects by ccache, one cache
+per chip, so a run after the first rebuilds little.
 
 Which number to bump: **PATCH** for fixes, **MINOR** for new features or
 devices, **MAJOR** for a change that needs a reflash by cable (a new
@@ -1508,8 +1516,9 @@ names in `measured:`. `scripts/release/matrix.py` rejects an entry without
 it. Regenerate the table at the top of this README with
 `scripts/release/matrix.py --markdown`; a unit test fails while they differ.
 
-The build image is pinned by digest in the workflow (`ZEPHYR_BUILD_IMAGE`);
-bump it in a pull request, which then builds every image with it.
+The Zephyr SDK version is pinned in the workflow (`ZEPHYR_SDK_VERSION`); bump
+it in a pull request and run the workflow manually to build every image with
+it.
 
 ## Adding another Wi-Fi board
 

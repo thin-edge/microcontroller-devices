@@ -31,7 +31,7 @@ devices:
     flash_size: 4MB
     tedge_board_conf: boards/c6.conf
     builds:
-      - {app: modbus-server, variant: standalone}
+      - {app: modbus-server, variant: standalone, pr: true}
       - app: modbus-server
         variant: tedge-ota
         measured: DEVICES.md#measured-on-the-c6
@@ -130,6 +130,36 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(out.getvalue(), "")
         self.assertIn("error: device c6", err.getvalue())
+
+    def test_one_job_per_device_and_app(self):
+        manifest, builds = self.load(VALID)
+        groups = matrix.groups(builds)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["group"], "modbus-server-c6")
+        self.assertEqual(groups[0]["chip"], "esp32c6")
+        self.assertEqual(groups[0]["builds"],
+                         "modbus-server-standalone-c6 modbus-server-tedge-ota-c6")
+
+    def test_pr_subset(self):
+        path = self.root / "devices.yml"
+        path.write_text(textwrap.dedent(VALID))
+        from io import StringIO
+        from contextlib import redirect_stdout
+        out = StringIO()
+        with redirect_stdout(out):
+            rc = matrix.main(["--manifest", str(path), "--root", str(self.root),
+                              "--subset", "pr"])
+        self.assertEqual(rc, 0)
+        jobs = json.loads(out.getvalue())["include"]
+        self.assertEqual([j["builds"] for j in jobs], ["modbus-server-standalone-c6"])
+
+    def test_every_device_needs_a_pr_build(self):
+        p = self.problems(VALID.replace(", pr: true", ""))
+        self.assertIn("device c6: no build is marked `pr: true`", p)
+
+    def test_pr_must_be_boolean(self):
+        p = self.problems(VALID.replace("pr: true", "pr: yes please"))
+        self.assertIn("pr must be true or false", p)
 
     def test_repository_manifest_is_valid(self):
         manifest, builds = matrix.load()

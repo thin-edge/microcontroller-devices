@@ -13,6 +13,10 @@
 # remote access is in, a protocol read alongside): `measured` points at the
 # DEVICES.md entry that records it.
 #
+# `pr: true` marks the builds a pull request builds (a release builds all of
+# them): every device, app, variant and extra, with each board's tightest
+# images. Every device needs at least one.
+#
 # Adding a device: its board needs a provisioner layout
 # (sysbuild/provisioning.cmake) and board files for each app it builds.
 
@@ -45,7 +49,7 @@ devices:
     esptool_before: usb-reset
     tedge_board_conf: lib/common/tedge-boards/esp32c6-devkitc.conf
     builds:
-      - { app: modbus-server, variant: standalone }
+      - { app: modbus-server, variant: standalone, pr: true }
       - { app: opcua-server, variant: standalone }
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
@@ -56,6 +60,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: snmp-agent
         variant: tedge-full
+        pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: snmp-agent
         variant: tedge-ota
@@ -65,6 +70,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: tedge-agent
         variant: tedge-ota
+        pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
 
   - id: esp32s3-devkitc
@@ -76,10 +82,11 @@ devices:
     tedge_board_conf: lib/common/tedge-boards/esp32s3-devkitc.conf
     builds:
       - { app: modbus-server, variant: standalone }
-      - { app: opcua-server, variant: standalone }
+      - { app: opcua-server, variant: standalone, pr: true }
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
+        pr: true
         extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
         measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: modbus-server
@@ -87,6 +94,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: snmp-agent
         variant: tedge-full
+        pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: snmp-agent
         variant: tedge-ota
@@ -109,7 +117,7 @@ devices:
     builds:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone }
-      - { app: snmp-agent, variant: standalone }
+      - { app: snmp-agent, variant: standalone, pr: true }
       - app: modbus-server
         variant: tedge-full
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
@@ -118,6 +126,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: opcua-server
         variant: tedge-ota
+        pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: snmp-agent
         variant: tedge-full
@@ -127,6 +136,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: tedge-agent
         variant: tedge-full
+        pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: tedge-agent
         variant: tedge-ota
@@ -141,14 +151,16 @@ devices:
     tedge_board_conf: lib/common/tedge-boards/esp32-devkitc.conf
     builds:
       - { app: modbus-server, variant: standalone }
-      - { app: opcua-server, variant: standalone }
+      - { app: opcua-server, variant: standalone, pr: true }
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-ota
+        pr: true
         extra_conf: [lib/common/tedge-boards/extras/remote-access.conf]
         measured: DEVICES.md#what-a-wroom-can-carry-measured-2026-09-21
       - app: tedge-agent
         variant: tedge-ota
+        pr: true
         extra_conf:
           - lib/common/tedge-boards/extras/remote-access.conf
           - lib/common/tedge-boards/extras/cert-renewal.conf
@@ -165,6 +177,7 @@ devices:
     builds:
       - app: snmp-agent
         variant: tedge-ota
+        pr: true
         measured: DEVICES.md#the-esp32-cam-is-deliberately-small
       - app: modbus-server
         variant: tedge-ota

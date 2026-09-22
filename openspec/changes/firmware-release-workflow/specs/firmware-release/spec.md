@@ -303,25 +303,32 @@ build, the application image size against `slot0` and the RAM used.
 
 ### Requirement: The release matrix is exercised before a tag
 
-The same matrix SHALL build, without publishing, on manual dispatch and on
-pull requests that change application, library, module, sysbuild, manifest,
-west manifest or release-tooling files. The build artifacts of such runs
-SHALL be downloadable from the run.
+The workflow SHALL build, without publishing, the builds marked `pr: true`
+in the manifest on pull requests that change application, library, module,
+sysbuild, manifest, west manifest or release-tooling files, and every build
+on manual dispatch unless the subset is chosen. The `pr` subset SHALL
+include at least one build of every device. The build artifacts of such
+runs SHALL be downloadable from the run.
 
 #### Scenario: A PR breaks a released board
 
-- **WHEN** a pull request changes `lib/common/` in a way that stops the QT Py
-  `standalone` Modbus build from linking
+- **WHEN** a pull request changes `lib/common/` in a way that stops a build in
+  the `pr` subset from linking
 - **THEN** that pull request's release-matrix check fails
+
+#### Scenario: A device without a pull-request build
+
+- **WHEN** the manifest marks no build of a device `pr: true`
+- **THEN** the matrix job fails and names the device
 
 ### Requirement: Builds are reproducible from the tag
 
-Release builds SHALL use a build container pinned by digest and the Zephyr
-workspace revisions pinned by `west.yml`, so that rebuilding the same tag
-uses the same toolchain, Zephyr and module sources.
+Release builds SHALL use a pinned Zephyr SDK version, a pinned runner image
+and the Zephyr workspace revisions pinned by `west.yml`, so that rebuilding
+the same tag uses the same toolchain, Zephyr and module sources.
 
-#### Scenario: Container is pinned
+#### Scenario: SDK is pinned
 
-- **WHEN** the upstream `zephyr-build:latest` image changes
-- **THEN** release builds are unaffected until the pinned digest is updated
+- **WHEN** a new Zephyr SDK is released
+- **THEN** release builds are unaffected until the pinned version is updated
   in a pull request

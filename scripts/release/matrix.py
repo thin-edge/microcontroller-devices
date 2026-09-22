@@ -4,8 +4,15 @@
 
     scripts/release/matrix.py                 # GitHub matrix JSON on stdout
     scripts/release/matrix.py --github-output # "matrix=<json>" for $GITHUB_OUTPUT
+    scripts/release/matrix.py --subset pr     # only the builds marked `pr: true`
     scripts/release/matrix.py --markdown      # supported-devices table
     scripts/release/matrix.py --entry NAME    # one build, as shell variables
+
+The matrix has one job per (device, app): its `builds` are built one after
+another in that job, so the job pays for its setup once and the later builds
+reuse the first one's compiler cache. Pull requests build the `pr` subset
+(every device, app, variant and extra, with each board's tightest builds);
+a release builds everything.
 
 Every problem found is reported, each naming the device and build it is
 in, and the exit status is non-zero; nothing is printed on stdout then, so a
@@ -47,6 +54,7 @@ class Build:
     variant_def: dict
     extra_conf: list = field(default_factory=list)
     measured: str = ""
+    pr: bool = False
 
     @property
     def tedge(self):
@@ -178,8 +186,11 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
                 continue
             for conf in b.get("extra_conf", []):
                 need_file(bwhere, conf)
+            if not isinstance(b.get("pr", False), bool):
+                problems.append(f"{bwhere}: pr must be true or false")
             build = Build(dev, app, variant, variants[variant],
-                          list(b.get("extra_conf", [])), b.get("measured", ""))
+                          list(b.get("extra_conf", [])), b.get("measured", ""),
+                          b.get("pr", False) is True)
             if build.tedge:
                 if not dev.get("tedge_board_conf"):
                     problems.append(f"{bwhere}: the device has no tedge_board_conf")
@@ -204,9 +215,29 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
 
     if not builds and not problems:
         problems.append(f"{path}: no builds")
+    for dev in manifest.get("devices") or []:
+        if builds and not any(b.pr for b in builds if b.device is dev):
+            problems.append(f"device {dev.get('id', '?')}: no build is marked "
+                            "`pr: true`, so pull requests would not build it")
     if problems:
         raise ManifestError(problems)
     return manifest, builds
+
+
+def groups(builds):
+    """One matrix job per (device, app), in manifest order."""
+    out = {}
+    for b in builds:
+        g = out.setdefault((b.device["id"], b.app), {
+            "group": f"{b.app}-{b.device['id']}",
+            "device": b.device["id"],
+            "device_name": b.device["name"],
+            "chip": b.device["chip"],
+            "app": b.app,
+            "builds": [],
+        })
+        g["builds"].append(b.firmware_name)
+    return [dict(g, builds=" ".join(g["builds"])) for g in out.values()]
 
 
 def markdown(manifest, builds):
@@ -231,6 +262,8 @@ def main(argv=None):
     out.add_argument("--markdown", action="store_true")
     out.add_argument("--entry", metavar="FIRMWARE_NAME",
                      help="print one build's matrix entry as shell variables")
+    ap.add_argument("--subset", choices=("all", "pr"), default="all",
+                    help="pr: only the builds marked `pr: true`")
     args = ap.parse_args(argv)
     try:
         manifest, builds = load(args.manifest, args.root)
@@ -251,7 +284,9 @@ def main(argv=None):
         for k, v in build.matrix_entry(manifest).items():
             print(f"{k.upper()}='{v}'")
         return 0
-    matrix = json.dumps({"include": [b.matrix_entry(manifest) for b in builds]})
+    if args.subset == "pr":
+        builds = [b for b in builds if b.pr]
+    matrix = json.dumps({"include": groups(builds)})
     print(f"matrix={matrix}" if args.github_output else matrix)
     return 0
 

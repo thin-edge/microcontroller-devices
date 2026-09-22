@@ -213,22 +213,34 @@ Consequences:
   while `c8y_Firmware` reports the MCUboot header version — the mismatch the
   `tedge-zephyr` change in decision 5 removes.
 
-### 2. One job per build, workspace cached
+### 2. Plain runners, cached SDK, workspace and compiler; one job per (device, app)
 
-The workflow has three jobs: `matrix` (runs `matrix.py`), `build` (matrix,
-`fail-fast: false`), `release` (needs `build`, only on tags).
+*First version:* every build ran in the `zephyr-build` container pinned by
+digest, one job per build. Measured on PR #4: pulling the image took 238 s
+per job on average — more than the 173 s build — the separate workspace job
+6 minutes, and 36 jobs ran in two waves under GitHub's concurrency limit:
+23 minutes in all.
 
-`build` runs in `zephyrprojectrtos/zephyr-build`, pinned by **digest** rather
-than `:latest` so a release is reproducible and the SDK version is the one
-the README states. The west workspace (`zephyr/`, `modules/`, `bootloader/`,
-blobs, mbedtls submodule) is restored from `actions/cache` keyed on
-`hashFiles('west.yml')`; on a miss the job runs `west update --narrow
---depth=1`, `west blobs fetch hal_espressif` and the mbedtls submodule init,
-and saves it. Fetching is kept in a separate `workspace` job that runs once
-and warms the cache, so ~40 parallel builds don't each clone Zephyr.
+*Now:*
+- **No container.** `zephyrproject-rtos/action-zephyr-setup` installs the
+  minimal Zephyr SDK (pinned, `ZEPHYR_SDK_VERSION`) with only the three
+  toolchains the boards use, from its cache, and the SDK's host tools.
+- **Workspace cache** (`zephyr`, `modules`, `bootloader`, keyed on
+  `west.yml`) restored before the action, so its `west update` has nothing
+  to fetch; `.west` is left out because the action runs `west init`.
+- **ccache, one cache per chip**, through the action: every app and variant
+  for a chip compiles the same Zephyr, HAL, mbedTLS and MCUboot sources.
+- **One job per (device, app)**, building its variants in turn: 19 jobs for a
+  release (one wave), each paying its setup once, later builds reusing the
+  first's compiler cache.
+- **Pull requests build the `pr: true` subset** (13 builds covering every
+  device, app, variant and extra, with each board's tightest images); tags
+  and manual runs build everything (a manual run can choose the subset).
 
-*Alternative:* one job building everything sequentially. Rejected: ~40 × a
-few minutes serially, and one failure hides the rest.
+*Trade-off:* the digest pinned the host tools too (CMake, dtc, Python); now
+they come from the runner image and the SDK's host tools. The SDK version,
+the action version and `west.yml` stay pinned, and the runner is pinned to
+`ubuntu-24.04` rather than `ubuntu-latest`.
 
 ### 3. One version, committed, checked against the tag
 
