@@ -297,6 +297,11 @@ refused whatever the list says, so an allowed prefix cannot become a doorway
 to a second command. Compiling the feature in is not consent to run
 something: only you know what is safe to expose in your image.
 
+**`help` lists what may run.** Sending `help` (or `?`) answers with the
+allow-list, one command per line, without executing anything — not with
+Zephyr's own `help`, which would name every command in the image, most of
+them refused. A refused command's reason says so too.
+
 Zephyr cannot interrupt a running command. After
 `CONFIG_TEDGE_SHELL_COMMAND_TIMEOUT_S` the operation is reported as failed,
 but the thread stays busy until the command returns and further commands are

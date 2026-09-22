@@ -594,6 +594,45 @@ ZTEST(tedge_shell_allow, test_no_smuggling_a_second_command)
 	zassert_false(allowed("kernel", "kernel uptime; kernel reboot cold"));
 }
 
+ZTEST(tedge_shell_allow, test_help_is_recognised)
+{
+	zassert_true(tedge_shell_is_help("help"));
+	zassert_true(tedge_shell_is_help("  help  "));
+	zassert_true(tedge_shell_is_help("?"));
+	zassert_false(tedge_shell_is_help("help kernel"));
+	zassert_false(tedge_shell_is_help("helpme"));
+	zassert_false(tedge_shell_is_help(""));
+	zassert_false(tedge_shell_is_help(NULL));
+}
+
+ZTEST(tedge_shell_allow, test_help_lists_the_allow_list)
+{
+	char out[160];
+
+	zassert_equal(tedge_shell_help_text("kernel uptime, net iface ,tedge diag",
+					    out, sizeof(out)), 3);
+	zassert_str_equal(out, "Commands this device runs (arguments may follow):"
+			       "\n  kernel uptime\n  net iface\n  tedge diag");
+}
+
+ZTEST(tedge_shell_allow, test_help_with_an_empty_list)
+{
+	char out[160];
+
+	zassert_equal(tedge_shell_help_text("", out, sizeof(out)), 0);
+	zassert_not_null(strstr(out, "runs no commands"));
+	zassert_equal(tedge_shell_help_text(NULL, out, sizeof(out)), 0);
+}
+
+ZTEST(tedge_shell_allow, test_help_that_does_not_fit)
+{
+	char out[40];
+
+	zassert_equal(tedge_shell_help_text("kernel uptime,net iface,tedge diag",
+					    out, sizeof(out)), -ENOSPC);
+	zassert_true(strlen(out) < sizeof(out));
+}
+
 ZTEST_SUITE(tedge_shell_allow, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */
@@ -1102,7 +1141,8 @@ static const struct tedge_parameter pump_params[] = {
 	TEDGE_PARAM_INT("interval_s", 30, 5, 3600, "Seconds between reads"),
 	TEDGE_PARAM_BOOL("auto_mode", true, "Run the pump automatically"),
 	TEDGE_PARAM_ENUM("profile", "normal", ("normal", "quiet", "boost"),
-			 "Operating profile"),
+			 "Operating profile. Quiet trades flow for noise at night; boost run"
+			 "s past the rated speed for a short while, and is logged as it does"),
 	TEDGE_PARAM_STRING("site", "", 8, "Where this device is"),
 };
 
@@ -1423,6 +1463,9 @@ ZTEST(tedge_parameters, test_the_schema_describes_the_declaration)
 			 "the UI lays the fields out in the declared order");
 	zassert_not_null(strstr(schema, "\"description\":\"Seconds between reads\""),
 			 "%s", schema);
+	/* A description longer than any fixed buffer comes out whole. */
+	zassert_not_null(strstr(schema, "\"Operating profile. Quiet trades flow for noise at night; boost runs past the rated speed for a short while, and is logged as it does\""),
+			 "a long description was cut: %s", schema);
 }
 
 ZTEST(tedge_parameters, test_the_schema_says_when_it_does_not_fit)

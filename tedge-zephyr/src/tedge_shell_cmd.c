@@ -92,12 +92,24 @@ int tedge_shell_request(const char *line, char *reason, size_t rlen)
 		snprintf(reason, rlen, "a command is already running");
 		return -EBUSY;
 	}
+	/* "help" answers with what this device runs, not with Zephyr's own
+	 * help, which would list every command in the image — most of them
+	 * refused here. Nothing is executed. */
+	if (tedge_shell_is_help(cmd)) {
+		struct tedge_shell_event ev = { 0 };
+
+		(void)tedge_shell_help_text(CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST,
+					    ev.output, sizeof(ev.output));
+		(void)k_msgq_put(&cmd_events, &ev, K_NO_WAIT);
+		return 0;
+	}
 	if (!tedge_shell_command_allowed(CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST,
 					 cmd, &why)) {
 		/* The command itself is not logged at INF: a refused command
 		 * is someone else's text, and it lands in the cloud anyway. */
 		LOG_WRN("shell: refused a command: %s", why);
-		snprintf(reason, rlen, "%s", why);
+		snprintf(reason, rlen, "%s; \"help\" lists what this device runs",
+			 why);
 		return -EACCES;
 	}
 

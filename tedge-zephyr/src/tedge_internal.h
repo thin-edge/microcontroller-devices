@@ -273,6 +273,13 @@ int tedge_shell_poll_event(struct tedge_shell_event *ev);
 /** True when @p cmd may run under @p list; @p why explains a refusal. */
 bool tedge_shell_command_allowed(const char *list, const char *cmd,
 				 const char **why);
+/** True when @p cmd asks for the list of commands ("help" or "?"). */
+bool tedge_shell_is_help(const char *cmd);
+/**
+ * What `help` answers: the allow-list, one command per line, into @p buf.
+ * @return the number of commands, or -ENOSPC when it had to be cut short.
+ */
+int tedge_shell_help_text(const char *list, char *buf, size_t len);
 
 /* --- Firmware update (tedge_firmware.c) ---------------------------------- */
 

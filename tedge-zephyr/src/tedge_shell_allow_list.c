@@ -14,6 +14,8 @@
 
 #include "tedge_internal.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 /* Characters a Zephyr shell line may not carry here. The shell itself
@@ -82,4 +84,65 @@ bool tedge_shell_command_allowed(const char *list, const char *cmd,
 		*why = "this command is not on the device's allow-list";
 	}
 	return false;
+}
+
+bool tedge_shell_is_help(const char *cmd)
+{
+	size_t len;
+
+	if (cmd == NULL) {
+		return false;
+	}
+	cmd = skip_spaces(cmd);
+	len = strlen(cmd);
+	while (len > 0 && (cmd[len - 1] == ' ' || cmd[len - 1] == '\t')) {
+		len--;
+	}
+	return (len == 4 && strncmp(cmd, "help", 4) == 0) ||
+	       (len == 1 && cmd[0] == '?');
+}
+
+int tedge_shell_help_text(const char *list, char *buf, size_t len)
+{
+	const char *entry;
+	size_t n = 0;
+	int count = 0;
+
+	if (buf == NULL || len == 0) {
+		return -EINVAL;
+	}
+	buf[0] = '\0';
+	for (entry = (list != NULL) ? skip_spaces(list) : "";
+	     *entry != '\0';) {
+		const char *end = strchr(entry, ',');
+		size_t elen = (end != NULL) ? (size_t)(end - entry)
+					    : strlen(entry);
+
+		while (elen > 0 && (entry[elen - 1] == ' ' ||
+				    entry[elen - 1] == '\t')) {
+			elen--;
+		}
+		if (elen > 0) {
+			if (count == 0) {
+				n += snprintf(buf + n, len - n, "%s",
+					      "Commands this device runs "
+					      "(arguments may follow):");
+			}
+			if (n < len) {
+				n += snprintf(buf + n, len - n, "\n  %.*s",
+					      (int)elen, entry);
+			}
+			count++;
+		}
+		if (end == NULL || n >= len) {
+			break;
+		}
+		entry = skip_spaces(end + 1);
+	}
+	if (count == 0) {
+		snprintf(buf, len, "%s", "This device runs no commands: its "
+			 "allow-list (CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST) is "
+			 "empty.");
+	}
+	return (n >= len) ? -ENOSPC : count;
 }
