@@ -250,3 +250,6 @@ DEVICES.md. Flash with `--app-only` onto already-onboarded devices.
 - [ ] 12.9 `tedge-agent` over the air: install a `tedge-agent` `tedge-ota`
       release image on a board and confirm a tunnel still works afterwards
 - [ ] 12.10 Resolve or record the design's open questions
+- [ ] 12.11 After the first release: long soak of the QT Py's Modbus and agent
+      `tedge-full` + shell images (a tunnel and shell commands, then a
+      firmware download after 30+ min up — the case that failed on the C6)

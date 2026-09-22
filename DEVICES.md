@@ -196,11 +196,14 @@ them). It costs about 16 KB of internal RAM.
 | ESP32-C6 | modbus full + shell | 95.3% | ⚠️ passes the same checks, but logs `esp32c6_wifi_adapter: memory allocation failed` at boot |
 | ESP32-C6 | tedge-agent full + shell | 93.3% | ❌ after ~30 min up (a tunnel and the commands had run), three firmware downloads in a row failed (`download failed (-5)`); fine again after a reboot. A device in that state needs a cable to change image |
 | any | snmp full + shell | — | ❌ does not link (over by 7–13 KB) |
-| QT Py S3 | modbus / agent full + shell | 92.6% / 90.2% | links; not run |
+| QT Py S3 | modbus full + shell | 92.6% | ✅ ZTP → enrolled; clean boot (no Wi-Fi allocation failure); every command answers, one off the list refused; OTA out to the agent and back in; tunnel 405 KB/9 s. **Long soak (downloads after 30+ min up) pending**, after the release |
+| QT Py S3 | tedge-agent full + shell | 90.2% | ✅ OTA in from Modbus + shell, confirmed; OTA out back to Modbus succeeds. Long soak pending, as above |
 
-So only the S3-DevKitC's Modbus and agent `tedge-full` images carry it. On
-the C6, with no PSRAM, the shell's RAM takes the Wi-Fi driver and the second
-TLS session past their margin.
+So the Modbus and agent `tedge-full` images of the S3-DevKitC and the QT Py
+carry it. On the C6, with no PSRAM, the shell's RAM takes the Wi-Fi driver
+and the second TLS session past their margin. The QT Py's run was short; the
+C6's failure only showed after half an hour up, so a longer soak on the QT Py
+follows the first release.
 
 Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
 tunnel of its own, which holds the device's single session for a moment; an

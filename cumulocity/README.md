@@ -86,8 +86,8 @@ reason, and nothing is applied.
 
 ## Shell diagnostics
 
-The ESP32-S3-DevKitC's `tedge-full` Modbus and agent images carry the shell
-command (`lib/common/tedge-boards/extras/shell-diagnostics.conf`)
+The `tedge-full` Modbus and agent images of the ESP32-S3-DevKitC and the QT Py
+ESP32-S3 carry the shell command (`lib/common/tedge-boards/extras/shell-diagnostics.conf`)
 for general checks from the device's **Shell** tab. Send `help` to see what
 the device runs:
 
