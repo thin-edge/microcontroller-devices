@@ -241,6 +241,13 @@ per job on average — more than the 173 s build — the separate workspace job
   device, app, variant and extra, with each board's tightest images); tags
   and manual runs build everything (a manual run can choose the subset).
 
+*Measured on PR #4* (the 13-build `pr` subset, per job): setup 136 s cold /
+84 s warm; build 170 s cold / 62 s warm with 99.8% ccache hits; the run
+7 min cold, **3 min 18 s** warm — against 23 min for the first version.
+GitHub scopes caches by branch: a tag run only restores caches made on the
+default branch, and this workflow does not run on pushes to `main`, so a
+release starts cold (all 19 jobs in one wave; estimated ~10 min).
+
 *Trade-off:* the digest pinned the host tools too (CMake, dtc, Python); now
 they come from the runner image and the SDK's host tools. The SDK version,
 the action version and `west.yml` stay pinned, and the runner is pinned to
