@@ -1259,9 +1259,10 @@ Every `tedge-*` image publishes its app's measurements, and the client's own
 health, on thin-edge.io topics over the Cumulocity MQTT Service. Cumulocity
 only turns them into measurements where a **Smart Function** maps them; a
 tenant without one shows the device connected, with firmware, restart and
-remote access working, and no measurements. The simplest mapping that covers
-every app subscribes to `te/device/+///m/+` and takes the measurement type
-from the last topic segment.
+remote access working, and no measurements. [`cumulocity/`](cumulocity/README.md)
+has the Smart Functions (measurements, twin state, firmware progress), the
+DTM definitions behind the Parameters tab, and the shell diagnostics — what a
+tenant needs, ready to deploy.
 
 Every payload is flat: `time` (UTC) and one number per series, two decimals,
 **no units** (the tables below give them, for the mapping to add). The format

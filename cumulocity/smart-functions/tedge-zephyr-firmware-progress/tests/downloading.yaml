@@ -1,0 +1,6 @@
+inputs:
+  - payload: '{"name":"modbus-server-tedge-full-esp32c6-devkitc","version":"0.4.0","phase":"downloading","percent":40,"bytes":355866,"total":888011}'
+    payloadFormat: json
+    topic: "te/device/tedge-modbuse8f60afc320c///progress/firmware"
+    clientID: "tedge-modbuse8f60afc320c"
+    time: "2026-09-22T06:40:00.000Z"

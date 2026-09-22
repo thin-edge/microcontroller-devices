@@ -1,0 +1,53 @@
+{
+  "identifier": "tedge",
+  "jsonSchema": {
+    "type": "object",
+    "title": "tedge",
+    "properties": {
+      "log_level": {
+        "title": "log_level",
+        "order": 1,
+        "description": "How much the client logs. Raise it on a device that is misbehaving, lower it when you are done.",
+        "type": "string",
+        "enum": [
+          "off",
+          "err",
+          "wrn",
+          "inf",
+          "dbg"
+        ],
+        "default": "inf"
+      },
+      "health_interval_s": {
+        "title": "health_interval_s",
+        "order": 2,
+        "description": "Seconds between the client's own health measurements. 0 stops them.",
+        "type": "integer",
+        "default": 900,
+        "minimum": 0,
+        "maximum": 86400
+      },
+      "required_interval_min": {
+        "title": "required_interval_min",
+        "order": 3,
+        "description": "Minutes of silence after which Cumulocity calls this device offline. 0 disables the check. Cumulocity only accepts this from the device while it has no availability set, so on a device that already has one, change it in the cloud instead.",
+        "type": "integer",
+        "default": 60,
+        "minimum": 0,
+        "maximum": 1440
+      },
+      "remote_access": {
+        "title": "remote_access",
+        "order": 4,
+        "description": "Whether the cloud may open a tunnel to this device. Turning it off refuses every tunnel until it is turned back on.",
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "contexts": [
+    "asset",
+    "event",
+    "operation"
+  ]
+}

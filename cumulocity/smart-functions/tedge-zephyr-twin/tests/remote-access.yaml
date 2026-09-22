@@ -1,0 +1,13 @@
+inputs:
+  - payload: '{"maxSessions":1,"activeSessions":0,"freeSessions":1,"policy":"lan","sessions":[]}'
+    payloadFormat: json
+    topic: "te/device/tedge-modbus7c0c5f5a6eb8///twin/tedge_RemoteAccess"
+    clientID: "tedge-modbus7c0c5f5a6eb8"
+    time: "2026-09-22T06:00:00.000Z"
+expectedOutput:
+  - cumulocityType: managedObject
+    externalSource:
+      - externalId: tedge-modbus7c0c5f5a6eb8
+        type: c8y_Serial
+    payload:
+      remoteAccess: {maxSessions: 1, activeSessions: 0, freeSessions: 1, policy: lan, sessions: []}

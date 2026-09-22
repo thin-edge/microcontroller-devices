@@ -1,0 +1,6 @@
+smartFunctionFile: measurements.js
+description: "tedge-zephyr measurements (pump, server, agent, device, tedge_health) to Cumulocity measurements"
+tags: [tedge-zephyr, measurement]
+input:
+  transport: mqtt
+  topicPattern: "te/device/*///m/*"

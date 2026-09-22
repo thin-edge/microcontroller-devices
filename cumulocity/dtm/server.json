@@ -1,0 +1,30 @@
+{
+  "identifier": "server",
+  "jsonSchema": {
+    "type": "object",
+    "title": "server",
+    "properties": {
+      "interval_s": {
+        "title": "interval_s",
+        "order": 1,
+        "description": "Seconds between measurements",
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "maximum": 3600
+      },
+      "telemetry": {
+        "title": "telemetry",
+        "order": 2,
+        "description": "Publish measurements to the cloud",
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "contexts": [
+    "asset",
+    "event",
+    "operation"
+  ]
+}
