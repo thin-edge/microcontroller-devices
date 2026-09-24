@@ -1246,7 +1246,7 @@ docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
 ```
 
 On an ESP32-WROOM-32 use `profiles/ota.conf`, `tedge-boards/esp32-devkitc.conf`
-and `tedge-boards/extras/cert-renewal.conf`. Remote access links there but
+and `tedge-boards/extras/parameters.conf`. Remote access links there but
 does not work interactively: the board has room for about three Wi-Fi frames
 of receive buffers, and an `htop` session over a tunnel fails (DEVICES.md).
 
