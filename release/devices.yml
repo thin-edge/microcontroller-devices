@@ -155,18 +155,25 @@ devices:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone, pr: true }
       - { app: snmp-agent, variant: standalone }
+      # One feature set for every tedge build on this board: ota, parameters
+      # and certificate renewal. No remote access: its 32 x 128 B receive
+      # buffers hold about three Wi-Fi frames, and an interactive session
+      # (htop) fails (DEVICES.md). No log upload: its 8 KB stack does not
+      # fit beside the mbedTLS heap here.
       - app: modbus-server
         variant: tedge-ota
         pr: true
-        extra_conf: [lib/common/tedge-boards/extras/remote-access.conf]
-        measured: DEVICES.md#what-a-wroom-can-carry-measured-2026-09-21
+        extra_conf:
+          - lib/common/tedge-boards/extras/parameters.conf
+          - lib/common/tedge-boards/extras/cert-renewal.conf
+        measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
       - app: tedge-agent
         variant: tedge-ota
         pr: true
         extra_conf:
-          - lib/common/tedge-boards/extras/remote-access.conf
+          - lib/common/tedge-boards/extras/parameters.conf
           - lib/common/tedge-boards/extras/cert-renewal.conf
-        measured: DEVICES.md#what-a-wroom-can-carry-measured-2026-09-21
+        measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
 
   - id: esp32-cam
     name: ESP32-CAM (ESP32 + 4 MB PSRAM)
@@ -176,14 +183,25 @@ devices:
     esptool_before: default-reset
     tedge_board_conf: lib/common/tedge-boards/esp32-cam.conf
     dtc_overlays: [lib/common/dts/esp32cam-status-led.overlay]
+    # One feature set for every tedge build on this board: ota, parameters,
+    # certificate renewal and log upload. dram1 (stacks, network buffers)
+    # is what limits it; the mbedTLS heap is in PSRAM and the client's heap
+    # in dram0. No remote access: the receive buffers it has room for are
+    # too shallow for an interactive tunnel, as on the WROOM (DEVICES.md).
     builds:
       - app: snmp-agent
         variant: tedge-ota
         pr: true
-        measured: DEVICES.md#the-esp32-cam-is-deliberately-small
+        extra_conf: &cam-extras
+          - lib/common/tedge-boards/extras/parameters.conf
+          - lib/common/tedge-boards/extras/cert-renewal.conf
+          - lib/common/tedge-boards/extras/log-upload.conf
+        measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
       - app: modbus-server
         variant: tedge-ota
-        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+        extra_conf: *cam-extras
+        measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
       - app: tedge-agent
         variant: tedge-ota
-        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+        extra_conf: *cam-extras
+        measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23

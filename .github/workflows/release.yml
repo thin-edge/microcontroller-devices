@@ -142,7 +142,10 @@ jobs:
         working-directory: app
         # The same script a developer runs in the container (README, "Releasing"),
         # once per build of this (device, app); later builds reuse the first
-        # one's compiler cache.
+        # one's compiler cache. Its size step fails a build over its flash
+        # budget or grown past release/size-baseline.json; a change that moves
+        # a build's size updates the baseline (build.sh --write-baseline, or
+        # scripts/release/baseline.sh for every build) in the same PR.
         run: |
           set -e
           for name in ${{ matrix.builds }}; do

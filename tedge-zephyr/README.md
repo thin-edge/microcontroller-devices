@@ -82,6 +82,9 @@ shared with the rest of your image:
 | `CONFIG_NET_MAX_CONN`, `CONFIG_NET_MAX_CONTEXTS` | About 4 more than your application needs: a closed TLS connection holds its TCP context while it finishes closing. |
 | `CONFIG_SECURE_STORAGE_ITS_STORE_IMPLEMENTATION_*` | The device key lives in PSA ITS. It is a Kconfig choice, so the module cannot pick it; `..._SETTINGS` works with an NVS settings backend. |
 | mbedTLS ciphersuites and `CONFIG_PSA_WANT_ECC_SECP_R1_256` | The TLS 1.2 baseline Cumulocity needs; see `profiles/`. |
+| `CONFIG_MBEDTLS_AES_ROM_TABLES` | The profiles set it: AES tables in flash instead of 8 KB of RAM. |
+| `CONFIG_TEDGE_HEAP_SIZE` | The client's private heap. Its default follows the features: 16 KB with parameters, 10 KB without. The health telemetry's free-heap value shows the margin a build leaves. |
+| `CONFIG_POSIX_API` | Not needed. The module uses Zephyr's native `zsock_*` socket API and the libc time functions, so an application can leave the POSIX layer (its thread, signal, timer and fd pools) out of the image. |
 
 `profiles/minimal.conf`, `profiles/full.conf` and
 `profiles/remote-access-enabler.conf` set all of this for you.
@@ -356,6 +359,11 @@ string, sized by the declaration and made once.
 **The set's name is the one name the cloud knows it by** — `"pump"` above is
 the twin fragment, the schema's identifier and the suffix of the operation
 fragment, all three. That is also how one device offers more than one set.
+Because the identifier is global in the tenant's Digital Twin Manager, give
+a real set a name no one else will pick: this repository's applications
+prefix theirs with the device type (`zephyr_modbus_telemetry`,
+`zephyr_modbus_control`), and the client's own set is `zephyr_tedge`. A name
+is at most 39 characters.
 
 **What the cloud sees.** On every connect, and after every accepted change,
 the client publishes the whole set as twin state:
@@ -428,18 +436,21 @@ structure should encode it in a string and own the parsing.
 #### The client's own set
 
 With `CONFIG_TEDGE_PARAMETERS_SELF` (on by default) the client declares a
-set of its own, named `tedge`, so a device can be adjusted in the field
-whether or not your application declares anything:
+set of its own, named `zephyr_tedge`, so a device can be adjusted in the
+field whether or not your application declares anything:
 
 | Parameter | Type | What it changes |
 |---|---|---|
 | `log_level` | enum | how much the client logs — `off`, `err`, `wrn`, `inf`, `dbg` |
 | `health_interval_s` | int | seconds between its own health measurements, 0 to stop them |
 | `required_interval_min` | int | minutes of silence after which Cumulocity calls the device offline — but see the note below |
-| `remote_access` | bool | whether the cloud may open a tunnel at all |
+| `remote_access` | bool | whether the cloud may open a tunnel at all; a set of its own, `zephyr_tedge_remote_access` |
 
 Each one is present only if the feature behind it is built in: no health,
-no `health_interval_s`. **Only settings a running device can honour are
+no `health_interval_s`. `remote_access` is declared as a separate set, only
+with remote access built, because Cumulocity's Parameters tab sends a whole
+set on every change and a device refuses a name it does not declare: in the
+main set it made every change fail on an image without remote access. **Only settings a running device can honour are
 offered** — nothing that sizes a buffer, a stack or a thread, because those
 are fixed once the image is linked and a value the device quietly ignores is
 worse than no value.
