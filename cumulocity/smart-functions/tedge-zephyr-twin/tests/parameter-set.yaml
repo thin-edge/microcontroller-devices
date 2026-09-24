@@ -1,7 +1,7 @@
 inputs:
   - payload: '{"interval_s":30,"telemetry":true,"measurement_type":"pump"}'
     payloadFormat: json
-    topic: "te/device/tedge-modbus7c0c5f5a6eb8///twin/pump"
+    topic: "te/device/tedge-modbus7c0c5f5a6eb8///twin/zephyr_modbus_telemetry"
     clientID: "tedge-modbus7c0c5f5a6eb8"
     time: "2026-09-22T06:00:00.000Z"
 expectedOutput:
@@ -10,4 +10,4 @@ expectedOutput:
       - externalId: tedge-modbus7c0c5f5a6eb8
         type: c8y_Serial
     payload:
-      pump: {interval_s: 30, telemetry: true, measurement_type: pump}
+      zephyr_modbus_telemetry: {interval_s: 30, telemetry: true, measurement_type: pump}

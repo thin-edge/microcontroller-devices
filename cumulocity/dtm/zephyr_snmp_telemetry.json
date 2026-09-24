@@ -1,8 +1,8 @@
 {
-  "identifier": "server",
+  "identifier": "zephyr_snmp_telemetry",
   "jsonSchema": {
     "type": "object",
-    "title": "server",
+    "title": "Zephyr SNMP: telemetry",
     "properties": {
       "interval_s": {
         "title": "interval_s",
@@ -26,5 +26,9 @@
     "asset",
     "event",
     "operation"
+  ],
+  "tags": [
+    "thin-edge.io-zephyr-snmp",
+    "tedge-zephyr"
   ]
 }

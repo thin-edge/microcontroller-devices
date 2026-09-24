@@ -29,7 +29,14 @@
 
 LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
 
-#define SELF_SET "tedge"
+#define SELF_SET "zephyr_tedge"
+/* remote_access is a set of its own, declared only when remote access is
+ * built. The Parameters tab sends a whole set on every change, and a device
+ * refuses a name it does not declare, so a remote_access field in the main
+ * set made every change fail on an image without remote access (seen on the
+ * WROOM and the ESP32-CAM, 2026-09-23). Each set's definition now lists
+ * exactly what every device declaring the set accepts. */
+#define RA_SET "zephyr_tedge_remote_access"
 
 /* Zephyr's severities, lowest first, so the index is the level. */
 static const char *const log_levels[] = { "off", "err", "wrn", "inf", "dbg" };
@@ -59,13 +66,16 @@ static const struct tedge_parameter self_params[] = {
 			"availability set, so on a device that already has "
 			"one, change it in the cloud instead."),
 #endif
+};
+
 #if defined(CONFIG_TEDGE_REMOTE_ACCESS)
+static const struct tedge_parameter ra_params[] = {
 	TEDGE_PARAM_BOOL("remote_access", true,
 			 "Whether the cloud may open a tunnel to this device. "
 			 "Turning it off refuses every tunnel until it is "
 			 "turned back on."),
-#endif
 };
+#endif
 
 /* ------------------------------------------------------------------------ */
 /* What the rest of the client reads                                         */
@@ -106,7 +116,7 @@ bool tedge_self_remote_access_allowed(void)
 {
 	bool allowed;
 
-	if (tedge_parameter_get_bool(SELF_SET, "remote_access", &allowed) == 0) {
+	if (tedge_parameter_get_bool(RA_SET, "remote_access", &allowed) == 0) {
 		return allowed;
 	}
 	return true;
@@ -194,4 +204,14 @@ void tedge_self_params_declare(void)
 	}
 	/* A level stored before the last reboot has to be put back now. */
 	apply_log_level();
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS)
+	/* Read where it is used (tedge_self_remote_access_allowed()), so
+	 * there is nothing to apply on a change. */
+	rc = tedge_declare_parameters(RA_SET, ra_params, ARRAY_SIZE(ra_params),
+				      NULL, NULL);
+	if (rc != 0) {
+		LOG_WRN("the '%s' parameters were not declared (%d)", RA_SET,
+			rc);
+	}
+#endif
 }

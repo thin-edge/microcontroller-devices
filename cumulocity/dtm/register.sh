@@ -15,12 +15,24 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 replace=0
+failed=0
 [[ ${1:-} == --replace ]] && { replace=1; shift; }
 sets=("$@")
 [[ ${#sets[@]} -gt 0 ]] || sets=($(ls *.json | sed 's/\.json$//'))
+# The listing is paged whatever pageSize asks for (a tenant with ~20
+# definitions returned them over several pages), so read every page: a check
+# that saw only the first made --replace skip the delete and the POST fail.
 exists() {
-	c8y api GET "/service/dtm/definitions/properties?pageSize=2000" --raw < /dev/null |
-		python3 -c 'import json,sys; d=json.load(sys.stdin); d=d.get("definitions", []) if isinstance(d, dict) else d; sys.exit(0 if any(i.get("identifier")==sys.argv[1] for i in d) else 1)' "$1"
+	local page=1 found
+	while :; do
+		found=$(c8y api GET "/service/dtm/definitions/properties?pageSize=100&currentPage=$page" --raw < /dev/null |
+			python3 -c 'import json,sys; d=json.load(sys.stdin); d=d.get("definitions", []) if isinstance(d, dict) else d; print("yes" if any(i.get("identifier")==sys.argv[1] for i in d) else ("end" if not d else "no"))' "$1")
+		case $found in
+		yes) return 0 ;;
+		end) return 1 ;;
+		esac
+		page=$((page + 1))
+	done
 }
 for s in "${sets[@]}"; do
 	if exists "$s"; then
@@ -31,6 +43,12 @@ for s in "${sets[@]}"; do
 		c8y api DELETE "/service/dtm/definitions/properties/$s?contexts=asset,event,operation" --force < /dev/null >/dev/null
 		echo "deleted: $s"
 	fi
-	c8y api POST /service/dtm/definitions/properties --data "$(cat "$s.json")" --force --raw < /dev/null >/dev/null
-	echo "registered: $s"
+	if out=$(c8y api POST /service/dtm/definitions/properties --data "$(cat "$s.json")" --force --raw < /dev/null 2>&1); then
+		echo "registered: $s"
+	else
+		# DTM refuses a duplicate identifier *or* title (HTTP 409).
+		echo "failed: $s: $out" >&2
+		failed=1
+	fi
 done
+exit $failed

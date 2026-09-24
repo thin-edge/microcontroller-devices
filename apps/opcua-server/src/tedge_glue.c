@@ -101,10 +101,10 @@ static const struct tedge_hooks hooks = {
 
 #if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
 /* What an operator may change on an OPC-UA device from the cloud. The
- * client's own "tedge" set is declared beside this one and covers how much
+ * client's own "zephyr_tedge" set is declared beside this one and covers how much
  * it logs, how often it reports its health and whether tunnels are allowed.
  */
-#define SERVER_SET "server"
+#define SERVER_SET "zephyr_opcua_telemetry"
 
 static const struct tedge_parameter server_params[] = {
 	TEDGE_PARAM_INT("interval_s", CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S,

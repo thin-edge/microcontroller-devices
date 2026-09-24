@@ -7,6 +7,7 @@
 static int32_t g_setpoint = CONFIG_APP_SETPOINT_DEFAULT;
 static bool g_running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
 static int g_mode = CONFIG_APP_MODE_DEFAULT;
+static bool g_local_writes = true;
 
 int32_t app_control_setpoint(void)
 {
@@ -52,4 +53,14 @@ int app_control_set_mode(int value)
 	}
 	g_mode = value;
 	return g_mode;
+}
+
+bool app_control_local_writes(void)
+{
+	return g_local_writes;
+}
+
+void app_control_set_local_writes(bool allowed)
+{
+	g_local_writes = allowed;
 }

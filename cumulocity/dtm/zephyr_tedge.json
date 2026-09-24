@@ -1,8 +1,8 @@
 {
-  "identifier": "tedge",
+  "identifier": "zephyr_tedge",
   "jsonSchema": {
     "type": "object",
-    "title": "tedge",
+    "title": "Zephyr thin-edge.io client",
     "properties": {
       "log_level": {
         "title": "log_level",
@@ -35,13 +35,6 @@
         "default": 60,
         "minimum": 0,
         "maximum": 1440
-      },
-      "remote_access": {
-        "title": "remote_access",
-        "order": 4,
-        "description": "Whether the cloud may open a tunnel to this device. Turning it off refuses every tunnel until it is turned back on.",
-        "type": "boolean",
-        "default": true
       }
     }
   },
@@ -49,5 +42,12 @@
     "asset",
     "event",
     "operation"
+  ],
+  "tags": [
+    "thin-edge.io-zephyr-modbus",
+    "thin-edge.io-zephyr-opcua",
+    "thin-edge.io-zephyr-snmp",
+    "thin-edge.io-zephyr-agent",
+    "tedge-zephyr"
   ]
 }

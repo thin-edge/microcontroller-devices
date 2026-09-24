@@ -12,6 +12,7 @@
 #include "tedge_glue.h"
 
 #include "boot_request.h"
+#include "controls.h"
 #include "data_source.h"
 #include "identity.h"
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
@@ -223,6 +224,83 @@ SHELL_SUBCMD_ADD((tedge), flood, NULL, "publish N measurements: flood [N]",
 #endif
 #endif /* CONFIG_SHELL */
 
+#if defined(CONFIG_TEDGE_PARAMETERS)
+/* ------------------------------------------------------------------------ */
+/* Running the pump from the cloud                                           */
+/*                                                                           */
+/* The same three control points a Modbus master writes (coil 0 running,     */
+/* holding register 0 speed_setpoint, holding register 1 mode), as a         */
+/* parameter set. They are applied at start-up from what the client stored,  */
+/* so the pump comes back in the state the operator last set, and on every   */
+/* change; the simulation then ramps and the flow, pressure, rpm and motor   */
+/* temperature it serves follow. local_writes decides whether a Modbus       */
+/* master may still change them: off, its writes are refused (exception 2)  */
+/* and the pump does only what the parameters say.                           */
+/*                                                                           */
+/* A Modbus write that is allowed changes the pump but not the parameter,    */
+/* so the twin shows what the cloud last asked for; the registers show what  */
+/* the pump is doing.                                                        */
+/* ------------------------------------------------------------------------ */
+
+#define CONTROL_SET "zephyr_modbus_control"
+
+static const char *const mode_names[] = { "off", "auto", "manual" };
+
+static const struct tedge_parameter control_params[] = {
+	TEDGE_PARAM_BOOL("running", IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT),
+			 "Run the pump"),
+	TEDGE_PARAM_ENUM("mode",
+			 CONFIG_APP_MODE_DEFAULT == 2 ? "manual" :
+			 CONFIG_APP_MODE_DEFAULT == 1 ? "auto" : "off",
+			 ("off", "auto", "manual"),
+			 "off: stopped; auto: the pump picks its duty; manual: speed_setpoint"),
+	TEDGE_PARAM_INT("speed_setpoint", CONFIG_APP_SETPOINT_DEFAULT,
+			CONFIG_APP_SETPOINT_MIN, CONFIG_APP_SETPOINT_MAX,
+			"Pump speed in manual mode (%)"),
+	TEDGE_PARAM_BOOL("local_writes", true,
+			 "Let Modbus clients change running, mode and speed_setpoint"),
+};
+
+static void control_apply(void)
+{
+	bool running = IS_ENABLED(CONFIG_APP_RUNNING_DEFAULT);
+	bool local = true;
+	int32_t setpoint = CONFIG_APP_SETPOINT_DEFAULT;
+	int mode = CONFIG_APP_MODE_DEFAULT;
+	char name[8];
+
+	(void)tedge_parameter_get_bool(CONTROL_SET, "running", &running);
+	(void)tedge_parameter_get_bool(CONTROL_SET, "local_writes", &local);
+	(void)tedge_parameter_get_int(CONTROL_SET, "speed_setpoint", &setpoint);
+	if (tedge_parameter_get_string(CONTROL_SET, "mode", name,
+				       sizeof(name)) == 0) {
+		for (int i = 0; i < (int)ARRAY_SIZE(mode_names); i++) {
+			if (strcmp(name, mode_names[i]) == 0) {
+				mode = i;
+			}
+		}
+	}
+	app_control_set_mode(mode);
+	app_control_set_setpoint(setpoint);
+	app_control_set_running(running);
+	app_control_set_local_writes(local);
+	LOG_INF("pump control: %s, mode %s, setpoint %d%%, Modbus writes %s",
+		running ? "running" : "stopped", mode_names[mode], setpoint,
+		local ? "allowed" : "refused");
+}
+
+static int control_changed(const char *set, char *reason, size_t reason_len,
+			   void *user_data)
+{
+	ARG_UNUSED(set);
+	ARG_UNUSED(reason);
+	ARG_UNUSED(reason_len);
+	ARG_UNUSED(user_data);
+	control_apply();
+	return 0;
+}
+#endif /* CONFIG_TEDGE_PARAMETERS */
+
 #if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
 /* ------------------------------------------------------------------------ */
 /* What an operator may change from the cloud                                */
@@ -235,7 +313,7 @@ SHELL_SUBCMD_ADD((tedge), flood, NULL, "publish N measurements: flood [N]",
 /* Register the schema in the tenant with "tedge params schema".             */
 /* ------------------------------------------------------------------------ */
 
-#define PUMP_SET "pump"
+#define PUMP_SET "zephyr_modbus_telemetry"
 
 static const struct tedge_parameter pump_params[] = {
 	TEDGE_PARAM_INT("interval_s", CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S,
@@ -416,6 +494,19 @@ int tedge_glue_start(void)
 			rc);
 		return rc;
 	}
+#endif
+#if defined(CONFIG_TEDGE_PARAMETERS)
+	/* Declaring loads the stored values, so this starts the pump in the
+	 * state the operator last set. */
+	rc = tedge_declare_parameters(CONTROL_SET, control_params,
+				      ARRAY_SIZE(control_params),
+				      control_changed, NULL);
+	if (rc != 0) {
+		LOG_ERR("could not declare the '%s' parameters (%d)",
+			CONTROL_SET, rc);
+		return rc;
+	}
+	control_apply();
 #endif
 	rc = tedge_start();
 	if (rc != 0) {

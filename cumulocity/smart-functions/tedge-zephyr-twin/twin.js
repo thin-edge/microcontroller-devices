@@ -5,7 +5,7 @@
 // tedge-zephyr publishes device state as twin messages, one per fragment:
 //   te/device/<id>///twin/tedge_RemoteAccess  remote-access capacity
 //   te/device/<id>///twin/tedge_Agent         client and firmware
-//   te/device/<id>///twin/<set>               a parameter set (pump, server, agent, tedge)
+//   te/device/<id>///twin/<set>               a parameter set (zephyr_modbus_telemetry, ...)
 // The last topic segment names the fragment, and the payload is written
 // under it unchanged, so the values a device reports are what the
 // Parameters tab (DTM identifier = set name) shows and edits. The one rename
