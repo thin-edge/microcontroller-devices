@@ -1455,9 +1455,10 @@ Things to know:
 - **Devices coming from a local build** report `zephyr-<app>` as their
   firmware name. They install a release image like any other; afterwards they
   report the release's name, so later versions come from that entry.
-- **The release notes list each image's features.** A `tedge-ota` image
-  without certificate renewal (the WROOM's Modbus image) has to be onboarded
-  again before its certificate expires, a year after enrolment.
+- **The release notes list each image's features.** A `tedge` image built
+  without certificate renewal has to be onboarded again before its
+  certificate expires, a year after enrolment; the release notes name every
+  such image.
 
 ## Releasing
 

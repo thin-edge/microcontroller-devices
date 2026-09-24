@@ -58,28 +58,22 @@ each run on the board (below). Remote access is left out on both on purpose: it 
 receive buffers they have room for are too shallow for an interactive
 tunnel.
 
-### The ESP32-CAM is deliberately small
+### What the ESP32-CAM leaves out
 
 A classic ESP32 splits its RAM into dram0 (192 KB) and dram1 (96 KB), and
-the net_buf pools and `.dram0.noinit` all land in dram1. Everything enabled
-overflows it by 33 KB, so the set is chosen around **firmware update** —
-the one that matters, because without it the board can only be changed with
-a cable. That needs a second concurrent TLS session for the HTTPS download,
-which is what the TLS context budget is spent on, so nothing else that
-wants one is built in.
+the net_buf pools and `.dram0.noinit` all land in dram1, which is what
+limits this board. Its release builds carry firmware update, parameters,
+**certificate renewal** and log upload; the mbedTLS heap is in PSRAM and the
+client's heap in dram0 (`CONFIG_TEDGE_HEAP_NOINIT` off), which is what made
+room for the last two (2026-09-23, runs below).
 
-Consequences to expect in the UI: **no remote-access tab, no shell tab, and
-log requests will not work** — those capabilities are genuinely absent, not
-failing. An earlier image left log upload compiled in while capping TLS
-contexts at 1, so it advertised a capability it could not perform; that is
-what "unresponsive in the cloud" looked like.
+Consequences to expect in the UI: **no remote-access tab and no shell tab**
+— those capabilities are genuinely absent, not failing. Remote access links,
+but the receive buffers dram1 has room for are too shallow for an
+interactive tunnel, as on the WROOM.
 
-**Certificate renewal is off**, so this board needs re-onboarding before its
-certificate expires (2027-09). Firmware update works, so a later image can
-trade something else for it.
-
-Verified 2026-09-20: `c8y_Firmware` 0.2.0 → 0.2.1 through Cumulocity,
-operation SUCCESSFUL, image confirmed after it reconnected.
+Certificate renewal is armed on every CAM build, so the board renews its
+certificate itself instead of needing re-onboarding before it expires.
 
 ### Firmware updates take minutes, and that is the swap
 
@@ -173,7 +167,7 @@ flight. An interactive tunnel needs about sixteen (96 × 256 B on the C6,
 see [Remote access / interactive sessions](#remote-access--interactive-sessions)):
 linked with those buffers, the full build misses `dram1` by 28,552 B and
 the ota + remote access build by 14,720 B. So the WROOM releases ship
-**ota**, plus certificate renewal on the agent, and no remote access;
+**ota** plus parameters and certificate renewal, and no remote access;
 firmware update stays, because it is how these boards get new images.
 
 SNMP carries ~33 KB of static tables and buffers (MIB leaves 13.5 KB,
@@ -231,9 +225,10 @@ image served, but with the margin that close, the S3-DevKitC result is the
 one to believe for a new board. OPC-UA ships `standalone` on every board
 except the QT Py's `tedge-ota`.
 
-What fits on top of the CAM's `tedge-ota` (link only, not yet run):
-certificate renewal and parameters beside SNMP or Modbus; remote access and
-log upload do not (over by 1–5.4 KB). The agent has room for all four.
+On top of the CAM's `tedge-ota`, every app now ships parameters,
+certificate renewal and log upload, each run on the board (see
+[WROOM and ESP32-CAM release builds](#wroom-and-esp32-cam-release-builds-measured-2026-09-23)).
+Before the footprint work, log upload did not fit (over by 1–5.4 KB).
 
 Telemetry was published throughout, but the test tenant had no mapping for
 `te/.../m/...`, so measurements could not be seen in Cumulocity; the
