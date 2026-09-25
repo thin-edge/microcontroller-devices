@@ -30,7 +30,7 @@
   files as `generic`, and changelog sections (Features, Bug Fixes,
   Performance; hide docs/ci/chore/test)
 - [x] 2.2 Add `.release-please-manifest.json` = `{".": "0.6.0"}`
-- [ ] 2.3 Dry run locally with `npx release-please release-pr --dry-run`
+- [x] 2.3 Dry run locally with `npx release-please release-pr --dry-run`
   against the repo, or on a fork. Check that the proposed version, the
   VERSION diffs (only numbers change, markers kept) and the changelog
   contents are right
