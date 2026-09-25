@@ -19,6 +19,9 @@ on:
       - "lib/common/prov_c8y.*"
       - "tests/ztp_provisioner/**"
 
+permissions:
+  contents: read
+
 jobs:
   unit:
     name: ZTP unit tests (native_sim)
