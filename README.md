@@ -1462,37 +1462,72 @@ Things to know:
 
 ## Releasing
 
-All applications share **one version**, kept in every `apps/*/VERSION`. A
-release is a commit that sets it and a tag that names it:
+All applications share **one version**, kept in every `apps/*/VERSION`
+(`tedge-zephyr/VERSION` is the module's own and moves only when the module
+changes). [release-please](https://github.com/googleapis/release-please)
+chooses the next one from the commit messages on `main`:
+
+- **Pull requests are squash-merged**, and the PR title becomes the commit
+  message, so the title must be a
+  [Conventional Commit](https://www.conventionalcommits.org/): `feat: …`,
+  `fix(opcua-server): …`, `docs: …`. The `pr-title` check fails a PR whose
+  title does not parse.
+- `fix:` and `perf:` bump **PATCH**, `feat:` bumps **MINOR**, and a breaking
+  change bumps **MAJOR**, even below 1.0. A change is breaking when it needs
+  a reflash by cable, such as a new partition layout or signing key. Mark it
+  with `!` in the title (`feat!: …`) or with a `BREAKING CHANGE: <why>`
+  footer in the description. `docs`, `ci`, `chore`, `test`, `build` and
+  `refactor` commits do not start a release by themselves.
+- To choose the number yourself, add `Release-As: X.Y.Z` to a commit body.
+
+After every push to `main`, the [release-please workflow](.github/workflows/release-please.yml)
+keeps one **release PR** open (`chore(main): release X.Y.Z`). It bumps every
+`apps/*/VERSION` and `.release-please-manifest.json`, and adds the release
+to [`CHANGELOG.md`](CHANGELOG.md). **Merging it is the release.** release-please
+tags the merge commit `vX.Y.Z` and creates a *draft* GitHub Release carrying
+the changelog. The tag starts the [release workflow](.github/workflows/release.yml),
+which builds every image and publishes the draft only if every build
+succeeded. release-please runs as the organisation secret
+`COMMUNITY_ACTIONS_PAT`: a tag or PR created with the default
+`GITHUB_TOKEN` would start no workflow, so the tag would not build and the
+release PR would get no checks. The firmware notes (images, flashing, signing) are added
+under the changelog.
+
+If a build fails after the merge, the release stays a draft and nothing is
+published. Fix the cause on `main` and let the next release PR ship it.
+Delete the draft and its tag if the version should not be reused. For a
+failure that isn't in the code, such as a runner problem, re-run the failed
+jobs.
+
+The `x-release-please-*` trailers in each `apps/*/VERSION` tell release-please
+which number is which. Keep them; Zephyr reads only the digits before them.
+
+**By hand** (a pre-release, or when release-please is not an option):
 
 ```sh
-scripts/release/bump.sh 0.5.0        # rewrites every apps/*/VERSION
-git commit -am "chore(release): v0.5.0"
-git tag v0.5.0 && git push origin main v0.5.0
+scripts/release/bump.sh 0.7.0        # every apps/*/VERSION and the manifest
+git commit -am "chore(release): v0.7.0"
+git tag v0.7.0-rc1 && git push origin main v0.7.0-rc1
 ```
 
-The [release workflow](.github/workflows/release.yml) checks the tag against
-the files (`scripts/release/check-version.sh`), builds every entry of
-[`release/devices.yml`](release/devices.yml) in the pinned build container,
-and publishes a GitHub Release only if every build succeeded. A tag with a
-suffix, `v0.5.0-rc1`, publishes a pre-release; its images report
-`0.5.0-rc1` (the suffix is lowercase letters, digits and dots). Pull requests
-that touch the firmware or the release files build the builds marked
-`pr: true` in the manifest — every device, app, variant and extra, with each
-board's tightest images — without publishing; a manual run (**Actions →
-release → Run workflow**) builds all of them, or that subset.
+A pushed tag runs the same release workflow, which creates the release
+itself. A tag with a suffix, `v0.7.0-rc1`, publishes a pre-release whose
+images report `0.7.0-rc1` (the suffix is lowercase letters, digits and dots).
+Either way the workflow checks the tag against the files
+(`scripts/release/check-version.sh`), builds every entry of
+[`release/devices.yml`](release/devices.yml), and publishes only if every
+build succeeded. Every release bumps at least PATCH: a device refuses to
+install the version it is running. Pull requests that touch the firmware or
+the release files build the builds marked `pr: true` in the manifest — every
+device, app, variant and extra, with each board's tightest images — without
+publishing. A manual run (**Actions → release → Run workflow**) builds all of
+them, or that subset.
 
 The workflow runs one job per (device, app), building its variants one after
 another, on a plain runner set up by `zephyrproject-rtos/action-zephyr-setup`
 (Zephyr SDK and only the three toolchains used, both cached). The Zephyr
 workspace is cached by `west.yml`, and compiled objects by ccache, one cache
 per job, so a run after the first rebuilds little.
-
-Which number to bump: **PATCH** for fixes, **MINOR** for new features or
-devices, **MAJOR** for a change that needs a reflash by cable (a new
-partition layout or signing key). Every release bumps at least PATCH: a
-device refuses to install the version it is running. `tedge-zephyr/VERSION`
-is the module's own and moves only when the module changes.
 
 **Reproduce a release image** in the build container, exactly as CI does:
 

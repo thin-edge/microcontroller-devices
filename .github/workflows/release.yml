@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build the images in release/devices.yml. On a vX.Y.Z tag, build every one and
+# Build the images in release/devices.yml. For a vX.Y.Z tag, build every one and
 # publish them as a GitHub Release; on a pull request build the `pr: true`
 # subset, so a board that stops building is caught before a tag; a manual run
-# builds everything unless told otherwise. See README.md, "Releasing".
+# builds everything unless told otherwise. The tag is pushed by hand or
+# created by merging release-please's release PR (release-please.yml); in the
+# latter case a draft release already carries the changelog. See README.md,
+# "Releasing".
 name: release
 
 on:
@@ -27,6 +30,9 @@ on:
       - "scripts/release/**"
       - "scripts/flash.sh"
       - ".github/workflows/release.yml"
+      - ".github/workflows/release-please.yml"
+      - "release-please-config.json"
+      - ".release-please-manifest.json"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -185,13 +191,33 @@ jobs:
             --repo "${{ github.repository }}" > notes.md
           cd dist
           sha256sum -- *.factory.bin *.app.bin *.zip c8y-firmware.json > SHA256SUMS
-      - name: Create the release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
           pre=""
-          case "${{ github.ref_name }}" in *-*) pre=--prerelease ;; esac
-          gh release create "${{ github.ref_name }}" $pre \
-            --title "${{ github.ref_name }}" --notes-file notes.md \
-            dist/*.factory.bin dist/*.app.bin dist/*.zip \
-            dist/c8y-firmware.json dist/SHA256SUMS
+          case "$RELEASE_REF" in *-*) pre=--prerelease ;; esac
+          assets=(dist/*.factory.bin dist/*.app.bin dist/*.zip
+                  dist/c8y-firmware.json dist/SHA256SUMS)
+          # release-please leaves a draft carrying the changelog: attach the
+          # images, add the firmware notes under the changelog and publish.
+          # A pushed tag has no release yet: create it. A re-run after
+          # publishing only replaces the assets.
+          draft=$(gh release view "$RELEASE_REF" --json isDraft -q .isDraft 2>/dev/null || echo none)
+          case "$draft" in
+          true)
+            gh release view "$RELEASE_REF" --json body -q .body > body.md
+            printf '\n\n---\n\n' >> body.md
+            cat notes.md >> body.md
+            gh release upload "$RELEASE_REF" --clobber "${assets[@]}"
+            gh release edit "$RELEASE_REF" $pre --notes-file body.md --draft=false
+            ;;
+          false)
+            gh release upload "$RELEASE_REF" --clobber "${assets[@]}"
+            ;;
+          *)
+            gh release create "$RELEASE_REF" $pre \
+              --title "$RELEASE_REF" --notes-file notes.md "${assets[@]}"
+            ;;
+          esac
