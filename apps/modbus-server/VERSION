@@ -1,5 +1,5 @@
 VERSION_MAJOR = 0 # x-release-please-major
 VERSION_MINOR = 7 # x-release-please-minor
-PATCHLEVEL = 0 # x-release-please-patch
+PATCHLEVEL = 1 # x-release-please-patch
 VERSION_TWEAK = 0
 EXTRAVERSION =
