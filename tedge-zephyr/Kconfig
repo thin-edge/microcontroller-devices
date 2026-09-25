@@ -635,7 +635,7 @@ config TEDGE_PARAMETERS_SELF
 	bool "Offer the client's own tunables as a parameter set"
 	default y
 	help
-	  Declares a set named "tedge" holding the few client settings that
+	  Declares a set named "zephyr_tedge" holding the few client settings that
 	  are worth revisiting on a device already in the field: how much it
 	  logs, how often it reports its own health, the availability window
 	  Cumulocity judges it by, and whether the cloud may tunnel to it.
@@ -741,10 +741,31 @@ config TEDGE_THREAD_PRIORITY
 
 config TEDGE_HEAP_SIZE
 	int "Client heap size (bytes)"
-	default 16384
+	default 16384 if TEDGE_PARAMETERS
+	default 10240
 	help
 	  The client allocates only from this heap, never from the
 	  application's, so its memory use is bounded and predictable.
+
+	  The default follows the features built: parameters hold their
+	  declarations and twin state here and need 16 KB; without them the
+	  largest live set is the enrolment buffers (7.6 KB), which are not
+	  live at the same time as twin work, so 10 KB holds them with
+	  margin. The health telemetry's free-heap value (tedge_heap_free)
+	  shows what a build leaves after enrolment, a firmware update and a
+	  twin update; keep it above 2 KB, or raise this.
+
+config TEDGE_HEAP_NOINIT
+	bool "Keep the client heap in .noinit"
+	help
+	  Where the client heap's memory lives. By default it is ordinary
+	  .bss. With this option it is in .noinit, where K_HEAP_DEFINE() puts
+	  a kernel heap. It only matters on a SoC with more than one RAM
+	  region: on the classic ESP32 .noinit is dram1 (stacks, network
+	  buffers) and .bss is dram0 (the libc malloc arena, and the mbedTLS
+	  heap unless it is in PSRAM). Pick the region with room: the
+	  ESP32-CAM, whose mbedTLS heap is in PSRAM, has room in dram0; the
+	  ESP32-WROOM-32 keeps its mbedTLS heap in dram0 and needs this.
 
 config TEDGE_TLS_TAG_BASE
 	hex "First TLS credential tag used by the client"

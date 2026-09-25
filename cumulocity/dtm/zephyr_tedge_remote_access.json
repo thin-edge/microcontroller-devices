@@ -1,0 +1,28 @@
+{
+  "identifier": "zephyr_tedge_remote_access",
+  "jsonSchema": {
+    "type": "object",
+    "title": "Zephyr thin-edge.io client: remote access",
+    "properties": {
+      "remote_access": {
+        "title": "remote_access",
+        "order": 1,
+        "description": "Whether the cloud may open a tunnel to this device. Turning it off refuses every tunnel until it is turned back on.",
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "contexts": [
+    "asset",
+    "event",
+    "operation"
+  ],
+  "tags": [
+    "thin-edge.io-zephyr-modbus",
+    "thin-edge.io-zephyr-opcua",
+    "thin-edge.io-zephyr-snmp",
+    "thin-edge.io-zephyr-agent",
+    "tedge-zephyr"
+  ]
+}

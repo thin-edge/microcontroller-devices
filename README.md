@@ -1245,9 +1245,10 @@ docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
   -Dwifi-provisioner_EXTRA_CONF_FILE=/ws/app/apps/wifi-provisioner/overlay-ztp.conf
 ```
 
-On an ESP32-WROOM-32 use `profiles/ota.conf`, `tedge-boards/esp32-devkitc.conf`,
-`tedge-boards/extras/remote-access.conf` and
-`CONFIG_TEDGE_CERT_RENEWAL=y` — the most that fits (DEVICES.md).
+On an ESP32-WROOM-32 use `profiles/ota.conf`, `tedge-boards/esp32-devkitc.conf`
+and `tedge-boards/extras/parameters.conf`. Remote access links there but
+does not work interactively: the board has room for about three Wi-Fi frames
+of receive buffers, and an `htop` session over a tunnel fails (DEVICES.md).
 
 > **Measurements need a mapping in the tenant.** See
 > [Telemetry in Cumulocity](#telemetry-in-cumulocity) for the topics and
@@ -1454,9 +1455,10 @@ Things to know:
 - **Devices coming from a local build** report `zephyr-<app>` as their
   firmware name. They install a release image like any other; afterwards they
   report the release's name, so later versions come from that entry.
-- **The release notes list each image's features.** A `tedge-ota` image
-  without certificate renewal (the WROOM's Modbus image) has to be onboarded
-  again before its certificate expires, a year after enrolment.
+- **The release notes list each image's features.** A `tedge` image built
+  without certificate renewal has to be onboarded again before its
+  certificate expires, a year after enrolment; the release notes name every
+  such image.
 
 ## Releasing
 
@@ -1498,8 +1500,31 @@ is the module's own and moves only when the module changes.
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
   scripts/release/build.sh modbus-server-tedge-full-esp32c6-devkitc
 # -> dist/<name>-<version>.{factory.bin,app.bin,zip,meta.json,size.json}
+#    (fails if the image is over budget or grew past release/size-baseline.json)
 python3 scripts/release/matrix.py --markdown   # every build name
 ```
+
+**Size gate and baseline.** Every build ends with
+`scripts/release/size.py`, which reports the application image against
+`slot0`, the provisioner image against `prov`, the static use of each RAM
+region and the libc malloc arena left, and compares them all with the build's
+entry in [`release/size-baseline.json`](release/size-baseline.json). The step
+fails when an image is over its flash budget (application 80 % of `slot0`,
+provisioner 92 % of `prov`; the 95 % OTA ceiling is a separate hard limit), or
+when any RAM region or image has grown more than 256 B past the baseline. A
+change that moves a build's size, up or down, updates the baseline in the same
+pull request:
+
+```sh
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  scripts/release/build.sh modbus-server-tedge-full-esp32c6-devkitc --write-baseline
+docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
+  scripts/release/baseline.sh            # or every build (takes a while)
+```
+
+An image already over its budget is listed under `budget_exceptions` in its
+baseline entry, with the reason; it then warns instead of failing, but still
+must not grow.
 
 **Signing.** Without the repository secret `MCUBOOT_SIGNING_KEY` (a PEM
 private key) releases are signed with MCUboot's public development key, and

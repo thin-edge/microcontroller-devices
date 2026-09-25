@@ -22,6 +22,8 @@
 #include <zephyr/random/random.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/init.h>
+
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,10 +32,37 @@ LOG_MODULE_REGISTER(tedge, CONFIG_TEDGE_LOG_LEVEL);
 
 #define BACKOFF_MIN_S 3
 #define STABLE_S      60
-/* Twin fragments the application can hold at once, plus the module's own. */
-#define TWIN_SLOTS    4
+/* Twin fragments held for republishing after a reconnect: every parameter
+ * set (each is a fragment), the client's own tedge_RemoteAccess and
+ * tedge_Certificate, and two for the application's tedge_publish_twin()
+ * calls. At a flat 4 the parameter sets filled the table on images with
+ * three or four sets and tedge_Certificate was dropped ("no free twin
+ * slot", 2026-09-23). 36 B of RAM each. */
+#define TWIN_SLOTS    (TEDGE_PARAM_MAX_SETS + 2 + 2)
 
+/* The client's private heap. By default its memory is ordinary .bss rather
+ * than what K_HEAP_DEFINE() uses (.noinit): on the classic ESP32 .noinit
+ * lands in dram1, the 96 KB region that also holds every thread stack and
+ * the network buffers, while .bss goes to dram0, where the libc malloc arena
+ * gets whatever is left. Moving the 10-16 KB heap across is what lets the
+ * ESP32-CAM carry log upload (reduce-memory-footprint, 2026-09-23). A board
+ * whose dram0 is the full one (the WROOM-32, mbedTLS heap in dram0) keeps it
+ * in .noinit with CONFIG_TEDGE_HEAP_NOINIT. On SoCs with one RAM region
+ * nothing moves either way. */
+#if defined(CONFIG_TEDGE_HEAP_NOINIT)
 K_HEAP_DEFINE(tedge_heap, CONFIG_TEDGE_HEAP_SIZE);
+#else
+static uint8_t __aligned(8) tedge_heap_mem[CONFIG_TEDGE_HEAP_SIZE];
+static struct k_heap tedge_heap;
+
+/* Before the application runs, so the heap is ready before tedge_init(). */
+static int tedge_heap_init(void)
+{
+	k_heap_init(&tedge_heap, tedge_heap_mem, sizeof(tedge_heap_mem));
+	return 0;
+}
+SYS_INIT(tedge_heap_init, POST_KERNEL, 0);
+#endif
 
 static struct tedge_id identity;
 static const struct tedge_hooks *hooks;

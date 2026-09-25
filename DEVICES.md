@@ -25,9 +25,9 @@ its run on the board.
 | ESP32-C6 DevKitC | local `/dev/cu.usbmodem1101` | Modbus | `tedge-modbuse8f60afc320c` |
 | ESP32-S3-DevKitC-1 (N16R8) | local `/dev/cu.usbmodem5CE60429731` | Modbus | `tedge-modbus7c0c5f5a6eb8` |
 | QT Py ESP32-S3 (N4R2) | `rpi5` `/dev/ttyACM0` | Modbus | `tedge-modbusf412fa5a9424` |
-| ESP32-CAM | `rpi5` `/dev/ttyUSB1` | SNMP | `tedge-snmpe465b86f97cc` |
+| ESP32-CAM | `rpi5` `/dev/ttyUSB1` | SNMP (ota + parameters, certificate renewal, log upload; traps to tedge-dot) | `tedge-snmpe465b86f97cc` |
 | ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB0` | OPC-UA | — |
-| ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB2` | SNMP, no client (Wi-Fi from ZTP); the WROOM capacity test board | — |
+| ESP32-WROOM-32 | `rpi5` `/dev/ttyUSB2` | Modbus (ota + parameters); the WROOM capacity test board | `tedge-modbus3c71bf10c2e4` |
 
 `rpi5` is `root@rpi5-d83add9f145a.local` (192.168.68.72). Flash from there
 with `/root/espenv/bin/esptool`. The Pi 4 (`rpi4-d83add90fe56.local`,
@@ -39,46 +39,41 @@ with `/root/espenv/bin/esptool`. The Pi 4 (`rpi4-d83add90fe56.local`,
 firmware update, shell command, log upload, crash dumps, remote access,
 parameters, certificate renewal.
 
-| Feature | C6 | S3-DevKitC | QT Py S3 | ESP32-CAM | WROOM ×2 |
+| Feature | C6 | S3-DevKitC | QT Py S3 | ESP32-CAM (SNMP) | WROOM (Modbus) |
 |---|:--:|:--:|:--:|:--:|:--:|
 | Connection + inventory | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Telemetry + health | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Restart | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Firmware update** | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Parameters | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Certificate renewal | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Firmware update** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Parameters | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Certificate renewal | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Shell command | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Log upload | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Log upload | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Crash dumps | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Remote access** | ✅ | ✅ | ✅ | ❌ | ❌ |
-| DRAM used | 79.1% | 62.7% | 73.8% | **96.6%** (dram1) | **96.3%** |
+| RAM (tightest region) | 79.1% | 62.7% | 73.8% | 84.7% (dram1) | 92.2% (dram0) |
 
-The WROOM column is what it *would* take to fit, not what is flashed: even
-with those three removed it links at 96.3% with 7 KB spare, which is not
-worth deploying. Both WROOMs are **left on their existing images**.
+The ESP32-CAM and WROOM columns are their release builds as of 2026-09-23,
+each run on the board (below). Remote access is left out on both on purpose: it links, but the
+receive buffers they have room for are too shallow for an interactive
+tunnel.
 
-### The ESP32-CAM is deliberately small
+### What the ESP32-CAM leaves out
 
 A classic ESP32 splits its RAM into dram0 (192 KB) and dram1 (96 KB), and
-the net_buf pools and `.dram0.noinit` all land in dram1. Everything enabled
-overflows it by 33 KB, so the set is chosen around **firmware update** —
-the one that matters, because without it the board can only be changed with
-a cable. That needs a second concurrent TLS session for the HTTPS download,
-which is what the TLS context budget is spent on, so nothing else that
-wants one is built in.
+the net_buf pools and `.dram0.noinit` all land in dram1, which is what
+limits this board. Its release builds carry firmware update, parameters,
+**certificate renewal** and log upload; the mbedTLS heap is in PSRAM and the
+client's heap in dram0 (`CONFIG_TEDGE_HEAP_NOINIT` off), which is what made
+room for the last two (2026-09-23, runs below).
 
-Consequences to expect in the UI: **no remote-access tab, no shell tab, and
-log requests will not work** — those capabilities are genuinely absent, not
-failing. An earlier image left log upload compiled in while capping TLS
-contexts at 1, so it advertised a capability it could not perform; that is
-what "unresponsive in the cloud" looked like.
+Consequences to expect in the UI: **no remote-access tab and no shell tab**
+— those capabilities are genuinely absent, not failing. Remote access links,
+but the receive buffers dram1 has room for are too shallow for an
+interactive tunnel, as on the WROOM.
 
-**Certificate renewal is off**, so this board needs re-onboarding before its
-certificate expires (2027-09). Firmware update works, so a later image can
-trade something else for it.
-
-Verified 2026-09-20: `c8y_Firmware` 0.2.0 → 0.2.1 through Cumulocity,
-operation SUCCESSFUL, image confirmed after it reconnected.
+Certificate renewal is armed on every CAM build, so the board renews its
+certificate itself instead of needing re-onboarding before it expires.
 
 ### Firmware updates take minutes, and that is the swap
 
@@ -89,6 +84,45 @@ which copies the image sector by sector through a scratch area — minutes at
 this image size. `SWAP_USING_MOVE` is faster and still supports rollback;
 `OVERWRITE_ONLY` is fastest and gives up rollback. Do not read a slow update
 as a stuck operation.
+
+### WROOM and ESP32-CAM release builds (measured 2026-09-23)
+
+After the footprint work (`reduce-memory-footprint`). Both boards on the
+rpi5, provisioned fresh over ZTP (`overlay-ztp.conf`), thin-edge-io.eu-latest.
+
+| Board | Build | RAM | Run |
+|---|---|---|---|
+| WROOM-32 (3c:71:bf:10:c2:e4) | modbus-server ota + parameters | dram0 91.7%, dram1 82.9%, 16.3 KB `malloc` arena | enrolled; telemetry; OTA `ctl1` → `ctl2` → `ctl3`, each confirmed; the pump run from `zephyr_modbus_control` (running, manual 60 %, flow and rpm follow over Modbus); Modbus write allowed, then refused with exception 2 once `local_writes` is off; an out-of-range setpoint refused by the operation; the state kept across a restart; `zephyr_tedge` change (whole set) accepted |
+| ESP32-CAM (e4:65:b8:6f:97:cc) | modbus-server ota + parameters | dram0 63.3%, dram1 88.3%, 72.2 KB arena | enrolled as `tedge-modbuse465b86f97cc`; pump run from the cloud at 45 %, a locked Modbus write refused, 29/29 reads |
+| ESP32-CAM | snmp-agent ota + parameters + certificate renewal + log upload | dram0 77.8%, dram1 84.7%, 43.7 KB arena | enrolled as `tedge-snmpe465b86f97cc`; OTA `cam2` → `cam3` → `cam4`, confirmed; full snmpwalk (66 objects); a `tedge-log` request uploaded; `zephyr_snmp_telemetry` and `zephyr_tedge` changes accepted; certificate renewal armed (364 days); client heap 16,092 of 16,384 B free after connecting |
+
+**One feature set per board.** The release manifest gives every tedge
+build on a board the same extras: the WROOM gets `ota` + parameters +
+certificate renewal, the ESP32-CAM `ota` + parameters + certificate renewal
++ log upload. Each release build was then run on the rpi5 boards exactly as
+the manifest builds it (version suffix `rt1`/`rt2`), chained over the air on
+one enrolment per board: WROOM Modbus → agent → Modbus, CAM Modbus → agent
+→ SNMP. Every step is a firmware update that confirmed (73-91 s).
+
+| Build (release extras) | dram0 | dram1 | `malloc` arena | Board run (2026-09-23) |
+|---|---|---|---|---|
+| WROOM modbus-server | 92.2% | 82.9% | 15.3 KB | ✅ OTA confirmed (twice); telemetry; `zephyr_tedge` change (whole set); certificate renewal armed; pump run from `zephyr_modbus_control` at 55 %, locked Modbus write refused (exception 2), 29/29 reads alongside; restart |
+| WROOM tedge-agent | 91.5% | 79.7% | 16.8 KB | ✅ OTA confirmed; `c8y_Device` telemetry every 60 s; `zephyr_tedge` change; certificate renewal armed; restart |
+| ESP32-CAM snmp-agent | 77.8% | 84.7% | 43.7 KB | ✅ OTA confirmed; full snmpwalk before and after a restart; `zephyr_tedge` change; certificate renewal armed; `tedge-log` upload (20 lines) |
+| ESP32-CAM modbus-server | 73.7% | 80.5% | 51.7 KB | ✅ OTA confirmed; telemetry; `zephyr_tedge` change; certificate renewal armed; pump control and locked write as on the WROOM, 29/29 reads; `tedge-log` upload (26 lines; `app-status` offered too); restart |
+| ESP32-CAM tedge-agent | 72.9% | 77.4% | 53.2 KB | ✅ OTA confirmed; `c8y_Device` telemetry; `zephyr_tedge` change; certificate renewal armed; `tedge-log` upload (22 lines); restart |
+
+On the CAM the device keeps the identity ZTP gave it (`tedge-snmpe465b86f97cc`)
+while it runs the other applications; each application reports its own
+firmware name and type.
+
+What made these fit: the client's private heap moved from `.noinit`
+(dram1 on a classic ESP32) to `.bss` (dram0) on the ESP32-CAM, whose
+mbedTLS heap is in PSRAM; the WROOM keeps it in `.noinit`
+(`CONFIG_TEDGE_HEAP_NOINIT`) because its dram0 holds the mbedTLS heap. Log
+upload's 8 KB stack then fits the CAM's dram1. On the CAM the full profile
+misses dram1 by 5.7 KB (33 KB before the footprint work); SNMP with log
+upload and the heap still in dram1 missed by 1.3 KB.
 
 ### What a WROOM can carry (measured 2026-09-21)
 
@@ -118,6 +152,23 @@ connections the image links, but a tunnel request fails ("Not enough
 connection contexts", operation "the cloud connection failed (-2)"); the
 board file raises it to 10. HTTPS firmware download and the tunnel both work
 with 8 KB TLS records.
+
+**Remote access is not released for the WROOM (2026-09-23).** After the
+footprint work (`reduce-memory-footprint`) the rpi5 WROOM was tried again,
+provisioned over ZTP, as `tedge-modbus3c71bf10c2e4`:
+
+| Build | dram0 / dram1 | Result |
+|---|---|---|
+| modbus-server full (client heap cut to 15 KB to link) | 96.7% / 99.3%, 6.4 KB `malloc` arena | enrolled; telemetry; log upload; OTA `mf1` → `mf2` 819 KB in 30 s, confirmed. Tunnel: a 400 KB SSH copy went through, but the first session broke after 19 s ("sending to the cloud failed"), 117 × `esp32_wifi: Failed to allocate net buffer`, MQTT reconnected once, 7 of 75 Modbus reads failed alongside |
+| modbus-server ota + remote access (the release build until then) | 94.0% / 85.2%, 11.8 KB arena | connected; `htop` over the tunnel failed, worse than the full build |
+
+Both run with 32 receive buffers of 128 B, about three Wi-Fi frames in
+flight. An interactive tunnel needs about sixteen (96 × 256 B on the C6,
+see [Remote access / interactive sessions](#remote-access--interactive-sessions)):
+linked with those buffers, the full build misses `dram1` by 28,552 B and
+the ota + remote access build by 14,720 B. So the WROOM releases ship
+**ota** plus parameters and certificate renewal, and no remote access;
+firmware update stays, because it is how these boards get new images.
 
 SNMP carries ~33 KB of static tables and buffers (MIB leaves 13.5 KB,
 varbinds 6.7 KB, request buffers 8.5 KB) and open62541 more; either would have
@@ -174,9 +225,10 @@ image served, but with the margin that close, the S3-DevKitC result is the
 one to believe for a new board. OPC-UA ships `standalone` on every board
 except the QT Py's `tedge-ota`.
 
-What fits on top of the CAM's `tedge-ota` (link only, not yet run):
-certificate renewal and parameters beside SNMP or Modbus; remote access and
-log upload do not (over by 1–5.4 KB). The agent has room for all four.
+On top of the CAM's `tedge-ota`, every app now ships parameters,
+certificate renewal and log upload, each run on the board (see
+[WROOM and ESP32-CAM release builds](#wroom-and-esp32-cam-release-builds-measured-2026-09-23)).
+Before the footprint work, log upload did not fit (over by 1–5.4 KB).
 
 Telemetry was published throughout, but the test tenant had no mapping for
 `te/.../m/...`, so measurements could not be seen in Cumulocity; the
@@ -209,11 +261,80 @@ Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
 tunnel of its own, which holds the device's single session for a moment; an
 SSH connection straight after it can find the slot busy.
 
+### Static sizes after the footprint work, link only (2026-09-22)
+
+Every `release/devices.yml` build, rebuilt from the `reduce-memory-footprint`
+working tree against the `v0.5.0` baseline (`release/size-baseline.json`
+before and after; `scripts/release/size.py`). These are link results, not
+board runs: the tier-1 items (AES tables in flash, const open62541 type
+tables, the compact SNMP MIB, a 4 KB `main` stack, the tedge heap default,
+no POSIX layer, the no-op system-heap lines gone) plus the split TLS output
+buffer, the TLS server role off, open62541 without description strings and
+the provisioner's leaner log path. "RAM" is the fullest internal region;
+"arena" is what is left for libc `malloc`, which open62541 and the shell
+draw on. Images grow by about 2.7 KB where the AES tables moved to flash
+and by 13-16 KB on OPC-UA, where the 21 KB of type tables left RAM; an ESP
+image pads its RAM-loaded segments to a 64 KB boundary, so the file moves in
+steps (the S3 Modbus `tedge-ota` images crossed one downwards, -62.7 KB).
+
+| Build | Tightest RAM region | RAM before | RAM after | Δ RAM | Arena before | Arena after | Image before | Image after | Δ image |
+|---|---|---|---|---|---|---|---|---|---|
+| `modbus-server-standalone-esp32-devkitc` | dram0_0_seg | 99,812 | 97,152 | -2,660 | 96,792 | 99,440 | 590,471 | 590,167 | -304 |
+| `modbus-server-standalone-esp32c6-devkitc` | sram0_0_seg | 213,496 | 205,780 | -7,716 | 295,936 | 303,664 | 733,963 | 733,803 | -160 |
+| `modbus-server-standalone-esp32s3-devkitc` | dram0_0_seg | 203,128 | 196,104 | -7,024 | 195,964 | 202,996 | 583,946 | 583,787 | -159 |
+| `modbus-server-standalone-qtpy-esp32s3` | dram0_0_seg | 200,520 | 193,500 | -7,020 | 198,564 | 205,596 | 584,090 | 583,931 | -159 |
+| `modbus-server-tedge-full-esp32c6-devkitc` | sram0_0_seg | 449,140 | 432,368 | -16,772 | 60,304 | 77,072 | 959,146 | 961,947 | +2,801 |
+| `modbus-server-tedge-full-esp32s3-devkitc` | dram0_0_seg | 359,492 | 342,848 | -16,644 | 39,604 | 56,252 | 931,498 | 934,203 | +2,705 |
+| `modbus-server-tedge-full-qtpy-esp32s3` | dram0_0_seg | 355,868 | 339,244 | -16,624 | 43,220 | 59,852 | 931,691 | 934,396 | +2,705 |
+| `modbus-server-tedge-ota-esp32-cam` | dram0_0_seg | 134,992 | 123,348 | -11,644 | 61,600 | 73,248 | 800,054 | 795,080 | -4,974 |
+| `modbus-server-tedge-ota-esp32-devkitc` | dram0_0_seg | 196,460 | 184,796 | -11,664 | 136 | 11,800 | 811,687 | 806,616 | -5,071 |
+| `modbus-server-tedge-ota-esp32c6-devkitc` | sram0_0_seg | 420,412 | 397,560 | -22,852 | 89,024 | 111,872 | 887,482 | 890,298 | +2,816 |
+| `modbus-server-tedge-ota-esp32s3-devkitc` | dram0_0_seg | 314,772 | 292,616 | -22,156 | 84,324 | 106,476 | 801,771 | 739,035 | -62,736 |
+| `modbus-server-tedge-ota-qtpy-esp32s3` | dram0_0_seg | 311,156 | 289,004 | -22,152 | 87,932 | 110,084 | 801,914 | 739,178 | -62,736 |
+| `opcua-server-standalone-esp32-devkitc` | dram0_0_seg | 123,176 | 101,492 | -21,684 | 73,424 | 95,104 | 750,454 | 750,008 | -446 |
+| `opcua-server-standalone-esp32c6-devkitc` | sram0_0_seg | 255,620 | 229,836 | -25,784 | 253,808 | 279,600 | 840,523 | 854,138 | +13,615 |
+| `opcua-server-standalone-esp32s3-devkitc` | dram0_0_seg | 245,244 | 219,464 | -25,780 | 153,844 | 179,620 | 754,635 | 768,651 | +14,016 |
+| `opcua-server-standalone-qtpy-esp32s3` | dram0_0_seg | 242,636 | 216,856 | -25,780 | 156,444 | 182,236 | 754,779 | 768,794 | +14,015 |
+| `opcua-server-tedge-ota-qtpy-esp32s3` | dram0_0_seg | 346,572 | 305,896 | -40,676 | 52,524 | 93,196 | 906,714 | 923,196 | +16,482 |
+| `snmp-agent-standalone-esp32-devkitc` | dram0_0_seg | 131,912 | 105,600 | -26,312 | 64,680 | 90,992 | 578,935 | 578,757 | -178 |
+| `snmp-agent-standalone-esp32c6-devkitc` | sram0_0_seg | 243,712 | 212,344 | -31,368 | 265,728 | 297,088 | 732,220 | 731,995 | -225 |
+| `snmp-agent-standalone-esp32s3-devkitc` | dram0_0_seg | 233,356 | 202,688 | -30,668 | 165,732 | 196,404 | 582,635 | 582,410 | -225 |
+| `snmp-agent-standalone-qtpy-esp32s3` | dram0_0_seg | 230,748 | 200,084 | -30,664 | 168,348 | 199,004 | 582,764 | 582,555 | -209 |
+| `snmp-agent-tedge-full-esp32c6-devkitc` | sram0_0_seg | 485,068 | 444,648 | -40,420 | 24,368 | 64,784 | 957,675 | 960,395 | +2,720 |
+| `snmp-agent-tedge-full-esp32s3-devkitc` | dram0_0_seg | 379,472 | 339,764 | -39,708 | 19,628 | 59,324 | 806,491 | 809,210 | +2,719 |
+| `snmp-agent-tedge-full-qtpy-esp32s3` | dram0_0_seg | 375,848 | 336,152 | -39,696 | 23,244 | 62,932 | 806,635 | 809,355 | +2,720 |
+| `snmp-agent-tedge-ota-esp32-cam` | dram0_0_seg | 166,720 | 131,420 | -35,300 | 29,872 | 65,176 | 795,527 | 790,712 | -4,815 |
+| `snmp-agent-tedge-ota-esp32c6-devkitc` | sram0_0_seg | 456,380 | 409,864 | -46,516 | 53,056 | 99,568 | 886,283 | 889,035 | +2,752 |
+| `snmp-agent-tedge-ota-esp32s3-devkitc` | dram0_0_seg | 350,596 | 304,784 | -45,812 | 48,500 | 94,308 | 735,435 | 738,155 | +2,720 |
+| `snmp-agent-tedge-ota-qtpy-esp32s3` | dram0_0_seg | 346,972 | 301,172 | -45,800 | 52,116 | 97,916 | 735,580 | 738,298 | +2,718 |
+| `tedge-agent-tedge-full-esp32c6-devkitc` | sram0_0_seg | 440,340 | 427,688 | -12,652 | 69,104 | 81,744 | 890,284 | 893,083 | +2,799 |
+| `tedge-agent-tedge-full-esp32s3-devkitc` | dram0_0_seg | 350,200 | 337,668 | -12,532 | 48,884 | 61,420 | 928,363 | 931,066 | +2,703 |
+| `tedge-agent-tedge-full-qtpy-esp32s3` | dram0_0_seg | 346,576 | 334,064 | -12,512 | 52,516 | 65,036 | 928,555 | 931,258 | +2,703 |
+| `tedge-agent-tedge-ota-esp32-cam` | dram0_0_seg | 133,516 | 121,888 | -11,628 | 63,088 | 74,704 | 785,814 | 780,887 | -4,927 |
+| `tedge-agent-tedge-ota-esp32-devkitc` | dram0_0_seg | 196,024 | 184,384 | -11,640 | 568 | 12,208 | 799,334 | 794,486 | -4,848 |
+| `tedge-agent-tedge-ota-esp32c6-devkitc` | sram0_0_seg | 411,676 | 392,896 | -18,780 | 97,760 | 116,544 | 884,635 | 887,436 | +2,801 |
+| `tedge-agent-tedge-ota-esp32s3-devkitc` | dram0_0_seg | 306,128 | 288,084 | -18,044 | 92,964 | 111,004 | 733,900 | 736,684 | +2,784 |
+| `tedge-agent-tedge-ota-qtpy-esp32s3` | dram0_0_seg | 302,512 | 284,472 | -18,040 | 96,588 | 114,612 | 734,043 | 736,826 | +2,783 |
+
+Total over 36 builds: RAM -832,724 B, image -50,095 B
+C6 ZTP provisioner: 1,015,243 -> 948,348 B (96.8 % -> 90.4 % of prov)
+
+The C6 ZTP provisioner went from 1,015,243 to 948,348 B (96.8 % to 90.4 % of
+its 1 MB `prov` partition). Its flash-mapped code now ends 32 B before a
+64 KB boundary; the release size gate (92 % budget) is what catches a
+regression there.
+
 ## What decides whether a board fits
 
 **Not flash** — that never exceeded 26%. It is internal DRAM, and
 specifically whether the 96 KB mbedTLS heap can be moved into PSRAM with
 `CONFIG_MBEDTLS_HEAP_CUSTOM_SECTION=y`.
+
+Both are now gated: `scripts/release/size.py` compares every release build's
+RAM regions, malloc arena and image against `release/size-baseline.json`
+and fails a pull request that grows past it (README, "Size gate and
+baseline"). Flash has a budget of its own per partition, 80 % of `slot0`
+for an application and 92 % of `prov` for the provisioner.
 
 | Board | PSRAM | Heap location |
 |---|---|---|

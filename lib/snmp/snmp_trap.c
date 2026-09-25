@@ -18,11 +18,11 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+/* Zephyr's native socket API (zsock_*): the POSIX layer is not linked, which
+ * saves its thread, signal and fd pools on every image (reduce-memory-
+ * footprint, tier 1). The struct and constant names come from
+ * CONFIG_NET_NAMESPACE_COMPAT_MODE, which Zephyr defaults on. */
 #include <zephyr/net/socket.h>
-#include <zephyr/posix/netinet/in.h>
-#include <zephyr/posix/sys/socket.h>
-#include <zephyr/posix/arpa/inet.h>
-#include <zephyr/posix/unistd.h>
 
 LOG_MODULE_REGISTER(app_snmp_trap, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -57,7 +57,7 @@ static bool resolve_manager(void)
 	const char *host = CONFIG_APP_SNMP_TRAP_MANAGER;
 
 	/* Literal IPv4? No name lookup needed. */
-	if (inet_pton(AF_INET, host, &mgr_addr.sin_addr) == 1) {
+	if (zsock_inet_pton(AF_INET, host, &mgr_addr.sin_addr) == 1) {
 		return true;
 	}
 
@@ -164,7 +164,7 @@ static void send_trap(const uint32_t *trap_oid, size_t trap_oid_len, int ifindex
 
 	const uint8_t *pkt = trap_buf + (sizeof(trap_buf) - len);
 
-	if (sendto(trap_sock, pkt, len, 0, (struct sockaddr *)&mgr_addr,
+	if (zsock_sendto(trap_sock, pkt, len, 0, (struct sockaddr *)&mgr_addr,
 		   sizeof(mgr_addr)) < 0) {
 		LOG_WRN("trap sendto failed (%d) — will re-resolve manager", errno);
 		/* Force a fresh lookup next tick in case the manager's IP changed. */
@@ -229,7 +229,7 @@ static void trap_watcher(void *a, void *b, void *c)
 
 void snmp_trap_start(void)
 {
-	trap_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	trap_sock = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (trap_sock < 0) {
 		LOG_ERR("trap socket() failed (%d) — traps disabled", errno);
 		return;

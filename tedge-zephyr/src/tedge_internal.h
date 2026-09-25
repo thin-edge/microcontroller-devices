@@ -236,6 +236,10 @@ int tedge_self_health_interval_s(void);
 int tedge_self_required_interval_min(void);
 bool tedge_self_remote_access_allowed(void);
 
+/* Parameter sets one device can declare (tedge_parameters.c). Each is also
+ * a twin fragment, which is why tedge_core.c sizes its twin table from it. */
+#define TEDGE_PARAM_MAX_SETS 4
+
 /* --- Operations as JSON (tedge_op_json.c) -------------------------------- */
 
 /**

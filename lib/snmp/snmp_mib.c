@@ -5,6 +5,11 @@
  * ifTable in column-major order (all rows of column c before column c+1), and
  * last the enterprise firmware-info scalars — which is exactly SNMP's walk
  * order (the private arc 1.3.6.1.4.1 sorts after mib-2's 1.3.6.1.2).
+ *
+ * Each leaf is {kind, col, row}; its OID is derived on demand from the
+ * constant prefix its kind belongs to. Lookups compare the request OID with
+ * each leaf's derived OID, so the walk order and every GET/GETNEXT answer are
+ * the same as with a table of stored OIDs.
  */
 
 #include "snmp_mib.h"
@@ -16,7 +21,8 @@
 #include <stdio.h>
 #include <zephyr/kernel.h>
 
-/* Value selectors. Scalars first, then ifTable columns. */
+/* Value selectors. Scalars first, then ifTable columns. Each range shares an
+ * OID prefix (see leaf_prefix()). */
 enum {
 	K_SYS_DESCR = 0, K_SYS_OBJECTID, K_SYS_UPTIME, K_SYS_CONTACT,
 	K_SYS_NAME, K_SYS_LOCATION, K_SYS_SERVICES, K_IF_NUMBER,
@@ -28,8 +34,8 @@ enum {
 
 /* ifTable column numbers (standard IF-MIB). */
 struct if_column {
-	uint16_t kind;
-	uint32_t col;
+	uint8_t kind;
+	uint8_t col;
 };
 
 static const struct if_column if_columns[] = {
@@ -43,7 +49,19 @@ static const struct if_column if_columns[] = {
 #define NUM_SCALARS    8
 /* Enterprise firmware-info scalars, in the order their kinds are enumerated. */
 #define NUM_FW_SCALARS 3
-#define MIB_MAX_LEAVES (NUM_SCALARS + NUM_IF_COLUMNS * SIM_SWITCH_MAX_IF + NUM_FW_SCALARS)
+/* The table is sized for the interfaces this build simulates, not the
+ * model's maximum: sim_switch_if_count() never exceeds the configured count. */
+#if defined(CONFIG_APP_SIM_SWITCH_IF_COUNT)
+#define MIB_IF_ROWS MIN(CONFIG_APP_SIM_SWITCH_IF_COUNT, SIM_SWITCH_MAX_IF)
+#else
+#define MIB_IF_ROWS SIM_SWITCH_MAX_IF
+#endif
+#define MIB_MAX_LEAVES (NUM_SCALARS + NUM_IF_COLUMNS * MIB_IF_ROWS + NUM_FW_SCALARS)
+
+/* OID prefixes; a leaf's OID is one of these plus its column (and row). */
+static const uint32_t sys_prefix[] = { 1, 3, 6, 1, 2, 1, 1 };       /* system */
+static const uint32_t ifnum_oid[] = { 1, 3, 6, 1, 2, 1, 2, 1, 0 };  /* ifNumber.0 */
+static const uint32_t ifentry_prefix[] = { 1, 3, 6, 1, 2, 1, 2, 2, 1 };
 
 /* sysObjectID value: a private-enterprise arc identifying this simulated switch
  * (1.3.6.1.4.1.99999.1 — a placeholder enterprise number for the demo). It is
@@ -51,55 +69,78 @@ static const struct if_column if_columns[] = {
  * so a manager that reads sysObjectID.0 knows where to walk for them. */
 static const uint32_t sys_object_id[] = { 1, 3, 6, 1, 4, 1, 99999, 1 };
 
+BUILD_ASSERT(ARRAY_SIZE(ifentry_prefix) + 2 <= MIB_MAX_OID_LEN);
+BUILD_ASSERT(ARRAY_SIZE(sys_object_id) + 2 <= MIB_MAX_OID_LEN);
+BUILD_ASSERT(ARRAY_SIZE(ifnum_oid) <= MIB_MAX_OID_LEN);
+
 static struct mib_leaf leaves[MIB_MAX_LEAVES];
 static size_t leaf_count;
 static int64_t uptime_start_ms;
 
-/* Append a leaf with the given OID and value selector. */
-static void add_leaf(const uint32_t *oid, size_t len, uint16_t kind, uint8_t row)
+static void add_leaf(uint8_t kind, uint8_t col, uint8_t row)
 {
-	if (leaf_count >= MIB_MAX_LEAVES || len > BER_MAX_OID_LEN) {
+	if (leaf_count >= MIB_MAX_LEAVES) {
 		return;
 	}
 
 	struct mib_leaf *l = &leaves[leaf_count++];
 
-	memcpy(l->oid, oid, len * sizeof(uint32_t));
-	l->oid_len = (uint8_t)len;
 	l->kind = kind;
+	l->col = col;
 	l->row = row;
+}
+
+size_t mib_leaf_oid(const struct mib_leaf *leaf, uint32_t *out)
+{
+	size_t n;
+
+	if (leaf->kind == K_IF_NUMBER) {
+		memcpy(out, ifnum_oid, sizeof(ifnum_oid));
+		return ARRAY_SIZE(ifnum_oid);
+	}
+	if (leaf->kind >= K_FW_NAME) {
+		/* <sysObjectID>.<n>.0 */
+		memcpy(out, sys_object_id, sizeof(sys_object_id));
+		n = ARRAY_SIZE(sys_object_id);
+		out[n++] = leaf->col;
+		out[n++] = 0;
+		return n;
+	}
+	if (leaf->kind >= K_IF_INDEX) {
+		/* ifEntry.<col>.<row> */
+		memcpy(out, ifentry_prefix, sizeof(ifentry_prefix));
+		n = ARRAY_SIZE(ifentry_prefix);
+		out[n++] = leaf->col;
+		out[n++] = leaf->row;
+		return n;
+	}
+	/* system.<n>.0 */
+	memcpy(out, sys_prefix, sizeof(sys_prefix));
+	n = ARRAY_SIZE(sys_prefix);
+	out[n++] = leaf->col;
+	out[n++] = 0;
+	return n;
 }
 
 void mib_init(void)
 {
-	static const uint32_t sys[] = { 1, 3, 6, 1, 2, 1, 1 }; /* system group */
-	static const uint32_t ifentry[] = { 1, 3, 6, 1, 2, 1, 2, 2, 1 };
-	static const uint32_t ifnum[] = { 1, 3, 6, 1, 2, 1, 2, 1, 0 };
-	uint32_t oid[BER_MAX_OID_LEN];
-
 	leaf_count = 0;
 	uptime_start_ms = k_uptime_get();
 
 	/* --- system group scalars: 1.3.6.1.2.1.1.<n>.0 --- */
-	for (uint16_t n = 1; n <= NUM_SCALARS - 1; n++) { /* 1..7 -> sysDescr..sysServices */
-		memcpy(oid, sys, sizeof(sys));
-		oid[7] = n;
-		oid[8] = 0;
-		add_leaf(oid, 9, (uint16_t)(K_SYS_DESCR + (n - 1)), 0);
+	for (uint8_t n = 1; n <= NUM_SCALARS - 1; n++) { /* 1..7 -> sysDescr..sysServices */
+		add_leaf((uint8_t)(K_SYS_DESCR + (n - 1)), n, 0);
 	}
 
 	/* --- ifNumber.0 : 1.3.6.1.2.1.2.1.0 --- */
-	add_leaf(ifnum, ARRAY_SIZE(ifnum), K_IF_NUMBER, 0);
+	add_leaf(K_IF_NUMBER, 0, 0);
 
 	/* --- ifTable, column-major: 1.3.6.1.2.1.2.2.1.<col>.<row> --- */
 	size_t nif = sim_switch_if_count();
 
 	for (size_t ci = 0; ci < NUM_IF_COLUMNS; ci++) {
 		for (size_t r = 1; r <= nif; r++) {
-			memcpy(oid, ifentry, sizeof(ifentry));
-			oid[9] = if_columns[ci].col;
-			oid[10] = (uint32_t)r;
-			add_leaf(oid, 11, if_columns[ci].kind, (uint8_t)r);
+			add_leaf(if_columns[ci].kind, if_columns[ci].col, (uint8_t)r);
 		}
 	}
 
@@ -109,12 +150,8 @@ void mib_init(void)
 	 * to parse. These give each one its own object, so it can be read (and
 	 * reported to a cloud) on its own.
 	 */
-	for (uint16_t n = 1; n <= NUM_FW_SCALARS; n++) {
-		memcpy(oid, sys_object_id, sizeof(sys_object_id));
-		oid[ARRAY_SIZE(sys_object_id)] = n;
-		oid[ARRAY_SIZE(sys_object_id) + 1] = 0;
-		add_leaf(oid, ARRAY_SIZE(sys_object_id) + 2,
-			 (uint16_t)(K_FW_NAME + (n - 1)), 0);
+	for (uint8_t n = 1; n <= NUM_FW_SCALARS; n++) {
+		add_leaf((uint8_t)(K_FW_NAME + (n - 1)), n, 0);
 	}
 }
 
@@ -133,10 +170,19 @@ uint32_t mib_sys_uptime(void)
 	return (uint32_t)(ms / 10); /* hundredths of a second */
 }
 
+/* Compare a leaf's derived OID with (oid,len), like oid_cmp(). */
+static int leaf_cmp(const struct mib_leaf *leaf, const uint32_t *oid, size_t len)
+{
+	uint32_t mine[MIB_MAX_OID_LEN];
+	size_t n = mib_leaf_oid(leaf, mine);
+
+	return oid_cmp(mine, n, oid, len);
+}
+
 const struct mib_leaf *mib_get_exact(const uint32_t *oid, size_t len)
 {
 	for (size_t i = 0; i < leaf_count; i++) {
-		if (oid_cmp(leaves[i].oid, leaves[i].oid_len, oid, len) == 0) {
+		if (leaf_cmp(&leaves[i], oid, len) == 0) {
 			return &leaves[i];
 		}
 	}
@@ -147,11 +193,29 @@ const struct mib_leaf *mib_get_next(const uint32_t *oid, size_t len)
 {
 	/* Leaves are sorted; return the first strictly greater. */
 	for (size_t i = 0; i < leaf_count; i++) {
-		if (oid_cmp(leaves[i].oid, leaves[i].oid_len, oid, len) > 0) {
+		if (leaf_cmp(&leaves[i], oid, len) > 0) {
 			return &leaves[i];
 		}
 	}
 	return NULL;
+}
+
+const struct mib_leaf *mib_next_leaf(const struct mib_leaf *leaf)
+{
+	size_t i = (size_t)(leaf - leaves);
+
+	if (i + 1 >= leaf_count) {
+		return NULL;
+	}
+	return &leaves[i + 1];
+}
+
+void mib_put_oid(struct ber_enc *e, const struct mib_leaf *leaf)
+{
+	uint32_t oid[MIB_MAX_OID_LEN];
+	size_t n = mib_leaf_oid(leaf, oid);
+
+	ber_put_oid(e, oid, n);
 }
 
 /* --- value encoders --- */

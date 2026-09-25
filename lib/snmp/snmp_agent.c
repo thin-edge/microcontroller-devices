@@ -25,10 +25,11 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+/* Zephyr's native socket API (zsock_*): the POSIX layer is not linked, which
+ * saves its thread, signal and fd pools on every image (reduce-memory-
+ * footprint, tier 1). The struct and constant names come from
+ * CONFIG_NET_NAMESPACE_COMPAT_MODE, which Zephyr defaults on. */
 #include <zephyr/net/socket.h>
-#include <zephyr/posix/netinet/in.h>
-#include <zephyr/posix/sys/socket.h>
-#include <zephyr/posix/unistd.h>
 
 LOG_MODULE_REGISTER(app_snmp, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -64,12 +65,14 @@ struct vbname {
 	size_t len;
 };
 
-/* One planned response varbind. */
+/* One planned response varbind. The name is the leaf's OID when `leaf` is
+ * set, else the request name it echoes; the value is the leaf's unless an
+ * exception is set (endOfMibView after the last leaf names that leaf). No OID
+ * is copied: leaves derive theirs, request names live in the parsed request. */
 struct resp_vb {
-	uint32_t oid[BER_MAX_OID_LEN];
-	size_t oid_len;
-	const struct mib_leaf *leaf; /* value source, or NULL */
-	uint8_t exception;           /* if leaf==NULL: SNMP_EXC_*; 0 -> NULL */
+	const struct mib_leaf *leaf; /* name (and value) source, or NULL */
+	const struct vbname *name;   /* name to echo when leaf == NULL */
+	uint8_t exception;           /* SNMP_EXC_* value instead of the leaf's; 0 -> leaf value */
 };
 
 /* --- response encoding (backward) --- */
@@ -78,14 +81,18 @@ static void emit_varbind(struct ber_enc *e, const struct resp_vb *vb)
 {
 	size_t mark = ber_mark(e);
 
-	if (vb->leaf) {
-		mib_put_value(e, vb->leaf);
-	} else if (vb->exception) {
+	if (vb->exception) {
 		ber_put_exception(e, vb->exception);
+	} else if (vb->leaf) {
+		mib_put_value(e, vb->leaf);
 	} else {
 		ber_put_null(e);
 	}
-	ber_put_oid(e, vb->oid, vb->oid_len);
+	if (vb->leaf) {
+		mib_put_oid(e, vb->leaf);
+	} else {
+		ber_put_oid(e, vb->name->oid, vb->name->len);
+	}
 	ber_wrap(e, mark, BER_TAG_SEQUENCE);
 }
 
@@ -233,29 +240,22 @@ static void plan_get(const struct parsed_req *r, struct resp_vb *out, size_t *no
 	for (size_t i = 0; i < r->nvb; i++) {
 		struct resp_vb *vb = &out[n++];
 
-		memcpy(vb->oid, r->names[i].oid, r->names[i].len * sizeof(uint32_t));
-		vb->oid_len = r->names[i].len;
+		vb->name = &r->names[i];
 		vb->leaf = mib_get_exact(r->names[i].oid, r->names[i].len);
 		vb->exception = vb->leaf ? 0 : SNMP_EXC_NO_SUCH_INSTANCE;
 	}
 	*nout = n;
 }
 
-static void set_vb_next(struct resp_vb *vb, const uint32_t *from, size_t from_len)
+/*
+ * Plan the leaf after `from` (a request name) into `vb`: the leaf itself, or
+ * endOfMibView echoing the name.
+ */
+static void set_vb_next(struct resp_vb *vb, const struct vbname *from)
 {
-	const struct mib_leaf *leaf = mib_get_next(from, from_len);
-
-	if (leaf) {
-		memcpy(vb->oid, leaf->oid, leaf->oid_len * sizeof(uint32_t));
-		vb->oid_len = leaf->oid_len;
-		vb->leaf = leaf;
-		vb->exception = 0;
-	} else {
-		memcpy(vb->oid, from, from_len * sizeof(uint32_t));
-		vb->oid_len = from_len;
-		vb->leaf = NULL;
-		vb->exception = SNMP_EXC_END_OF_MIB_VIEW;
-	}
+	vb->name = from;
+	vb->leaf = mib_get_next(from->oid, from->len);
+	vb->exception = vb->leaf ? 0 : SNMP_EXC_END_OF_MIB_VIEW;
 }
 
 static void plan_getnext(const struct parsed_req *r, struct resp_vb *out, size_t *nout)
@@ -263,7 +263,7 @@ static void plan_getnext(const struct parsed_req *r, struct resp_vb *out, size_t
 	size_t n = 0;
 
 	for (size_t i = 0; i < r->nvb; i++) {
-		set_vb_next(&out[n++], r->names[i].oid, r->names[i].len);
+		set_vb_next(&out[n++], &r->names[i]);
 	}
 	*nout = n;
 }
@@ -286,7 +286,7 @@ static void plan_getbulk(const struct parsed_req *r, struct resp_vb *out, size_t
 
 	/* Non-repeaters: one GETNEXT each. */
 	for (int32_t i = 0; i < non_rep && n < SNMP_MAX_RESP_VB; i++) {
-		set_vb_next(&out[n++], r->names[i].oid, r->names[i].len);
+		set_vb_next(&out[n++], &r->names[i]);
 	}
 
 	/* Repeaters: per-repetition round-robin, tracking each walker's cursor. */
@@ -297,13 +297,11 @@ static void plan_getbulk(const struct parsed_req *r, struct resp_vb *out, size_t
 		return;
 	}
 
-	/* Cursor OIDs for each repeater, seeded from the request. */
-	static struct vbname cursor[SNMP_MAX_REQ_VB];
+	/* Each repeater's cursor: the last leaf it returned, or NULL while it
+	 * still starts from its request name. A walker that reached the end of
+	 * the MIB is marked done. */
+	const struct mib_leaf *cursor[SNMP_MAX_REQ_VB] = { NULL };
 	bool done_walk[SNMP_MAX_REQ_VB] = { false };
-
-	for (size_t j = 0; j < nrep; j++) {
-		cursor[j] = r->names[non_rep + j];
-	}
 
 	for (int32_t rep = 0; rep < max_rep && n < SNMP_MAX_RESP_VB; rep++) {
 		for (size_t j = 0; j < nrep && n < SNMP_MAX_RESP_VB; j++) {
@@ -313,13 +311,25 @@ static void plan_getbulk(const struct parsed_req *r, struct resp_vb *out, size_t
 
 			struct resp_vb *vb = &out[n++];
 
-			set_vb_next(vb, cursor[j].oid, cursor[j].len);
+			if (cursor[j] == NULL) {
+				set_vb_next(vb, &r->names[non_rep + j]);
+			} else {
+				/* The leaf after the cursor; at the end, endOfMibView
+				 * named after the cursor leaf, as a GETNEXT on its OID
+				 * would answer. */
+				vb->name = &r->names[non_rep + j];
+				vb->leaf = mib_next_leaf(cursor[j]);
+				if (vb->leaf == NULL) {
+					vb->leaf = cursor[j];
+					vb->exception = SNMP_EXC_END_OF_MIB_VIEW;
+				} else {
+					vb->exception = 0;
+				}
+			}
 			if (vb->exception == SNMP_EXC_END_OF_MIB_VIEW) {
 				done_walk[j] = true;
 			} else {
-				memcpy(cursor[j].oid, vb->oid,
-				       vb->oid_len * sizeof(uint32_t));
-				cursor[j].len = vb->oid_len;
+				cursor[j] = vb->leaf;
 			}
 		}
 	}
@@ -421,7 +431,7 @@ static void snmp_listener(void *a, void *b, void *c)
 			continue;
 		}
 
-		ssize_t rc = recvfrom(agent_sock, rx_buf, sizeof(rx_buf), 0,
+		ssize_t rc = zsock_recvfrom(agent_sock, rx_buf, sizeof(rx_buf), 0,
 				      (struct sockaddr *)&src, &src_len);
 
 		if (rc <= 0) {
@@ -441,7 +451,7 @@ static void snmp_listener(void *a, void *b, void *c)
 		/* Response is encoded at the tail of tx_buf. */
 		const uint8_t *resp = tx_buf + (sizeof(tx_buf) - out_len);
 
-		if (sendto(agent_sock, resp, out_len, 0,
+		if (zsock_sendto(agent_sock, resp, out_len, 0,
 			   (struct sockaddr *)&src, src_len) < 0) {
 			LOG_WRN("sendto failed (%d)", errno);
 		}
@@ -456,7 +466,7 @@ int snmp_agent_start(void)
 	/* Materialise the MIB view for the active simulation. */
 	mib_init();
 
-	agent_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	agent_sock = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (agent_sock < 0) {
 		LOG_ERR("socket() failed (%d)", errno);
 		return -errno;
@@ -468,9 +478,9 @@ int snmp_agent_start(void)
 		.sin_port = htons(CONFIG_APP_SNMP_PORT),
 	};
 
-	if (bind(agent_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+	if (zsock_bind(agent_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		LOG_ERR("bind(%d) failed (%d)", CONFIG_APP_SNMP_PORT, errno);
-		close(agent_sock);
+		zsock_close(agent_sock);
 		agent_sock = -1;
 		return -errno;
 	}

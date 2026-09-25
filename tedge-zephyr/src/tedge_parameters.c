@@ -37,7 +37,7 @@ LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
  * a set costs a pointer table whether or not it is used. This is not a
  * Kconfig option because nothing about a device's shape suggests a number
  * an integrator would want to tune. */
-#define MAX_SETS 4
+#define MAX_SETS TEDGE_PARAM_MAX_SETS
 
 /* Long enough for the longest name a set and a parameter can have between
  * them, under the settings key prefix. */
@@ -489,8 +489,12 @@ int tedge_declare_parameters(const char *set_name,
 			count, CONFIG_TEDGE_PARAMETERS_MAX - (int)n_values);
 		return -ENOSPC;
 	}
-	if (strlen(TEDGE_KEY_PARAM) + strlen(set_name) + 2 >= KEY_MAX) {
-		LOG_ERR("params: set name '%s' is too long", set_name);
+	/* The name is also the DTM identifier, the twin fragment and the
+	 * suffix of c8y_ParameterUpdate_<set>; the operation path holds 39
+	 * characters of it (tedge_op_json.c, tedge_c8y.c). */
+	if (strlen(set_name) > 39 ||
+	    strlen(TEDGE_KEY_PARAM) + strlen(set_name) + 2 >= KEY_MAX) {
+		LOG_ERR("params: set name '%s' is too long (at most 39)", set_name);
 		return -EINVAL;
 	}
 	rc = check_declaration(params, count);

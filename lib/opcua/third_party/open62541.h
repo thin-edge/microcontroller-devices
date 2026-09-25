@@ -93,10 +93,10 @@
 #define UA_MULTITHREADING 0
 
 /* Advanced Options */
-#define UA_ENABLE_STATUSCODE_DESCRIPTIONS
+/* #undef UA_ENABLE_STATUSCODE_DESCRIPTIONS */
 #define UA_ENABLE_TYPEDESCRIPTION
 /* #undef UA_ENABLE_INLINABLE_EXPORT */
-#define UA_ENABLE_NODESET_COMPILER_DESCRIPTIONS
+/* #undef UA_ENABLE_NODESET_COMPILER_DESCRIPTIONS */
 /* #undef UA_ENABLE_DETERMINISTIC_RNG */
 /* #undef UA_ENABLE_DISCOVERY */
 /* #undef UA_ENABLE_DISCOVERY_MULTICAST */
@@ -23342,7 +23342,7 @@ struct UA_DataType {
     UA_UInt32 overlayable : 1;  /* The type has the identical memory layout
                                  * in memory and on the binary stream. */
     UA_UInt32 membersSize : 8;  /* How many members does the type have? */
-    UA_DataTypeMember *members;
+    const UA_DataTypeMember *members;
 };
 
 /* Datatype arrays with custom type definitions can be added in a linked list to
@@ -23794,7 +23794,7 @@ _UA_BEGIN_DECLS
  * These descriptions are used during type handling (copying, deletion,
  * binary encoding, ...). */
 #define UA_TYPES_COUNT 223
-extern UA_EXPORT UA_DataType UA_TYPES[UA_TYPES_COUNT];
+extern UA_EXPORT const UA_DataType UA_TYPES[UA_TYPES_COUNT];
 
 /* Boolean */
 #define UA_TYPES_BOOLEAN 0

@@ -77,10 +77,10 @@ static const struct tedge_hooks hooks = {
 
 #if defined(CONFIG_TEDGE_PARAMETERS) && defined(CONFIG_TEDGE_TELEMETRY)
 /* What an operator may change on an SNMP device from the cloud. The
- * client's own "tedge" set is declared beside this one and covers how much
+ * client's own "zephyr_tedge" set is declared beside this one and covers how much
  * it logs, how often it reports its health and whether tunnels are allowed.
  */
-#define AGENT_SET "agent"
+#define AGENT_SET "zephyr_snmp_telemetry"
 
 static const struct tedge_parameter agent_params[] = {
 	TEDGE_PARAM_INT("interval_s", CONFIG_APP_TEDGE_MEASUREMENT_INTERVAL_S,

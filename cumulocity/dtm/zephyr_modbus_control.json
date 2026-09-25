@@ -1,0 +1,53 @@
+{
+  "identifier": "zephyr_modbus_control",
+  "jsonSchema": {
+    "type": "object",
+    "title": "Zephyr Modbus: pump control",
+    "properties": {
+      "running": {
+        "title": "running",
+        "order": 1,
+        "description": "Run the pump",
+        "type": "boolean",
+        "default": false
+      },
+      "mode": {
+        "title": "mode",
+        "order": 2,
+        "description": "off: stopped; auto: the pump picks its duty; manual: speed_setpoint",
+        "type": "string",
+        "enum": [
+          "off",
+          "auto",
+          "manual"
+        ],
+        "default": "auto"
+      },
+      "speed_setpoint": {
+        "title": "speed_setpoint",
+        "order": 3,
+        "description": "Pump speed in manual mode (%)",
+        "type": "integer",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 100
+      },
+      "local_writes": {
+        "title": "local_writes",
+        "order": 4,
+        "description": "Let Modbus clients change running, mode and speed_setpoint",
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "contexts": [
+    "asset",
+    "event",
+    "operation"
+  ],
+  "tags": [
+    "thin-edge.io-zephyr-modbus",
+    "tedge-zephyr"
+  ]
+}

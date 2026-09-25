@@ -40,4 +40,15 @@ int app_control_mode(void);
  */
 int app_control_set_mode(int value);
 
+/**
+ * @return whether local protocol clients (a Modbus master, an OPC-UA client)
+ *         may change the control points. The cloud can take this away, so
+ *         that the pump follows its parameters only; the frontends that
+ *         honour it refuse a write while it is false. Default: true.
+ */
+bool app_control_local_writes(void);
+
+/** Allow or refuse local protocol writes to the control points. */
+void app_control_set_local_writes(bool allowed);
+
 #endif /* APP_CONTROLS_H_ */

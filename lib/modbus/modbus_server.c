@@ -21,11 +21,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/modbus/modbus.h>
+/* Zephyr's native socket API (zsock_*): the POSIX layer is not linked, which
+ * saves its thread, signal and fd pools on every image (reduce-memory-
+ * footprint, tier 1). The struct and constant names come from
+ * CONFIG_NET_NAMESPACE_COMPAT_MODE, which Zephyr defaults on. */
 #include <zephyr/net/socket.h>
-#include <zephyr/posix/netinet/in.h>
-#include <zephyr/posix/sys/socket.h>
-#include <zephyr/posix/arpa/inet.h>
-#include <zephyr/posix/unistd.h>
 
 LOG_MODULE_REGISTER(app_modbus, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -105,8 +105,23 @@ static int holding_reg_rd(uint16_t addr, uint16_t *reg)
 	}
 }
 
+/* The cloud can take the controls away from Modbus clients (local_writes in
+ * the zephyr_modbus_control parameter set). Zephyr's server answers a
+ * refused write with exception 2 (illegal data address). */
+static bool control_write_allowed(const char *what)
+{
+	if (app_control_local_writes()) {
+		return true;
+	}
+	LOG_WRN("Modbus write to %s refused: controlled from the cloud", what);
+	return false;
+}
+
 static int holding_reg_wr(uint16_t addr, uint16_t reg)
 {
+	if (addr <= 1 && !control_write_allowed(addr == 0 ? "speed_setpoint" : "mode")) {
+		return -EACCES;
+	}
 	switch (addr) {
 	case 0: /* speed_setpoint — clamped by the shared control API */
 		app_control_set_setpoint((int32_t)reg);
@@ -132,6 +147,9 @@ static int coil_wr(uint16_t addr, bool state)
 {
 	if (addr != 0) {
 		return -ENOTSUP;
+	}
+	if (!control_write_allowed("running")) {
+		return -EACCES;
 	}
 	app_control_set_running(state);
 	return 0;
@@ -200,10 +218,10 @@ static int modbus_reply(int client, struct modbus_adu *adu)
 	uint8_t header[MODBUS_MBAP_AND_FC_LENGTH];
 
 	modbus_raw_put_header(adu, header);
-	if (send(client, header, sizeof(header), 0) < 0) {
+	if (zsock_send(client, header, sizeof(header), 0) < 0) {
 		return -errno;
 	}
-	if (adu->length && send(client, adu->data, adu->length, 0) < 0) {
+	if (adu->length && zsock_send(client, adu->data, adu->length, 0) < 0) {
 		return -errno;
 	}
 	return 0;
@@ -215,14 +233,14 @@ static int serve_once(int client)
 	uint8_t header[MODBUS_MBAP_AND_FC_LENGTH];
 	int rc;
 
-	rc = recv(client, header, sizeof(header), MSG_WAITALL);
+	rc = zsock_recv(client, header, sizeof(header), MSG_WAITALL);
 	if (rc <= 0) {
 		return rc == 0 ? -ENOTCONN : -errno;
 	}
 
 	modbus_raw_get_header(&tmp_adu, header);
 	if (tmp_adu.length > 0) {
-		rc = recv(client, tmp_adu.data, tmp_adu.length, MSG_WAITALL);
+		rc = zsock_recv(client, tmp_adu.data, tmp_adu.length, MSG_WAITALL);
 		if (rc <= 0) {
 			return rc == 0 ? -ENOTCONN : -errno;
 		}
@@ -266,7 +284,7 @@ static void modbus_listener(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 
 	while (true) {
-		int serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		int serv = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
 		if (serv < 0) {
 			LOG_ERR("socket() failed (%d) — retry", errno);
@@ -280,10 +298,10 @@ static void modbus_listener(void *a, void *b, void *c)
 			.sin_port = htons(CONFIG_APP_MODBUS_PORT),
 		};
 
-		if (bind(serv, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
-		    listen(serv, 1) < 0) {
+		if (zsock_bind(serv, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
+		    zsock_listen(serv, 1) < 0) {
 			LOG_ERR("bind/listen failed (%d) — retry", errno);
-			close(serv);
+			zsock_close(serv);
 			k_sleep(K_SECONDS(1));
 			continue;
 		}
@@ -299,7 +317,7 @@ static void modbus_listener(void *a, void *b, void *c)
 				continue; /* no connection this interval */
 			}
 
-			int client = accept(serv, (struct sockaddr *)&cli, &cli_len);
+			int client = zsock_accept(serv, (struct sockaddr *)&cli, &cli_len);
 
 			if (client < 0) {
 				/* Transient (e.g. ENOMEM under pressure): retry,
@@ -335,7 +353,7 @@ static void modbus_listener(void *a, void *b, void *c)
 				last_rx = k_uptime_get();
 			}
 			LOG_INF("Modbus client disconnected");
-			close(client);
+			zsock_close(client);
 		}
 	}
 }

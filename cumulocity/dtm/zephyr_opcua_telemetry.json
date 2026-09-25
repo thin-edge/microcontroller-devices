@@ -1,8 +1,8 @@
 {
-  "identifier": "pump",
+  "identifier": "zephyr_opcua_telemetry",
   "jsonSchema": {
     "type": "object",
-    "title": "pump",
+    "title": "Zephyr OPC-UA: telemetry",
     "properties": {
       "interval_s": {
         "title": "interval_s",
@@ -19,14 +19,6 @@
         "description": "Publish measurements to the cloud",
         "type": "boolean",
         "default": true
-      },
-      "measurement_type": {
-        "title": "measurement_type",
-        "order": 3,
-        "description": "What the cloud files these measurements under",
-        "type": "string",
-        "maxLength": 31,
-        "default": "pump"
       }
     }
   },
@@ -34,5 +26,9 @@
     "asset",
     "event",
     "operation"
+  ],
+  "tags": [
+    "thin-edge.io-zephyr-opcua",
+    "tedge-zephyr"
   ]
 }

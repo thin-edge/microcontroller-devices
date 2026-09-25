@@ -53,7 +53,11 @@ trap 'rm -rf "${tmp}"' EXIT
 
 # Generate the amalgamation (read-only base, POSIX architecture, single-threaded,
 # no methods/discovery/history). Namespace-zero level and subscriptions depend on
-# the selected profile (see above).
+# the selected profile (see above). Status-code description strings and the
+# nodeset's description attributes are left out: they only change log text and
+# the optional Description attribute of namespace-zero nodes, and status codes
+# stay numeric on the wire (reduce-memory-footprint, tier 3). Type descriptions
+# (UA_ENABLE_TYPEDESCRIPTION) stay: type names appear in diagnostics.
 cmake -S "${src}" -B "${tmp}" \
   -DUA_ENABLE_AMALGAMATION=ON \
   -DUA_ARCHITECTURE=posix \
@@ -66,6 +70,8 @@ cmake -S "${src}" -B "${tmp}" \
   -DUA_MULTITHREADING=0 \
   -DUA_LOGLEVEL="${loglevel}" \
   -DUA_ENABLE_NODEMANAGEMENT=ON \
+  -DUA_ENABLE_STATUSCODE_DESCRIPTIONS=OFF \
+  -DUA_ENABLE_NODESET_COMPILER_DESCRIPTIONS=OFF \
   -DCMAKE_BUILD_TYPE=MinSizeRel >/dev/null
 cmake --build "${tmp}" --target open62541-amalgamation >/dev/null 2>&1 || cmake --build "${tmp}" >/dev/null
 
@@ -156,6 +162,66 @@ sub("        /* Temporary error -- retry */\n        if(UA_ERRNO == UA_INTERRUPT
 
 open(p, "w").write(s)
 print("Applied Zephyr patches to open62541.c")
+PY
+
+# --- Flash-resident type tables (reduce-memory-footprint, D2) ---
+# The generated data-type descriptions (UA_TYPES, UA_TRANSPORT and every
+# <Type>_members array) are never written at runtime, but the generator
+# emits them as writable, so they cost ~21 KB of RAM (.data) on every board.
+# Declare them const so the linker keeps them in flash. The struct field that
+# points at the member arrays has to be const too. The counts are checked so
+# an upstream change that stops the patch applying fails here, not by
+# silently putting the tables back in RAM.
+python3 - "${out}/open62541.c" "${out}/open62541.h" <<'PY'
+import re
+import sys
+c_path, h_path = sys.argv[1], sys.argv[2]
+c = open(c_path).read()
+h = open(h_path).read()
+
+def sub_all(text, pattern, repl, expect_min, what):
+    text, n = re.subn(pattern, repl, text, flags=re.M)
+    if n < expect_min:
+        sys.exit(f"const patch: {what}: expected at least {expect_min} "
+                 f"replacement(s), made {n}")
+    print(f"const patch: {what}: {n}")
+    return text
+
+# 1) Every generated member array: "static UA_DataTypeMember X_members[N] = {"
+members = len(re.findall(r"^static UA_DataTypeMember \w+_members\[\d+\] = \{", c, re.M))
+c = sub_all(c, r"^static UA_DataTypeMember (\w+_members\[\d+\] = \{)",
+            r"static const UA_DataTypeMember \1", 100, "member arrays")
+if re.search(r"^static UA_DataTypeMember \w+_members\[", c, re.M):
+    sys.exit("const patch: a member array definition was left non-const")
+
+# 2) The type tables themselves, definition (.c) and declaration (.h/.c).
+c = sub_all(c, r"^UA_DataType (UA_TYPES\[UA_TYPES_COUNT\] = \{)",
+            r"const UA_DataType \1", 1, "UA_TYPES definition")
+c = sub_all(c, r"^UA_DataType (UA_TRANSPORT\[UA_TRANSPORT_COUNT\] = \{)",
+            r"const UA_DataType \1", 1, "UA_TRANSPORT definition")
+h = sub_all(h, r"^extern UA_EXPORT UA_DataType (UA_TYPES\[UA_TYPES_COUNT\];)",
+            r"extern UA_EXPORT const UA_DataType \1", 1, "UA_TYPES declaration")
+for text_name in ("c", "h"):
+    text = c if text_name == "c" else h
+    text, n = re.subn(r"^extern UA_EXPORT UA_DataType (UA_TRANSPORT\[UA_TRANSPORT_COUNT\];)",
+                      r"extern UA_EXPORT const UA_DataType \1", text, flags=re.M)
+    if text_name == "c":
+        c = text
+    else:
+        h = text
+    if n:
+        print(f"const patch: UA_TRANSPORT declaration ({text_name}): {n}")
+
+# 3) struct UA_DataType points at a member array: make the pointee const.
+h = sub_all(h, r"^(    )UA_DataTypeMember \*members;", r"\1const UA_DataTypeMember *members;",
+            1, "UA_DataType.members field")
+
+if re.search(r"^(static )?UA_DataType(Member)? \w+\[", c, re.M):
+    sys.exit("const patch: a non-const type table definition remains")
+
+open(c_path, "w").write(c)
+open(h_path, "w").write(h)
+print(f"Type tables are const ({members} member arrays, UA_TYPES, UA_TRANSPORT)")
 PY
 
 echo "Done. Vendored amalgamation refreshed in ${out}"
