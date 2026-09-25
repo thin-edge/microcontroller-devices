@@ -40,12 +40,12 @@ last release. It SHALL NOT change `tedge-zephyr/VERSION`.
 ### Requirement: Merging the release PR releases the firmware
 
 When the release PR is merged, the workflow SHALL create the tag `vX.Y.Z`
-and a draft GitHub Release carrying the changelog entry. It SHALL then run
-the firmware build for that tag in the same workflow run. The draft SHALL be
-published, with the images, `c8y-firmware.json`, `SHA256SUMS` and the
-firmware notes after the changelog, only after every build has succeeded.
-This SHALL NOT require any secret other than `GITHUB_TOKEN` and the existing
-`MCUBOOT_SIGNING_KEY`.
+and a draft GitHub Release carrying the changelog entry. The tag SHALL be
+created with a token whose events start workflows (`COMMUNITY_ACTIONS_PAT`),
+so it starts the firmware build exactly as a hand-pushed tag does. The draft
+SHALL be published, with the images, `c8y-firmware.json`, `SHA256SUMS` and
+the firmware notes after the changelog, only after every build has
+succeeded.
 
 #### Scenario: Release PR merged
 
@@ -58,6 +58,12 @@ This SHALL NOT require any secret other than `GITHUB_TOKEN` and the existing
 - **WHEN** the release PR is merged and one board's build fails
 - **THEN** the release stays a draft with no assets, and the run names the
   failing job
+
+#### Scenario: Release PR is checked
+
+- **WHEN** release-please opens or updates the release PR
+- **THEN** the PR's checks (`pr-title`, and the PR build, since VERSION files
+  change) run on it
 
 #### Scenario: Tag names the version
 

@@ -2,10 +2,14 @@
 #
 # Keep a release PR open with the next version (every apps/*/VERSION) and the
 # changelog, worked out from the Conventional Commits on main. Merging it tags
-# the merge commit and leaves a draft release carrying the changelog; the
-# firmware job then builds that tag with release.yml, which attaches the
-# images and publishes the draft only if every build succeeded. See
-# release-please-config.json and README.md, "Releasing".
+# the merge commit and leaves a draft release carrying the changelog; the tag
+# starts release.yml, which attaches the images and publishes the draft only
+# if every build succeeded. See release-please-config.json and README.md,
+# "Releasing".
+#
+# It runs as COMMUNITY_ACTIONS_PAT, not GITHUB_TOKEN: a tag or PR created with
+# GITHUB_TOKEN starts no workflow, so the tag would not build and the release
+# PR would get no checks.
 name: release-please
 
 on:
@@ -19,26 +23,10 @@ jobs:
   release-please:
     name: Release PR and tag
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v5
-        id: release
         with:
+          token: ${{ secrets.COMMUNITY_ACTIONS_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  firmware:
-    name: Firmware
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release.yml
-    with:
-      tag: ${{ needs.release-please.outputs.tag_name }}
-    secrets: inherit

@@ -17,13 +17,13 @@ survive this change.
 The commit history already follows Conventional Commits. `tedge-zephyr/VERSION`
 is the module's own version and is not part of the release version.
 
-Two constraints of GitHub Actions shape the design:
+One constraint of GitHub Actions shapes the design:
 
 - Anything the default `GITHUB_TOKEN` does (pushing a tag, opening a PR,
-  publishing a release) does **not** start other workflows. So a tag that
-  release-please creates will never trigger `release.yml`'s `push: tags`.
-- A PR opened with `GITHUB_TOKEN` gets no `pull_request` runs, so the
-  release PR runs no checks of its own.
+  publishing a release) does **not** start other workflows. A tag that
+  release-please created with it would never trigger `release.yml`'s
+  `push: tags`, and its release PR would get no checks. The organisation
+  provides `COMMUNITY_ACTIONS_PAT`, which does start workflows.
 
 ## Goals / Non-Goals
 
@@ -35,7 +35,8 @@ Two constraints of GitHub Actions shape the design:
 - Nothing is published unless every build succeeds, as today.
 - The manual path (`bump.sh` + tag push) still works, for pre-releases and
   for recovery.
-- No long-lived secrets beyond the existing `MCUBOOT_SIGNING_KEY`.
+- No new secrets: `COMMUNITY_ACTIONS_PAT` is an existing organisation
+  secret that the repository can already see.
 
 **Non-Goals:**
 - A separate release-please package for `tedge-zephyr`.
@@ -95,28 +96,21 @@ know the defaults.
 - **Alternative**: `bump-minor-pre-major: true` (the common choice for 0.x).
   Rejected because it contradicts the documented rule.
 
-### 3. The release-please workflow calls the build instead of relying on the tag event
+### 3. release-please runs as `COMMUNITY_ACTIONS_PAT`, and the tag starts the build
 
 `.github/workflows/release-please.yml` runs on `push: main` and uses
-`googleapis/release-please-action@v5` with `contents: write` and
-`pull-requests: write`. When the action outputs `release_created`, a second
-job calls `release.yml` through `workflow_call` with `tag: <tag_name>`.
+`googleapis/release-please-action@v5` with
+`token: ${{ secrets.COMMUNITY_ACTIONS_PAT }}`. Because the tag is created
+with a PAT, it triggers `release.yml`'s existing `push: tags`, exactly like a
+tag pushed by hand. So the build needs no new trigger and no inputs, and
+both paths run the same code. Because the release PR is opened with the
+PAT, it also gets the `pr-title` check and the PR build.
 
-- **Why**: the tag release-please creates with `GITHUB_TOKEN` does not
-  trigger `push: tags`. Calling the workflow directly avoids the need for a
-  PAT or a GitHub App token. It also puts the release and its build under one
-  run, so a failure is easy to find.
-- **Alternative**: a GitHub App token for release-please, which would let the
-  tag push start the build. That adds a secret and an app to manage. It
-  would also start PR checks on the release PR, which is a plus, but the PR
-  only touches VERSION markers and `CHANGELOG.md`.
-
-`release.yml` gets `on: workflow_call: inputs: tag`. It computes a `ref`
-(`inputs.tag` when called, otherwise `github.ref_name`) and uses it
-everywhere it now uses `github.ref_name`: `check-version.sh`,
-`actions/checkout` `ref:`, the `if:` on the release job, and the notes. The
-existing `push: tags`, `pull_request` and `workflow_dispatch` triggers stay.
-`concurrency` keys on that `ref`.
+- **Alternative (first draft of this design)**: keep `GITHUB_TOKEN` and have
+  release-please.yml call `release.yml` through `workflow_call` with the
+  tag. That needs no secret, but it means a `tag` input threaded through every
+  ref in `release.yml`, and the release PR gets no checks. With a PAT, adding
+  the call would build every image twice.
 
 ### 4. Draft first, publish only after every build
 
@@ -139,8 +133,7 @@ draft, and the tag, behind.
   every build succeeded" guarantee, and watchers would get a release with no
   assets.
 - **Why `force-tag-creation`**: a draft release has no tag until it is
-  published. The build needs the tag to exist so it can check out and verify
-  the version. Action v5.0.0 bundles release-please 17.6.0, which creates the
+  published. The tag has to exist, because it is what starts the build. Action v5.0.0 bundles release-please 17.6.0, which creates the
   tag through the API (`git.createRef` on the release commit) before it
   creates the draft.
 
@@ -173,11 +166,14 @@ title that doesn't parse would silently leave the PR out of the release.
 
 ## Risks / Trade-offs
 
-- [The release PR has no CI because `GITHUB_TOKEN` PRs don't trigger
-  workflows] → The PR changes only `CHANGELOG.md`, `version.txt`, the
-  manifest and the VERSION numbers, and every firmware change was built on
-  its own PR. The called build runs `check-version.sh`, so a bad VERSION
-  update fails before anything is published.
+- [The tag starts the build before release-please has created the draft]
+  → release-please creates the draft straight after the tag, and the publish
+  job runs only after every board has built, minutes later. If the draft
+  were somehow missing, the job would create the release itself, without the
+  changelog.
+- [`COMMUNITY_ACTIONS_PAT` expires or loses access] → release-please fails
+  on the next push to `main`, and nothing is released. Renew the secret. The
+  manual path (`bump.sh` + tag) does not use it.
 - [A failed build leaves a tag and a draft behind] → Fix it on main and
   re-run the failed jobs. Or delete the draft and tag and let release-please
   cut the next patch. README documents this.
@@ -198,12 +194,10 @@ title that doesn't parse would silently leave the PR out of the release.
 1. Land config, manifest (`0.6.0`), markers, workflow changes and README in
    one PR. Set `bootstrap-sha` to the v0.6.0 release commit (`36d3d80`), so
    the first changelog covers only commits after it.
-2. Turn on *Settings → Actions → General → Allow GitHub Actions to create and
-   approve pull requests*.
-3. After merge, release-please opens `chore(main): release 0.6.1` or
+2. After merge, release-please opens `chore(main): release 0.6.1` or
    `0.7.0`, depending on what has landed. Merge it when ready and watch the
    called build publish the draft.
-4. Rollback: delete `release-please.yml`, and the manual path is exactly as
+3. Rollback: delete `release-please.yml`, and the manual path is exactly as
    it is today. The markers are harmless and can stay.
 
 ## Open Questions

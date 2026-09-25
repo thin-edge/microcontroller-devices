@@ -1485,9 +1485,12 @@ keeps one **release PR** open (`chore(main): release X.Y.Z`). It bumps every
 `apps/*/VERSION` and `.release-please-manifest.json`, and adds the release
 to [`CHANGELOG.md`](CHANGELOG.md). **Merging it is the release.** release-please
 tags the merge commit `vX.Y.Z` and creates a *draft* GitHub Release carrying
-the changelog. The same run then calls the [release workflow](.github/workflows/release.yml)
-for that tag, which builds every image and publishes the draft only if every
-build succeeded. The firmware notes (images, flashing, signing) are added
+the changelog. The tag starts the [release workflow](.github/workflows/release.yml),
+which builds every image and publishes the draft only if every build
+succeeded. release-please runs as the organisation secret
+`COMMUNITY_ACTIONS_PAT`: a tag or PR created with the default
+`GITHUB_TOKEN` would start no workflow, so the tag would not build and the
+release PR would get no checks. The firmware notes (images, flashing, signing) are added
 under the changelog.
 
 If a build fails after the merge, the release stays a draft and nothing is

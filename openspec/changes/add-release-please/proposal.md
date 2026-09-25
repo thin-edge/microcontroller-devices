@@ -24,8 +24,9 @@ by hand: every step, and the choice of version, happened manually.
   format is not a format release-please knows. `bump.sh` keeps the markers
   when it rewrites the files.
 - Change how the firmware release is published. Merging the release PR
-  creates a **draft** GitHub Release and its tag. The existing build workflow
-  is then called as a reusable workflow for that tag. It uploads the images,
+  creates a **draft** GitHub Release and its tag. release-please runs as the
+  organisation secret `COMMUNITY_ACTIONS_PAT`, so the tag starts the
+  existing build workflow like a hand-pushed tag. That workflow uploads the images,
   `c8y-firmware.json` and `SHA256SUMS`, and adds the firmware notes from
   `notes.py` under release-please's changelog. It publishes the draft only if
   every build succeeded.
@@ -63,17 +64,16 @@ by hand: every step, and the choice of version, happened manually.
 - New files: `.github/workflows/release-please.yml`,
   `release-please-config.json`, `.release-please-manifest.json` and
   `CHANGELOG.md` (created by the first release PR).
-- Changed files: `.github/workflows/release.yml` (gets a `workflow_call`
-  trigger with a `tag` input, and publishes an existing draft instead of
-  always creating a release), `apps/*/VERSION` (markers only),
+- Changed files: `.github/workflows/release.yml` (publishes an existing
+  draft instead of always creating a release), `apps/*/VERSION` (markers only),
   `scripts/release/bump.sh`, `scripts/release/check-version.sh` (must still
   parse lines that carry a trailing marker) and README "Releasing".
 - New workflow `.github/workflows/pr-title.yml`.
 - Repository settings: squash merges only, with the PR title and description
   as the default message.
-- Repository setting: *Allow GitHub Actions to create and approve pull
-  requests* must be on. No PAT or GitHub App is needed, because the build is
-  called directly and not started by the tag push.
+- Secret: the existing organisation secret `COMMUNITY_ACTIONS_PAT`, which
+  the repository can already see. Tags and PRs created with it start
+  workflows, so the tag builds and the release PR gets checks.
 - Firmware: nothing changes on the device. Zephyr's `version.cmake` reads
   `VERSION_MAJOR = <digits>` and ignores the trailing `#` marker. The images'
   MCUboot header and `APP_VERSION_STRING` must be checked to be unchanged.

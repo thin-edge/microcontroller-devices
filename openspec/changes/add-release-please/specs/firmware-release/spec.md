@@ -4,8 +4,8 @@
 
 The workflow SHALL build every manifest entry and publish a GitHub Release
 with all assets attached, for a version tag of the form `vMAJOR.MINOR.PATCH`
-or `vMAJOR.MINOR.PATCH-<pre>`. The tag can be pushed, or created by merging
-the release PR, in which case the workflow is called with the tag as input.
+or `vMAJOR.MINOR.PATCH-<pre>`. The tag can be pushed by hand, or created by
+merging the release PR; both start the workflow the same way.
 A pre-release tag SHALL publish a pre-release. The release SHALL NOT be
 published unless every build succeeded. If a draft release for the tag
 already exists, the workflow SHALL attach the assets to it, add the firmware
@@ -32,7 +32,7 @@ A tag of any other form SHALL fail without building.
 
 #### Scenario: Draft from the release PR
 
-- **WHEN** the workflow is called for `v0.7.0` and a draft release `v0.7.0`
+- **WHEN** the workflow runs for tag `v0.7.0` and a draft release `v0.7.0`
   exists
 - **THEN** after every build succeeds the draft gets the assets and the
   firmware notes after its changelog, and is published; no second release is

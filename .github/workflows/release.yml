@@ -3,21 +3,15 @@
 # Build the images in release/devices.yml. For a vX.Y.Z tag, build every one and
 # publish them as a GitHub Release; on a pull request build the `pr: true`
 # subset, so a board that stops building is caught before a tag; a manual run
-# builds everything unless told otherwise. The tag is either pushed, or
-# created by merging release-please's release PR, in which case
-# release-please.yml calls this workflow with it (a tag created with
-# GITHUB_TOKEN starts no workflow of its own). See README.md, "Releasing".
+# builds everything unless told otherwise. The tag is pushed by hand or
+# created by merging release-please's release PR (release-please.yml); in the
+# latter case a draft release already carries the changelog. See README.md,
+# "Releasing".
 name: release
 
 on:
   push:
     tags: ["v*"]
-  workflow_call:
-    inputs:
-      tag:
-        description: "The release tag to build and publish"
-        type: string
-        required: true
   workflow_dispatch:
     inputs:
       images:
@@ -41,8 +35,8 @@ on:
       - ".release-please-manifest.json"
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref }}
-  cancel-in-progress: ${{ !(inputs.tag || startsWith(github.ref, 'refs/tags/')) }}
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -52,9 +46,6 @@ defaults:
     shell: bash
 
 env:
-  # The ref being built: the tag release-please.yml passes in, otherwise the
-  # ref that started this run.
-  RELEASE_REF: ${{ inputs.tag || github.ref_name }}
   # Pinned so a release does not change toolchain under it. The SDK, its
   # toolchains and ccache come through zephyrproject-rtos/action-zephyr-setup,
   # which caches them; the Zephyr workspace revisions are pinned by west.yml.
@@ -70,8 +61,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -80,7 +69,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/release/tests
       - name: Check the version against the ref
         id: version
-        run: scripts/release/check-version.sh "$RELEASE_REF" >> "$GITHUB_OUTPUT"
+        run: scripts/release/check-version.sh "${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
       - name: Build matrix from release/devices.yml
         id: matrix
         run: |
@@ -106,7 +95,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
           path: app
       # Ubuntu 24.04's own Python refuses pip installs (PEP 668); the setup
       # action and the packaging step both pip-install.
@@ -144,7 +132,7 @@ jobs:
           pip3 install esptool -r bootloader/mcuboot/scripts/requirements.txt
       - name: Set the version for this ref
         working-directory: app
-        run: scripts/release/check-version.sh --apply "$RELEASE_REF"
+        run: scripts/release/check-version.sh --apply "${{ github.ref_name }}"
       - name: Signing key
         env:
           MCUBOOT_SIGNING_KEY: ${{ secrets.MCUBOOT_SIGNING_KEY }}
@@ -180,15 +168,13 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v') || startsWith(inputs.tag, 'v')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [matrix, build]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -201,13 +187,14 @@ jobs:
       - name: c8y-firmware.json, SHA256SUMS and notes
         run: |
           python3 scripts/release/c8y-manifest.py dist > dist/c8y-firmware.json
-          python3 scripts/release/notes.py dist --tag "$RELEASE_REF" \
+          python3 scripts/release/notes.py dist --tag "${{ github.ref_name }}" \
             --repo "${{ github.repository }}" > notes.md
           cd dist
           sha256sum -- *.factory.bin *.app.bin *.zip c8y-firmware.json > SHA256SUMS
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
           pre=""
           case "$RELEASE_REF" in *-*) pre=--prerelease ;; esac
