@@ -108,7 +108,8 @@ description = "0=off, 1=auto, 2=manual"
 datatype    = "uint16"
 access      = "read_write"
 address     = { table = "holding", address = 1, count = 1 }
-meta        = { parameter = { min = 0, max = 2, group = ["control"] } }
+map         = { cases = [{ eq = 0, to = "off" }, { eq = 1, to = "auto" }, { eq = 2, to = "manual" }], default = "unknown" }
+meta        = { parameter = { group = ["control"] } }
 
 [[point]]
 id          = "running"
