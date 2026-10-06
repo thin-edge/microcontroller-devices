@@ -67,7 +67,10 @@ configure. The client SHALL refuse a command that tries to chain or redirect
 into another command, whatever the allow-list says. A command SHALL NOT run
 on the client's own thread, and only one command SHALL run at a time.
 The reported output of a command, whether it succeeded or failed, SHALL keep
-its line breaks, and SHALL NOT contain carriage returns. A `help` (or `?`)
+its line breaks, and SHALL NOT contain carriage returns, terminal escape
+sequences (such as the colour codes the Zephyr shell puts around an error)
+or any other control character except tab. A failed command SHALL always
+leave its operation FAILED with that output as the reason, never EXECUTING. A `help` (or `?`)
 command SHALL be answered without running anything, with a header line
 followed by each allow-listed command on a line of its own.
 
@@ -105,6 +108,13 @@ followed by each allow-listed command on a line of its own.
 - **WHEN** a permitted command prints several lines ending in `\r\n`
 - **THEN** the reported result has the same lines separated by `\n`, with
   no carriage returns and no lines joined by spaces
+
+#### Scenario: A command that fails with a shell error
+
+- **WHEN** a permitted command fails and prints its error with
+  `shell_error()`, which colours it with escape sequences
+- **THEN** the operation fails with the error text as its reason, without the
+  escape sequences, and Cumulocity accepts the status
 
 ### Requirement: Diagnostics never block the connection
 

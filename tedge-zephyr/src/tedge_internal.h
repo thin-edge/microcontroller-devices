@@ -85,7 +85,9 @@ int tedge_sr_field(const char *line, int index, char *out, size_t len);
 int tedge_sr_template(const char *line);
 /** Quote @p in for use as a SmartREST field (adds the surrounding quotes). */
 int tedge_sr_quote(const char *in, char *out, size_t len);
-/** As tedge_sr_quote(), but keeps line breaks ("\n") and drops "\r". */
+/** As tedge_sr_quote(), but keeps line breaks ("\n") and drops "\r". Both
+ *  drop every other control character except tab: Cumulocity refuses a
+ *  message that carries one. */
 int tedge_sr_quote_lines(const char *in, char *out, size_t len);
 
 /* --- Helpers (unit-tested on native_sim) --------------------------------- */
@@ -286,6 +288,12 @@ bool tedge_shell_is_help(const char *cmd);
  * @return the number of commands, or -ENOSPC when it had to be cut short.
  */
 int tedge_shell_help_text(const char *list, char *buf, size_t len);
+/**
+ * Strip what the shell adds for a terminal (colour escape sequences, other
+ * control characters) from captured output, in place; line breaks and tabs
+ * stay. @return the new length.
+ */
+size_t tedge_shell_clean_output(char *s);
 
 /* --- Firmware update (tedge_firmware.c) ---------------------------------- */
 

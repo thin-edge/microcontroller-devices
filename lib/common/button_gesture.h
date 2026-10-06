@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * sw0 gesture classifier for BLE provisioning: recognizes the provisioning
- * pattern (exactly N short presses within a window, then a quiet gap) and the
- * erase hold (one long continuous press). Pure logic with no Zephyr
+ * sw0 gesture classifier: recognizes the provisioning pattern (exactly N
+ * short presses within a window, then a quiet gap), the identify pattern (the
+ * same with a different N) and the erase hold (one long continuous press).
+ * Any of the three can be switched off by setting its count or time to 0. Pure logic with no Zephyr
  * dependency, fed with debounced press/release edges and periodic ticks, so it
  * can be tested on the host (see tests/button_gesture/).
  */
@@ -17,14 +18,16 @@ enum gesture {
 	GESTURE_PROVISION,   /**< the N-press pattern completed */
 	GESTURE_ERASE_ARMED, /**< a hold has passed the erase threshold */
 	GESTURE_ERASE,       /**< an armed erase hold was released */
+	GESTURE_IDENTIFY,    /**< the identify press pattern completed */
 };
 
 struct gesture_cfg {
-	uint32_t press_count;  /**< presses in the pattern */
+	uint32_t press_count;  /**< presses in the provisioning pattern; 0 = off */
+	uint32_t identify_count; /**< presses in the identify pattern; 0 = off */
 	uint32_t window_ms;    /**< first press to last release */
 	uint32_t short_max_ms; /**< a press at least this long is not "short" */
 	uint32_t quiet_ms;     /**< no press for this long ends a sequence */
-	uint32_t erase_ms;     /**< hold this long to arm the erase */
+	uint32_t erase_ms;     /**< hold this long to arm the erase; 0 = off */
 };
 
 struct gesture_state {

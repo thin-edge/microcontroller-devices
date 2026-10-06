@@ -48,6 +48,8 @@ parameters, certificate renewal.
 | Parameters | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Certificate renewal | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Shell command | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Identify from the cloud (`tedge identify`, needs the shell command) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Identify from the button (2 presses → `zephyr_Identify` event) | ✅ | ✅ | ✅ | ✅ (IO0 on the CAM-MB base) | ✅ |
 | Log upload | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Crash dumps | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Remote access** | ✅ | ✅ | ✅ | ❌ | ❌ |
@@ -238,8 +240,8 @@ Telemetry was published throughout, but the test tenant had no mapping for
 
 `lib/common/tedge-boards/extras/shell-diagnostics.conf` adds the cloud shell
 command (allow-list: `kernel uptime`, `kernel version`, `net iface`,
-`net conn`, `wifi status`, `tedge params list`, `tedge diag`; `help` lists
-them, one per line). It costs about 16 KB of internal RAM.
+`net conn`, `wifi status`, `tedge params list`, `tedge diag`, and since
+2026-10-06 `tedge identify`; `help` lists them, one per line). It costs about 16 KB of internal RAM.
 
 | Board | Build | RAM | Result |
 |---|---|---|---|
@@ -260,6 +262,70 @@ follows the first release.
 Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
 tunnel of its own, which holds the device's single session for a moment; an
 SSH connection straight after it can find the slot busy.
+
+### Identify measured (2026-10-06)
+
+`device-identify` adds `tedge identify [seconds]` (cloud shell) and the sw0
+double press (`zephyr_Identify` event) to every `tedge-*` image, and moves the
+sw0 watcher out of the provisioning hand-off. Measured against `main` built
+the same way, it costs **+463 B image / +32 B dram0** on the S3-DevKitC
+modbus `tedge-full` + shell build and **+336 B / +24 B** on the WROOM agent
+`tedge-ota` build. The table below is the new `release/size-baseline.json`
+against the one before it, which also takes in #10 (shell results keep their
+lines) and the 0.7.x version strings; the standalone images, which only get
+the button refactor, moved by under 35 B.
+
+Runs (eu-latest, all app-only flashes keeping Wi-Fi and identity):
+
+| Board | Build | `tedge identify` (c8y_Command) | sw0 double press |
+|---|---|---|---|
+| S3-DevKitC | modbus full + shell | ✅ default 30 s, `10`, `3600` → 300 s; `0`/`soon` fail with the reason | ✅ event in ~2 s, LED ack |
+| QT Py S3 | modbus full + shell | ✅ same cases | ✅ event, LED ack |
+| ESP32-C6 | modbus full (no shell) | not advertised; sent anyway it fails "no handler (511)" | ✅ event, LED ack |
+| ESP32-CAM | snmp ota (no shell) | not advertised | ✅ event (IO0 on the CAM-MB base), GPIO33 LED ack |
+
+The shell-diagnostics builds above still pass their size gate with the
+subcommand on the allow-list (S3/QT Py modbus and agent full: +465 to
++480 B, +176 B dram0, 56–65 KB arena left).
+
+| Build | Δ image | Δ RAM (fullest region) | Arena after |
+|---|---|---|---|
+| `modbus-server-standalone-esp32-devkitc` | +32 | +8 (dram0_0_seg) | 99,440 |
+| `modbus-server-standalone-esp32c6-devkitc` | +16 | +8 (sram0_0_seg) | 303,648 |
+| `modbus-server-standalone-esp32s3-devkitc` | +17 | +8 (dram0_0_seg) | 202,980 |
+| `modbus-server-standalone-qtpy-esp32s3` | +15 | +8 (dram0_0_seg) | 205,580 |
+| `modbus-server-tedge-full-esp32c6-devkitc` | +225 | +176 (sram0_0_seg) | 76,896 |
+| `modbus-server-tedge-full-esp32s3-devkitc` | +480 | +176 (dram0_0_seg) | 56,076 |
+| `modbus-server-tedge-full-qtpy-esp32s3` | +465 | +176 (dram0_0_seg) | 59,684 |
+| `modbus-server-tedge-ota-esp32-cam` | +401 | +168 (dram0_0_seg) | 51,560 |
+| `modbus-server-tedge-ota-esp32-devkitc` | +433 | +24 (dram0_0_seg) | 15,096 |
+| `modbus-server-tedge-ota-esp32c6-devkitc` | +209 | +32 (sram0_0_seg) | 110,656 |
+| `modbus-server-tedge-ota-esp32s3-devkitc` | +209 | +24 (dram0_0_seg) | 105,260 |
+| `modbus-server-tedge-ota-qtpy-esp32s3` | +208 | +24 (dram0_0_seg) | 108,868 |
+| `opcua-server-standalone-esp32-devkitc` | +34 | +8 (dram0_0_seg) | 95,104 |
+| `opcua-server-standalone-esp32c6-devkitc` | +15 | +8 (sram0_0_seg) | 279,584 |
+| `opcua-server-standalone-esp32s3-devkitc` | +16 | +8 (dram0_0_seg) | 179,620 |
+| `opcua-server-standalone-qtpy-esp32s3` | +17 | +8 (dram0_0_seg) | 182,220 |
+| `opcua-server-tedge-ota-qtpy-esp32s3` | +207 | +24 (dram0_0_seg) | 91,988 |
+| `snmp-agent-standalone-esp32-devkitc` | +31 | +8 (dram0_0_seg) | 90,992 |
+| `snmp-agent-standalone-esp32c6-devkitc` | +16 | +8 (sram0_0_seg) | 297,088 |
+| `snmp-agent-standalone-esp32s3-devkitc` | +16 | +8 (dram0_0_seg) | 196,388 |
+| `snmp-agent-standalone-qtpy-esp32s3` | +0 | +8 (dram0_0_seg) | 198,988 |
+| `snmp-agent-tedge-full-esp32c6-devkitc` | +225 | +176 (sram0_0_seg) | 64,608 |
+| `snmp-agent-tedge-full-esp32s3-devkitc` | +208 | +168 (dram0_0_seg) | 59,148 |
+| `snmp-agent-tedge-full-qtpy-esp32s3` | +209 | +168 (dram0_0_seg) | 62,756 |
+| `snmp-agent-tedge-ota-esp32-cam` | +416 | +168 (dram0_0_seg) | 43,520 |
+| `snmp-agent-tedge-ota-esp32c6-devkitc` | +224 | +32 (sram0_0_seg) | 98,352 |
+| `snmp-agent-tedge-ota-esp32s3-devkitc` | +208 | +24 (dram0_0_seg) | 93,092 |
+| `snmp-agent-tedge-ota-qtpy-esp32s3` | +208 | +32 (dram0_0_seg) | 96,692 |
+| `tedge-agent-tedge-full-esp32c6-devkitc` | +223 | +176 (sram0_0_seg) | 81,568 |
+| `tedge-agent-tedge-full-esp32s3-devkitc` | +480 | +176 (dram0_0_seg) | 61,244 |
+| `tedge-agent-tedge-full-qtpy-esp32s3` | +480 | +176 (dram0_0_seg) | 64,852 |
+| `tedge-agent-tedge-ota-esp32-cam` | +416 | +168 (dram0_0_seg) | 53,064 |
+| `tedge-agent-tedge-ota-esp32-devkitc` | +432 | +168 (dram0_0_seg) | 16,600 |
+| `tedge-agent-tedge-ota-esp32c6-devkitc` | +208 | +32 (sram0_0_seg) | 115,328 |
+| `tedge-agent-tedge-ota-esp32s3-devkitc` | +224 | +24 (dram0_0_seg) | 109,788 |
+| `tedge-agent-tedge-ota-qtpy-esp32s3` | +211 | +24 (dram0_0_seg) | 113,396 |
 
 ### Static sizes after the footprint work, link only (2026-09-22)
 

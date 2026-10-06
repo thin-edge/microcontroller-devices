@@ -7,6 +7,9 @@
 #if defined(CONFIG_APP_PROV_HANDOFF)
 #include "prov_handoff.h"
 #endif
+#if defined(CONFIG_APP_BUTTON)
+#include "button.h"
+#endif
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
 #include <zephyr/net/wifi_credentials.h>
 #endif
@@ -797,7 +800,9 @@ int app_net_init(void)
 		app_prov_identity_update();
 		app_prov_handoff_no_credentials(); /* reboots when it can */
 	}
-	app_prov_button_start();
+#endif
+#if defined(CONFIG_APP_BUTTON)
+	app_button_start();
 #endif
 
 	if (!have_creds) {

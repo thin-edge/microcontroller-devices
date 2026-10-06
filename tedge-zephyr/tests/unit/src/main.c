@@ -106,6 +106,18 @@ ZTEST(tedge_smartrest, test_quote_lines_keeps_line_breaks)
 	zassert_str_equal(out, "\"say \"\"hi\"\"\n\"");
 }
 
+ZTEST(tedge_smartrest, test_quote_drops_control_characters)
+{
+	char out[64];
+
+	/* An escape or a bell would make Cumulocity refuse the message. */
+	zassert_true(tedge_sr_quote_lines("a\x1b\x07" "b\n\tc\x7f", out,
+					  sizeof(out)) > 0);
+	zassert_str_equal(out, "\"ab\n\tc\"");
+	zassert_true(tedge_sr_quote("a\x1b" "b", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "\"ab\"");
+}
+
 ZTEST(tedge_smartrest, test_quote_lines_truncates_safely)
 {
 	char out[8];
@@ -636,6 +648,27 @@ ZTEST(tedge_shell_allow, test_help_lists_the_allow_list)
 					    out, sizeof(out)), 3);
 	zassert_str_equal(out, "Commands this device runs (arguments may follow):"
 			       "\n  kernel uptime\n  net iface\n  tedge diag");
+}
+
+ZTEST(tedge_shell_allow, test_clean_output_strips_colours)
+{
+	/* What shell_error() printed into the capture backend, as seen on an
+	 * ESP32-S3 (tedge identify 0). */
+	char out[] = "\r\n\x1b[1;31mthe duration must be above 0, not \"0\"\r\n"
+		     "\x1b[m";
+
+	zassert_equal(tedge_shell_clean_output(out), strlen(out));
+	zassert_str_equal(out,
+			  "\r\nthe duration must be above 0, not \"0\"\r\n");
+}
+
+ZTEST(tedge_shell_allow, test_clean_output_keeps_layout)
+{
+	char out[] = "a\tb\nc\x1b[0m\x1b" "7d\x07\x1b";
+
+	tedge_shell_clean_output(out);
+	zassert_str_equal(out, "a\tb\ncd");
+	zassert_equal(tedge_shell_clean_output(NULL), 0);
 }
 
 ZTEST(tedge_shell_allow, test_help_with_an_empty_list)

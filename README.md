@@ -539,7 +539,8 @@ it through reset enters the ROM serial bootloader instead):
 |---|---|
 | **3 quick presses** within 2 s | Reboot into the provisioner. The stored network is kept until new credentials are verified, so an abandoned attempt returns to it when the window expires. |
 | **Hold ≥ 10 s**, then release | Erase the stored credentials and reboot into the provisioner. The LED flickers once the erase is armed, so you know before letting go. |
-| anything else | Nothing (1, 2 or 4+ presses, presses too slow, a shorter hold). |
+| **2 quick presses** (`tedge-*` images) | Identify: a `zephyr_Identify` event goes to the cloud and the LED fast-blinks for 1 s. The device keeps serving. See [Identifying a device](#identifying-a-device). |
+| anything else | Nothing (1 or 4+ presses, presses too slow, a shorter hold). |
 | a press in the provisioner | Restarts an expired window; authorizes provisioning when `CONFIG_APP_WIFI_PROV_REQUIRE_AUTH=y`. |
 
 **Provisioning window:** the provisioner advertises for
@@ -556,19 +557,22 @@ S3-DevKitC-1 and the QT Py S3, which also shows the colour):
 | steady on | green | connected and serving |
 | even blink, 250 ms on / 250 ms off | amber | not connected (associating, reconnecting) |
 | **two short blinks, then a pause** (100 ms on, 150 off, 100 on, ~1.5 s off) | blue | provisioner, waiting for credentials |
-| fast 5 Hz blink | white | identify request from a client, or the button pattern was recognized (just before the reboot) |
+| fast 5 Hz blink | white | identify request (from the cloud with `tedge identify`, or from an Improv client), or a button pattern was recognized |
 | very fast flicker | red | erase hold armed — release to erase |
 | off | — | provisioning window expired; press the button to advertise again |
 
 The application also logs every
-button press and release with its length (`app_prov: sw0 released after
+button press and release with its length (`app_button: sw0 released after
 140 ms`), then what it made of the sequence ("not a gesture, ignored", "Button
-pattern: …", "Erase armed: …"), so you can check a gesture on the console.
+pattern: …", "Erase armed: …", "Identify pattern: …"), so you can check a
+gesture on the console.
 
 **Options.** Application (`lib/common/Kconfig`): `APP_PROV_HANDOFF` (on by
 default in an MCUboot build with the provisioner layout),
 `APP_WIFI_PROV_PRESS_COUNT` (3), `APP_WIFI_PROV_PRESS_WINDOW_MS` (2000),
-`APP_WIFI_PROV_ERASE_HOLD_S` (10). Provisioner (`apps/wifi-provisioner/Kconfig`):
+`APP_WIFI_PROV_ERASE_HOLD_S` (10), and for identify `APP_IDENTIFY` (on in
+`tedge-*` images), `APP_IDENTIFY_PRESS_COUNT` (2, must differ from the
+provisioning count), `APP_IDENTIFY_DURATION_S` (30). Provisioner (`apps/wifi-provisioner/Kconfig`):
 `APP_WIFI_PROV_WINDOW_S` (900), `APP_WIFI_PROV_CONNECT_TIMEOUT_S` (30),
 `APP_WIFI_PROV_REQUIRE_AUTH` (off); set them for the provisioner image with a
 sysbuild image prefix, e.g. `-Dwifi-provisioner_CONFIG_APP_WIFI_PROV_REQUIRE_AUTH=y`.
@@ -1261,7 +1265,7 @@ health, on thin-edge.io topics over the Cumulocity MQTT Service. Cumulocity
 only turns them into measurements where a **Smart Function** maps them; a
 tenant without one shows the device connected, with firmware, restart and
 remote access working, and no measurements. [`cumulocity/`](cumulocity/README.md)
-has the Smart Functions (measurements, twin state, firmware progress), the
+has the Smart Functions (measurements, twin state, firmware progress, events), the
 DTM definitions behind the Parameters tab, and the shell diagnostics — what a
 tenant needs, ready to deploy.
 
@@ -1338,6 +1342,38 @@ change the interval (`interval_s`) and switch telemetry off (`telemetry`)
 through the app's parameters, and on the Modbus app also the type
 (`measurement_type`): a mapping keyed on the topic's last segment keeps
 working when they do.
+
+## Identifying a device
+
+With several identical boards on a bench, the cloud's device list does not
+say which board is which. Every `tedge-*` image (`CONFIG_APP_IDENTIFY`) can be
+matched both ways.
+
+**From the cloud: which board is this device?** Run `tedge identify` as a
+shell command (Device Management, the device's **Shell** tab). The status LED
+fast-blinks (white on an RGB LED) for 30 s, or for `tedge identify <seconds>`
+(at most 300), then goes back to its normal pattern. The operation succeeds as
+soon as the blinking starts. From the command line:
+
+```sh
+c8y operations create --device <device> \
+  --template "{c8y_Command:{text:'tedge identify 60'}}"
+```
+
+This needs an image with the cloud shell command, which today means the
+images built with `lib/common/tedge-boards/extras/shell-diagnostics.conf`
+(the S3-DevKitC and QT Py modbus-server and tedge-agent full builds; see
+DEVICES.md). That file puts `tedge identify` on the allow-list. On other
+images the cloud has no shell, so only the button works. The same command
+works on a local console where the image has one.
+
+**From the board: which device is this board?** Press `sw0` (the BOOT button)
+**twice** quickly. The LED fast-blinks for 1 s and the device sends a
+`zephyr_Identify` event ("Identify button pressed on <hostname>"), which shows
+up on its own device in Cumulocity. Pressing again within 5 s sends no second
+event. The device keeps serving throughout. On the MQTT Service the event
+reaches the tenant only through the `tedge-zephyr-events` Smart Function
+([`cumulocity/`](cumulocity/README.md)); deploy it once per tenant.
 
 ## Point libraries (for a tedge-dot collector)
 

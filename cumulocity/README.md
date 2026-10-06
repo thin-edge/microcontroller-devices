@@ -12,6 +12,7 @@ parameters, shell) need no mapping.
 | `smart-functions/tedge-zephyr-measurements/` | `te/device/*///m/*` → measurements | any measurement, including `tedge_health` |
 | `smart-functions/tedge-zephyr-twin/` | `te/device/*///twin/*` → managed-object fragments | `remoteAccess`, `tedge_Agent`, and the current parameter values the Parameters tab shows |
 | `smart-functions/tedge-zephyr-firmware-progress/` | `te/device/*///progress/firmware` → `c8y_FirmwareDownload` events | download progress while a firmware update runs (optional) |
+| `smart-functions/tedge-zephyr-events/` | `te/device/*///e/*` → events | any event, including `zephyr_Identify` from the sw0 identify pattern |
 | `dtm/*.json` | Digital Twin Manager property definitions | the Parameters tab |
 
 ## Smart Functions
@@ -58,6 +59,14 @@ under a fragment named `<name>`, except `tedge_RemoteAccess`, which becomes
 `zephyr_snmp_telemetry`, `zephyr_tedge`) on the managed object, where the Parameters tab
 reads them. It replaces a rule that mapped only `tedge_RemoteAccess`; do not
 deploy both.
+
+**Events.** Every `te/device/<id>///e/<type>` message becomes an event of
+type `<type>` on that device, with the payload's `text` (the type when there
+is none), the device's `time` when it sent one, and any other payload field
+as a fragment. Without this function no event from a device on the MQTT
+Service reaches the tenant. The one the firmware sends itself is
+`zephyr_Identify`: an operator at a board presses `sw0` twice, and the event
+shows which cloud device it is.
 
 ## Parameters tab (DTM)
 

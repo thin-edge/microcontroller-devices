@@ -334,6 +334,43 @@ config APP_WIFI_PROV_ERASE_HOLD_S
 
 endif # APP_PROV_HANDOFF
 
+config APP_IDENTIFY
+	bool "Identify the device from the cloud and from its button"
+	default y
+	depends on TEDGE
+	help
+	  Two ways to match a physical board with its cloud device. From the
+	  cloud: the shell command `tedge identify [seconds]` (needs the shell;
+	  the cloud runs it through c8y_Command once it is on the
+	  TEDGE_SHELL_COMMAND_ALLOW_LIST) blinks the status LED in the identify
+	  pattern. From the device: the sw0 identify pattern sends a
+	  zephyr_Identify event. Boards without a status LED or sw0 build with
+	  that half absent.
+
+if APP_IDENTIFY
+
+config APP_IDENTIFY_DURATION_S
+	int "Seconds `tedge identify` blinks when given no duration"
+	default 30
+	range 1 300
+
+config APP_IDENTIFY_PRESS_COUNT
+	int "Short sw0 presses in the identify pattern"
+	default 2
+	range 2 6
+	help
+	  Must differ from APP_WIFI_PROV_PRESS_COUNT; the build fails if not.
+	  The pattern uses the provisioning pattern's window when that is
+	  built in, 2 s otherwise.
+
+endif # APP_IDENTIFY
+
+# The sw0 watcher (button.c), shared by the provisioning hand-off and
+# identify.
+config APP_BUTTON
+	def_bool APP_PROV_HANDOFF || APP_IDENTIFY
+	select GPIO if $(dt_alias_enabled,sw0)
+
 config APP_WIFI_PROVISIONER
 	bool "This image is the Wi-Fi provisioner"
 	depends on APP_WIFI_CRED_STORE && APP_BOOT_REQUEST

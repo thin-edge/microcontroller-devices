@@ -146,3 +146,48 @@ int tedge_shell_help_text(const char *list, char *buf, size_t len)
 	}
 	return (n >= len) ? -ENOSPC : count;
 }
+
+/* Zephyr's shell colours what it prints: shell_error() wraps its message in
+ * "ESC[1;31m" ... "ESC[m". In a terminal that is red text; in an operation
+ * result it is a control character, and Cumulocity refuses the whole status
+ * message ("contains invalid characters"), so the operation is never
+ * finished. Escape sequences go, and with them any other control character
+ * except the line breaks and tabs the output is laid out with. */
+size_t tedge_shell_clean_output(char *s)
+{
+	char *out = s;
+	const char *p = s;
+
+	if (s == NULL) {
+		return 0;
+	}
+	while (*p != '\0') {
+		unsigned char c = (unsigned char)*p;
+
+		if (c == 0x1b) { /* ESC */
+			p++;
+			if (*p == '[') {
+				/* CSI: parameters and intermediates, then one
+				 * final byte in 0x40..0x7e. */
+				p++;
+				while (*p >= 0x20 && *p <= 0x3f) {
+					p++;
+				}
+				if (*p >= 0x40 && *p <= 0x7e) {
+					p++;
+				}
+			} else if (*p != '\0') {
+				p++; /* a two-character escape */
+			}
+			continue;
+		}
+		if ((c < 0x20 && c != '\n' && c != '\r' && c != '\t') ||
+		    c == 0x7f) {
+			p++;
+			continue;
+		}
+		*out++ = *p++;
+	}
+	*out = '\0';
+	return (size_t)(out - s);
+}
