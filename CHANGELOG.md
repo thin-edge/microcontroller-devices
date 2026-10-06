@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.7.1...v0.8.0) (2026-10-06)
+
+
+### Features
+
+* **identify:** identify a device from the cloud and from its button ([#12](https://github.com/thin-edge/microcontroller-devices/issues/12)) ([79992c1](https://github.com/thin-edge/microcontroller-devices/commit/79992c1b09627b1024f6445d8aba290bfa239f71))
+
+
+### Bug Fixes
+
+* **tedge:** keep line breaks in shell command results ([#10](https://github.com/thin-edge/microcontroller-devices/issues/10)) ([0c76e87](https://github.com/thin-edge/microcontroller-devices/commit/0c76e87b65e78febc89be5b6a594a8a326b9902d))
+
 ## [0.7.1](https://github.com/thin-edge/microcontroller-devices/compare/v0.7.0...v0.7.1) (2026-09-25)
 
 
