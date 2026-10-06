@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.8.0...v0.9.0) (2026-10-06)
+
+
+### Features
+
+* **modbus:** show the pump mode as off/auto/manual in tedge-dot ([#13](https://github.com/thin-edge/microcontroller-devices/issues/13)) ([8f6d954](https://github.com/thin-edge/microcontroller-devices/commit/8f6d9545241e96195da30273c510c140b5e7d4b4))
+
 ## [0.8.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.7.1...v0.8.0) (2026-10-06)
 
 
