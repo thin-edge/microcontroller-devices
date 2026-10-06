@@ -239,7 +239,7 @@ Telemetry was published throughout, but the test tenant had no mapping for
 `lib/common/tedge-boards/extras/shell-diagnostics.conf` adds the cloud shell
 command (allow-list: `kernel uptime`, `kernel version`, `net iface`,
 `net conn`, `wifi status`, `tedge params list`, `tedge diag`; `help` lists
-them). It costs about 16 KB of internal RAM.
+them, one per line). It costs about 16 KB of internal RAM.
 
 | Board | Build | RAM | Result |
 |---|---|---|---|

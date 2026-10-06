@@ -91,6 +91,29 @@ ZTEST(tedge_smartrest, test_quote_truncates_safely)
 	zassert_equal(out[6], '"');
 }
 
+ZTEST(tedge_smartrest, test_quote_lines_keeps_line_breaks)
+{
+	char out[64];
+
+	zassert_true(tedge_sr_quote_lines("two\nlines", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "\"two\nlines\"");
+
+	/* What the Zephyr shell prints ends in "\r\n". */
+	zassert_true(tedge_sr_quote_lines("a\r\nb\r\n", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "\"a\nb\n\"");
+
+	zassert_true(tedge_sr_quote_lines("say \"hi\"\n", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "\"say \"\"hi\"\"\n\"");
+}
+
+ZTEST(tedge_smartrest, test_quote_lines_truncates_safely)
+{
+	char out[8];
+
+	zassert_true(tedge_sr_quote_lines("01\r\n2345678", out, sizeof(out)) > 0);
+	zassert_str_equal(out, "\"01\n23\"");
+}
+
 ZTEST_SUITE(tedge_smartrest, NULL, NULL, NULL, NULL, NULL);
 
 /* ------------------------------------------------------------------------ */

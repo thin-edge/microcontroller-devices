@@ -233,6 +233,27 @@ static void op_succeeded(const char *name, const char *result)
 	op_status(506, 503, name, quoted);
 }
 
+#if defined(CONFIG_TEDGE_SHELL_COMMAND)
+/* Completes an operation with text whose line breaks matter, such as what
+ * a shell command printed: they travel inside the quoted field. */
+static void op_finished_lines(const char *name, bool ok, const char *text)
+{
+	char quoted[224];
+
+	if (ok && (text == NULL || text[0] == '\0')) {
+		op_status(506, 503, name, NULL);
+		return;
+	}
+	(void)tedge_sr_quote_lines((text != NULL) ? text : "failed", quoted,
+				   sizeof(quoted));
+	if (ok) {
+		op_status(506, 503, name, quoted);
+	} else {
+		op_status(505, 502, name, quoted);
+	}
+}
+#endif
+
 /* Completes an operation whose id was kept across a reboot. */
 static void op_finish_by_id(const char *id, const char *name, bool ok,
 			    const char *text)
@@ -1270,14 +1291,10 @@ static int c8y_poll(int timeout_ms)
 		struct tedge_shell_event ev;
 
 		while (tedge_shell_poll_event(&ev) == 0) {
-			/* SmartREST is one line: newlines become spaces and a
-			 * long answer is cut. A command with a lot to say
-			 * belongs behind a log type. */
-			if (ev.rc == 0) {
-				op_succeeded("c8y_Command", ev.output);
-			} else {
-				op_failed("c8y_Command", ev.output);
-			}
+			/* The output keeps its lines, but a long answer is
+			 * cut. A command with a lot to say belongs behind a
+			 * log type. */
+			op_finished_lines("c8y_Command", ev.rc == 0, ev.output);
 		}
 	}
 #endif
