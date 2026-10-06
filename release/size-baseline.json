@@ -1,16 +1,16 @@
 {
   "modbus-server-standalone-esp32-devkitc": {
-    "image": 590311,
-    "content": 590311,
+    "image": 590343,
+    "content": 590343,
     "ram": {
       "iram0_0_seg": 59648,
-      "dram0_0_seg": 97152,
+      "dram0_0_seg": 97160,
       "dram1_0_seg": 46904
     },
     "arena": 99440,
     "provisioner": {
-      "image": 740407,
-      "content": 740407,
+      "image": 740408,
+      "content": 740408,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 125664,
@@ -20,16 +20,16 @@
     }
   },
   "modbus-server-standalone-esp32c6-devkitc": {
-    "image": 733882,
-    "content": 632986,
+    "image": 733898,
+    "content": 633058,
     "ram": {
-      "sram0_0_seg": 205780,
+      "sram0_0_seg": 205788,
       "lp_ram_seg": 36
     },
-    "arena": 303664,
+    "arena": 303648,
     "provisioner": {
-      "image": 943754,
-      "content": 863650,
+      "image": 943755,
+      "content": 863651,
       "ram": {
         "sram0_0_seg": 282472,
         "lp_ram_seg": 36
@@ -38,16 +38,16 @@
     }
   },
   "modbus-server-standalone-esp32s3-devkitc": {
-    "image": 583866,
-    "content": 583866,
+    "image": 583883,
+    "content": 583883,
     "ram": {
       "iram0_0_seg": 56672,
-      "dram0_0_seg": 196104
+      "dram0_0_seg": 196112
     },
-    "arena": 202996,
+    "arena": 202980,
     "provisioner": {
-      "image": 662058,
-      "content": 662058,
+      "image": 662059,
+      "content": 662059,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 230760
@@ -56,13 +56,13 @@
     }
   },
   "modbus-server-standalone-qtpy-esp32s3": {
-    "image": 584011,
-    "content": 584011,
+    "image": 584026,
+    "content": 584026,
     "ram": {
       "iram0_0_seg": 56200,
-      "dram0_0_seg": 193500
+      "dram0_0_seg": 193508
     },
-    "arena": 205596,
+    "arena": 205580,
     "provisioner": {
       "image": 662220,
       "content": 662220,
@@ -74,16 +74,16 @@
     }
   },
   "modbus-server-tedge-full-esp32c6-devkitc": {
-    "image": 962586,
-    "content": 852386,
+    "image": 962811,
+    "content": 853123,
     "ram": {
-      "sram0_0_seg": 432364,
+      "sram0_0_seg": 432540,
       "lp_ram_seg": 36
     },
-    "arena": 77072,
+    "arena": 76896,
     "provisioner": {
-      "image": 1013963,
-      "content": 909467,
+      "image": 1013964,
+      "content": 909468,
       "ram": {
         "sram0_0_seg": 302652,
         "lp_ram_seg": 36
@@ -95,13 +95,13 @@
     }
   },
   "modbus-server-tedge-full-esp32s3-devkitc": {
-    "image": 934779,
-    "content": 934779,
+    "image": 935259,
+    "content": 935259,
     "ram": {
       "iram0_0_seg": 61332,
-      "dram0_0_seg": 342852
+      "dram0_0_seg": 343028
     },
-    "arena": 56244,
+    "arena": 56076,
     "provisioner": {
       "image": 732123,
       "content": 732123,
@@ -113,16 +113,16 @@
     }
   },
   "modbus-server-tedge-full-qtpy-esp32s3": {
-    "image": 934970,
-    "content": 934970,
+    "image": 935435,
+    "content": 935435,
     "ram": {
       "iram0_0_seg": 60380,
-      "dram0_0_seg": 339244
+      "dram0_0_seg": 339420
     },
-    "arena": 59852,
+    "arena": 59684,
     "provisioner": {
-      "image": 732283,
-      "content": 732283,
+      "image": 732284,
+      "content": 732284,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248204
@@ -131,17 +131,17 @@
     }
   },
   "modbus-server-tedge-ota-esp32-cam": {
-    "image": 807206,
-    "content": 807206,
+    "image": 807607,
+    "content": 807607,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 144864,
+      "dram0_0_seg": 145032,
       "dram1_0_seg": 79128
     },
-    "arena": 51728,
+    "arena": 51560,
     "provisioner": {
-      "image": 776471,
-      "content": 776471,
+      "image": 776472,
+      "content": 776472,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 126996,
@@ -151,14 +151,14 @@
     }
   },
   "modbus-server-tedge-ota-esp32-devkitc": {
-    "image": 802182,
-    "content": 802182,
+    "image": 802615,
+    "content": 802615,
     "ram": {
       "iram0_0_seg": 60416,
-      "dram0_0_seg": 181472,
+      "dram0_0_seg": 181496,
       "dram1_0_seg": 81440
     },
-    "arena": 15120,
+    "arena": 15096,
     "provisioner": {
       "image": 776471,
       "content": 776471,
@@ -171,16 +171,16 @@
     }
   },
   "modbus-server-tedge-ota-esp32c6-devkitc": {
-    "image": 891115,
-    "content": 819415,
+    "image": 891324,
+    "content": 820152,
     "ram": {
-      "sram0_0_seg": 398740,
+      "sram0_0_seg": 398772,
       "lp_ram_seg": 36
     },
-    "arena": 110688,
+    "arena": 110656,
     "provisioner": {
-      "image": 1013963,
-      "content": 909467,
+      "image": 1013962,
+      "content": 909466,
       "ram": {
         "sram0_0_seg": 302652,
         "lp_ram_seg": 36
@@ -192,16 +192,16 @@
     }
   },
   "modbus-server-tedge-ota-esp32s3-devkitc": {
-    "image": 805339,
-    "content": 805339,
+    "image": 805548,
+    "content": 805548,
     "ram": {
       "iram0_0_seg": 59280,
-      "dram0_0_seg": 293804
+      "dram0_0_seg": 293828
     },
-    "arena": 105284,
+    "arena": 105260,
     "provisioner": {
-      "image": 732124,
-      "content": 732124,
+      "image": 732123,
+      "content": 732123,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250820
@@ -210,16 +210,16 @@
     }
   },
   "modbus-server-tedge-ota-qtpy-esp32s3": {
-    "image": 739947,
-    "content": 739947,
+    "image": 740155,
+    "content": 740155,
     "ram": {
       "iram0_0_seg": 58328,
-      "dram0_0_seg": 290196
+      "dram0_0_seg": 290220
     },
-    "arena": 108892,
+    "arena": 108868,
     "provisioner": {
-      "image": 732282,
-      "content": 732282,
+      "image": 732283,
+      "content": 732283,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248204
@@ -228,17 +228,17 @@
     }
   },
   "opcua-server-standalone-esp32-devkitc": {
-    "image": 750006,
-    "content": 750006,
+    "image": 750040,
+    "content": 750040,
     "ram": {
       "iram0_0_seg": 59904,
-      "dram0_0_seg": 101492,
+      "dram0_0_seg": 101500,
       "dram1_0_seg": 65656
     },
     "arena": 95104,
     "provisioner": {
-      "image": 740408,
-      "content": 740408,
+      "image": 740407,
+      "content": 740407,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 125664,
@@ -248,16 +248,16 @@
     }
   },
   "opcua-server-standalone-esp32c6-devkitc": {
-    "image": 854139,
-    "content": 794059,
+    "image": 854154,
+    "content": 794130,
     "ram": {
-      "sram0_0_seg": 229836,
+      "sram0_0_seg": 229844,
       "lp_ram_seg": 36
     },
-    "arena": 279600,
+    "arena": 279584,
     "provisioner": {
-      "image": 943755,
-      "content": 863651,
+      "image": 943756,
+      "content": 863652,
       "ram": {
         "sram0_0_seg": 282472,
         "lp_ram_seg": 36
@@ -266,11 +266,11 @@
     }
   },
   "opcua-server-standalone-esp32s3-devkitc": {
-    "image": 768652,
-    "content": 768652,
+    "image": 768668,
+    "content": 768668,
     "ram": {
       "iram0_0_seg": 56924,
-      "dram0_0_seg": 219464
+      "dram0_0_seg": 219472
     },
     "arena": 179620,
     "provisioner": {
@@ -284,16 +284,16 @@
     }
   },
   "opcua-server-standalone-qtpy-esp32s3": {
-    "image": 768794,
-    "content": 768794,
+    "image": 768811,
+    "content": 768811,
     "ram": {
       "iram0_0_seg": 56452,
-      "dram0_0_seg": 216856
+      "dram0_0_seg": 216864
     },
-    "arena": 182236,
+    "arena": 182220,
     "provisioner": {
-      "image": 662220,
-      "content": 662220,
+      "image": 662219,
+      "content": 662219,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 228144
@@ -302,16 +302,16 @@
     }
   },
   "opcua-server-tedge-ota-qtpy-esp32s3": {
-    "image": 923899,
-    "content": 923899,
+    "image": 924106,
+    "content": 924106,
     "ram": {
       "iram0_0_seg": 58580,
-      "dram0_0_seg": 307088
+      "dram0_0_seg": 307112
     },
-    "arena": 92012,
+    "arena": 91988,
     "provisioner": {
-      "image": 732282,
-      "content": 732282,
+      "image": 732284,
+      "content": 732284,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248204
@@ -320,17 +320,17 @@
     }
   },
   "snmp-agent-standalone-esp32-devkitc": {
-    "image": 578760,
-    "content": 578760,
+    "image": 578791,
+    "content": 578791,
     "ram": {
       "iram0_0_seg": 59648,
-      "dram0_0_seg": 105600,
+      "dram0_0_seg": 105608,
       "dram1_0_seg": 45144
     },
     "arena": 90992,
     "provisioner": {
-      "image": 740406,
-      "content": 740406,
+      "image": 740408,
+      "content": 740408,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 125664,
@@ -340,16 +340,16 @@
     }
   },
   "snmp-agent-standalone-esp32c6-devkitc": {
-    "image": 731996,
-    "content": 616668,
+    "image": 732012,
+    "content": 616740,
     "ram": {
-      "sram0_0_seg": 212344,
+      "sram0_0_seg": 212352,
       "lp_ram_seg": 36
     },
     "arena": 297088,
     "provisioner": {
-      "image": 943754,
-      "content": 863650,
+      "image": 943755,
+      "content": 863651,
       "ram": {
         "sram0_0_seg": 282472,
         "lp_ram_seg": 36
@@ -358,13 +358,13 @@
     }
   },
   "snmp-agent-standalone-esp32s3-devkitc": {
-    "image": 582412,
-    "content": 582412,
+    "image": 582428,
+    "content": 582428,
     "ram": {
       "iram0_0_seg": 56560,
-      "dram0_0_seg": 202688
+      "dram0_0_seg": 202696
     },
-    "arena": 196404,
+    "arena": 196388,
     "provisioner": {
       "image": 662058,
       "content": 662058,
@@ -380,12 +380,12 @@
     "content": 582556,
     "ram": {
       "iram0_0_seg": 56088,
-      "dram0_0_seg": 200084
+      "dram0_0_seg": 200092
     },
-    "arena": 199004,
+    "arena": 198988,
     "provisioner": {
-      "image": 662219,
-      "content": 662219,
+      "image": 662220,
+      "content": 662220,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 228144
@@ -394,16 +394,16 @@
     }
   },
   "snmp-agent-tedge-full-esp32c6-devkitc": {
-    "image": 960522,
-    "content": 842658,
+    "image": 960747,
+    "content": 843395,
     "ram": {
-      "sram0_0_seg": 444644,
+      "sram0_0_seg": 444820,
       "lp_ram_seg": 36
     },
-    "arena": 64784,
+    "arena": 64608,
     "provisioner": {
-      "image": 1013964,
-      "content": 909468,
+      "image": 1013962,
+      "content": 909466,
       "ram": {
         "sram0_0_seg": 302652,
         "lp_ram_seg": 36
@@ -415,16 +415,16 @@
     }
   },
   "snmp-agent-tedge-full-esp32s3-devkitc": {
-    "image": 809307,
-    "content": 809307,
+    "image": 809515,
+    "content": 809515,
     "ram": {
       "iram0_0_seg": 60032,
-      "dram0_0_seg": 339768
+      "dram0_0_seg": 339936
     },
-    "arena": 59316,
+    "arena": 59148,
     "provisioner": {
-      "image": 732124,
-      "content": 732124,
+      "image": 732122,
+      "content": 732122,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250820
@@ -433,13 +433,13 @@
     }
   },
   "snmp-agent-tedge-full-qtpy-esp32s3": {
-    "image": 809450,
-    "content": 809450,
+    "image": 809659,
+    "content": 809659,
     "ram": {
       "iram0_0_seg": 59080,
-      "dram0_0_seg": 336156
+      "dram0_0_seg": 336324
     },
-    "arena": 62924,
+    "arena": 62756,
     "provisioner": {
       "image": 732283,
       "content": 732283,
@@ -451,17 +451,17 @@
     }
   },
   "snmp-agent-tedge-ota-esp32-cam": {
-    "image": 801560,
-    "content": 801560,
+    "image": 801976,
+    "content": 801976,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 152904,
+      "dram0_0_seg": 153072,
       "dram1_0_seg": 83224
     },
-    "arena": 43688,
+    "arena": 43520,
     "provisioner": {
-      "image": 776470,
-      "content": 776470,
+      "image": 776471,
+      "content": 776471,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 126996,
@@ -471,13 +471,13 @@
     }
   },
   "snmp-agent-tedge-ota-esp32c6-devkitc": {
-    "image": 889755,
-    "content": 811679,
+    "image": 889979,
+    "content": 812415,
     "ram": {
-      "sram0_0_seg": 411044,
+      "sram0_0_seg": 411076,
       "lp_ram_seg": 36
     },
-    "arena": 98384,
+    "arena": 98352,
     "provisioner": {
       "image": 1013963,
       "content": 909467,
@@ -492,16 +492,16 @@
     }
   },
   "snmp-agent-tedge-ota-esp32s3-devkitc": {
-    "image": 738875,
-    "content": 738875,
+    "image": 739083,
+    "content": 739083,
     "ram": {
       "iram0_0_seg": 59280,
-      "dram0_0_seg": 305972
+      "dram0_0_seg": 305996
     },
-    "arena": 93116,
+    "arena": 93092,
     "provisioner": {
-      "image": 732124,
-      "content": 732124,
+      "image": 732123,
+      "content": 732123,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250820
@@ -510,16 +510,16 @@
     }
   },
   "snmp-agent-tedge-ota-qtpy-esp32s3": {
-    "image": 739003,
-    "content": 739003,
+    "image": 739211,
+    "content": 739211,
     "ram": {
       "iram0_0_seg": 58328,
-      "dram0_0_seg": 302360
+      "dram0_0_seg": 302392
     },
-    "arena": 96724,
+    "arena": 96692,
     "provisioner": {
-      "image": 732284,
-      "content": 732284,
+      "image": 732282,
+      "content": 732282,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248204
@@ -528,13 +528,13 @@
     }
   },
   "tedge-agent-tedge-full-esp32c6-devkitc": {
-    "image": 893179,
-    "content": 828771,
+    "image": 893402,
+    "content": 829506,
     "ram": {
-      "sram0_0_seg": 427684,
+      "sram0_0_seg": 427860,
       "lp_ram_seg": 36
     },
-    "arena": 81744,
+    "arena": 81568,
     "provisioner": {
       "image": 1013963,
       "content": 909467,
@@ -549,16 +549,16 @@
     }
   },
   "tedge-agent-tedge-full-esp32s3-devkitc": {
-    "image": 931147,
-    "content": 931147,
+    "image": 931627,
+    "content": 931627,
     "ram": {
       "iram0_0_seg": 61332,
-      "dram0_0_seg": 337672
+      "dram0_0_seg": 337848
     },
-    "arena": 61428,
+    "arena": 61244,
     "provisioner": {
-      "image": 732123,
-      "content": 732123,
+      "image": 732122,
+      "content": 732122,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250820
@@ -567,13 +567,13 @@
     }
   },
   "tedge-agent-tedge-full-qtpy-esp32s3": {
-    "image": 931339,
-    "content": 931339,
+    "image": 931819,
+    "content": 931819,
     "ram": {
       "iram0_0_seg": 60380,
-      "dram0_0_seg": 334060
+      "dram0_0_seg": 334236
     },
-    "arena": 65036,
+    "arena": 64852,
     "provisioner": {
       "image": 732282,
       "content": 732282,
@@ -585,14 +585,14 @@
     }
   },
   "tedge-agent-tedge-ota-esp32-cam": {
-    "image": 791671,
-    "content": 791671,
+    "image": 792087,
+    "content": 792087,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 143372,
+      "dram0_0_seg": 143540,
       "dram1_0_seg": 76056
     },
-    "arena": 53232,
+    "arena": 53064,
     "provisioner": {
       "image": 776471,
       "content": 776471,
@@ -605,17 +605,17 @@
     }
   },
   "tedge-agent-tedge-ota-esp32-devkitc": {
-    "image": 786903,
-    "content": 786903,
+    "image": 787335,
+    "content": 787335,
     "ram": {
       "iram0_0_seg": 60416,
-      "dram0_0_seg": 179832,
+      "dram0_0_seg": 180000,
       "dram1_0_seg": 78368
     },
-    "arena": 16768,
+    "arena": 16600,
     "provisioner": {
-      "image": 776471,
-      "content": 776471,
+      "image": 776472,
+      "content": 776472,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 126996,
@@ -625,16 +625,16 @@
     }
   },
   "tedge-agent-tedge-ota-esp32c6-devkitc": {
-    "image": 888171,
-    "content": 798167,
+    "image": 888379,
+    "content": 798903,
     "ram": {
-      "sram0_0_seg": 394076,
+      "sram0_0_seg": 394108,
       "lp_ram_seg": 36
     },
-    "arena": 115360,
+    "arena": 115328,
     "provisioner": {
-      "image": 1013962,
-      "content": 909466,
+      "image": 1013963,
+      "content": 909467,
       "ram": {
         "sram0_0_seg": 302652,
         "lp_ram_seg": 36
@@ -646,16 +646,16 @@
     }
   },
   "tedge-agent-tedge-ota-esp32s3-devkitc": {
-    "image": 737387,
-    "content": 737387,
+    "image": 737611,
+    "content": 737611,
     "ram": {
       "iram0_0_seg": 59280,
-      "dram0_0_seg": 289272
+      "dram0_0_seg": 289296
     },
-    "arena": 109812,
+    "arena": 109788,
     "provisioner": {
-      "image": 732123,
-      "content": 732123,
+      "image": 732122,
+      "content": 732122,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250820
@@ -664,13 +664,13 @@
     }
   },
   "tedge-agent-tedge-ota-qtpy-esp32s3": {
-    "image": 737529,
-    "content": 737529,
+    "image": 737740,
+    "content": 737740,
     "ram": {
       "iram0_0_seg": 58328,
-      "dram0_0_seg": 285660
+      "dram0_0_seg": 285684
     },
-    "arena": 113420,
+    "arena": 113396,
     "provisioner": {
       "image": 732283,
       "content": 732283,

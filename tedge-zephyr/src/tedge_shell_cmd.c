@@ -65,6 +65,7 @@ static void run_thread(void *a, void *b, void *c)
 
 		memcpy(ev.output, out, keep);
 		ev.output[keep] = '\0';
+		(void)tedge_shell_clean_output(ev.output);
 	}
 	if (ret != 0 && ev.output[0] == '\0') {
 		snprintf(ev.output, sizeof(ev.output), "the command failed (%d)",

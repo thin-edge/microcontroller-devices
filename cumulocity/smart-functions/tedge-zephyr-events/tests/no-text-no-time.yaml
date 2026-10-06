@@ -1,0 +1,16 @@
+# Before the device's clock is set it sends no time: the message time is used.
+inputs:
+  - payload: '{}'
+    payloadFormat: json
+    topic: "te/device/tedge-agent7c0c5f5a6eb8///e/zephyr_Identify"
+    clientID: "tedge-agent7c0c5f5a6eb8"
+    time: "2026-10-06T08:15:01.000Z"
+expectedOutput:
+  - cumulocityType: event
+    externalSource:
+      - externalId: tedge-agent7c0c5f5a6eb8
+        type: c8y_Serial
+    payload:
+      type: zephyr_Identify
+      text: zephyr_Identify
+      time: "2026-10-06T08:15:01.000Z"

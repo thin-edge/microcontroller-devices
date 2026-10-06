@@ -4,11 +4,20 @@
 
 #include <string.h>
 
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+
 static void reset_sequence(struct gesture_state *g)
 {
 	g->presses = 0;
 	g->spoiled = false;
 	g->erase_armed = false;
+}
+
+static bool erase_on(const struct gesture_state *g)
+{
+	return g->cfg.erase_ms > 0;
 }
 
 void gesture_init(struct gesture_state *g, const struct gesture_cfg *cfg)
@@ -39,7 +48,8 @@ enum gesture gesture_release(struct gesture_state *g, int64_t now_ms)
 
 	int64_t held = now_ms - g->press_at;
 
-	if (g->erase_armed || held >= (int64_t)g->cfg.erase_ms) {
+	if (g->erase_armed ||
+	    (erase_on(g) && held >= (int64_t)g->cfg.erase_ms)) {
 		reset_sequence(g);
 		return GESTURE_ERASE;
 	}
@@ -49,7 +59,7 @@ enum gesture gesture_release(struct gesture_state *g, int64_t now_ms)
 	}
 	g->presses++;
 	g->last_release = now_ms;
-	if (g->presses > g->cfg.press_count ||
+	if (g->presses > MAX(g->cfg.press_count, g->cfg.identify_count) ||
 	    now_ms - g->first_press > (int64_t)g->cfg.window_ms) {
 		g->spoiled = true;
 	}
@@ -59,7 +69,7 @@ enum gesture gesture_release(struct gesture_state *g, int64_t now_ms)
 enum gesture gesture_tick(struct gesture_state *g, int64_t now_ms)
 {
 	if (g->pressed) {
-		if (!g->erase_armed &&
+		if (erase_on(g) && !g->erase_armed &&
 		    now_ms - g->press_at >= (int64_t)g->cfg.erase_ms) {
 			g->erase_armed = true;
 			return GESTURE_ERASE_ARMED;
@@ -68,10 +78,19 @@ enum gesture gesture_tick(struct gesture_state *g, int64_t now_ms)
 	}
 	if (g->presses > 0 &&
 	    now_ms - g->last_release >= (int64_t)g->cfg.quiet_ms) {
-		bool match = !g->spoiled && g->presses == g->cfg.press_count;
+		uint32_t n = g->spoiled ? 0 : g->presses;
 
 		reset_sequence(g);
-		return match ? GESTURE_PROVISION : GESTURE_NONE;
+		if (n == 0) {
+			return GESTURE_NONE;
+		}
+		if (n == g->cfg.press_count) {
+			return GESTURE_PROVISION;
+		}
+		if (n == g->cfg.identify_count) {
+			return GESTURE_IDENTIFY;
+		}
+		return GESTURE_NONE;
 	}
 	return GESTURE_NONE;
 }

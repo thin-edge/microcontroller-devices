@@ -1,0 +1,6 @@
+smartFunctionFile: events.js
+description: "tedge-zephyr events (zephyr_Identify and any other type) to Cumulocity events"
+tags: [tedge-zephyr, event]
+input:
+  transport: mqtt
+  topicPattern: "te/device/*///e/*"

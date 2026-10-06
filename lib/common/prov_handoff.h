@@ -9,6 +9,8 @@
 #ifndef APP_PROV_HANDOFF_H_
 #define APP_PROV_HANDOFF_H_
 
+#include "button_gesture.h"
+
 /**
  * No credentials resolve: request the provisioner and reboot into it. Returns
  * only when no provisioner is flashed (the device then stays offline, as a
@@ -17,11 +19,12 @@
 void app_prov_handoff_no_credentials(void);
 
 /**
- * Watch sw0 for the provisioning pattern (reboot into the provisioner, keep
- * the credentials) and the erase hold (erase them, then reboot into the
- * provisioner). A no-op on boards without an sw0 alias.
+ * Act on an sw0 gesture (called by button.c): the provisioning pattern
+ * reboots into the provisioner and keeps the credentials, the erase hold
+ * erases them and then reboots into the provisioner. Other gestures are
+ * ignored.
  */
-void app_prov_button_start(void);
+void app_prov_handle_gesture(enum gesture g);
 
 /** Record this application's hostname, service type and port for the
  *  provisioner (written only when they changed). Call once connected. */

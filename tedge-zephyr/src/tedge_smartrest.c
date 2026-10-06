@@ -93,6 +93,13 @@ static int sr_quote(const char *in, char *out, size_t len, bool lines)
 		if (lines && *p == '\r') {
 			continue;
 		}
+		/* Cumulocity refuses a message with any other control
+		 * character in it, so one never gets that far. */
+		if (((unsigned char)*p < 0x20 && *p != '\n' && *p != '\r' &&
+		     *p != '\t') ||
+		    *p == 0x7f) {
+			continue;
+		}
 		if (n + need + 2 > len) { /* closing quote + NUL */
 			break;
 		}

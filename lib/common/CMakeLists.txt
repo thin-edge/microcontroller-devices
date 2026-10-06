@@ -24,12 +24,19 @@ zephyr_library_sources(status_led.c)
 
 # Wi-Fi provisioning support: the boot request that selects the provisioner
 # image, the identity record it names itself after, and the application-side
-# hand-off with its sw0 gesture classifier. The provisioner itself (Improv over
-# BLE) is its own application: apps/wifi-provisioner.
+# hand-off. The provisioner itself (Improv over BLE) is its own application:
+# apps/wifi-provisioner.
 zephyr_library_sources_ifdef(CONFIG_APP_BOOT_REQUEST boot_request.c)
 zephyr_library_sources_ifdef(CONFIG_APP_WIFI_CRED_STORE prov_identity.c prov_c8y.c)
-zephyr_library_sources_ifdef(CONFIG_APP_PROV_HANDOFF
-  prov_handoff.c
+zephyr_library_sources_ifdef(CONFIG_APP_PROV_HANDOFF prov_handoff.c)
+
+# Identify: `tedge identify` blinks the status LED, the sw0 identify pattern
+# sends an event.
+zephyr_library_sources_ifdef(CONFIG_APP_IDENTIFY identify.c)
+
+# The sw0 watcher and its gesture classifier, shared by the two above.
+zephyr_library_sources_ifdef(CONFIG_APP_BUTTON
+  button.c
   button_gesture.c
 )
 

@@ -54,6 +54,7 @@
     "getaddrinfo",
     "getnameinfo",
     "glyph",
+    "gpios",
     "HASCOMPONENT",
     "Heisenbug",
     "HELF",
