@@ -79,7 +79,7 @@ int tedge_sr_template(const char *line)
 	return (int)strtol(first, NULL, 10);
 }
 
-int tedge_sr_quote(const char *in, char *out, size_t len)
+static int sr_quote(const char *in, char *out, size_t len, bool lines)
 {
 	size_t n = 0;
 
@@ -90,16 +90,31 @@ int tedge_sr_quote(const char *in, char *out, size_t len)
 	for (const char *p = in; *p != '\0'; p++) {
 		size_t need = (*p == '"') ? 2 : 1;
 
+		if (lines && *p == '\r') {
+			continue;
+		}
 		if (n + need + 2 > len) { /* closing quote + NUL */
 			break;
 		}
 		if (*p == '"') {
 			out[n++] = '"';
 		}
-		/* A newline would end the SmartREST line. */
-		out[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+		/* Unquoted, a newline would end the SmartREST line; inside the
+		 * quotes it is part of the value, but most texts are meant to
+		 * be one line. */
+		out[n++] = (!lines && (*p == '\n' || *p == '\r')) ? ' ' : *p;
 	}
 	out[n++] = '"';
 	out[n] = '\0';
 	return (int)n;
+}
+
+int tedge_sr_quote(const char *in, char *out, size_t len)
+{
+	return sr_quote(in, out, len, false);
+}
+
+int tedge_sr_quote_lines(const char *in, char *out, size_t len)
+{
+	return sr_quote(in, out, len, true);
 }

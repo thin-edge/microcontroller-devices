@@ -85,6 +85,8 @@ int tedge_sr_field(const char *line, int index, char *out, size_t len);
 int tedge_sr_template(const char *line);
 /** Quote @p in for use as a SmartREST field (adds the surrounding quotes). */
 int tedge_sr_quote(const char *in, char *out, size_t len);
+/** As tedge_sr_quote(), but keeps line breaks ("\n") and drops "\r". */
+int tedge_sr_quote_lines(const char *in, char *out, size_t len);
 
 /* --- Helpers (unit-tested on native_sim) --------------------------------- */
 
