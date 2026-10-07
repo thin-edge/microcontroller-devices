@@ -4,7 +4,8 @@
  * target, which may be the device itself or another host on its network.
  *
  *   530,<serial>,<host>,<port>,<key>   (on s/ds)
- *     -> resolve, check the target policy and the application's hook
+ *     -> resolve (".local" names over mDNS), retrying a lookup that times
+ *        out, then check the target policy and the application's hook
  *     -> take a seat (CONFIG_TEDGE_REMOTE_ACCESS_MAX_SESSIONS)
  *     -> TCP to <host>:<port>
  *     -> wss://<tenant>/service/remoteaccess/device/<key>
@@ -23,9 +24,11 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net/dns_resolve.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
+#include <zephyr/random/random.h>
 #include <zephyr/net/websocket.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/clock.h>
@@ -52,9 +55,23 @@ LOG_MODULE_DECLARE(tedge, CONFIG_TEDGE_LOG_LEVEL);
  * here. */
 #define ACTIVE_POLL_MS 0
 
+#define RESOLVE_TIMEOUT_MS  CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_TIMEOUT_MS
+#define RESOLVE_ATTEMPTS    CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_ATTEMPTS
+#define RESOLVE_RETRY_MS    CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_RETRY_DELAY_MS
+/* The seat is held while a name resolves; keep the worst case bounded. */
+BUILD_ASSERT(RESOLVE_ATTEMPTS * RESOLVE_TIMEOUT_MS +
+		     (RESOLVE_ATTEMPTS - 1) * RESOLVE_RETRY_MS <= 30000,
+	     "remote-access name resolution could hold a seat for over 30 s");
+
 struct session {
 	char host[64];
+	char addr_s[NET_IPV4_ADDR_LEN]; /* what host resolved to */
 	uint16_t port;
+	/* One lookup at a time, filled in by the resolver's callback. */
+	struct k_sem resolved;
+	int resolve_status;
+	struct in_addr answer;
+	bool have_answer;
 	char key[48]; /* the connection key; never logged */
 	atomic_t busy;
 	time_t since; /* wall clock while the tunnel is up, else 0 */
@@ -90,42 +107,47 @@ int tedge_ra_poll_event(struct tedge_ra_event *ev)
 /* Target policy                                                             */
 /* ------------------------------------------------------------------------ */
 
-/* Returns 0 when the target may be contacted, or -EACCES with a reason. */
+/* Returns 0 when the target may be contacted, or -EACCES with a reason.
+ * @p target is the target as events name it. */
 static int policy_check(const struct in_addr *addr, const char *host,
-			uint16_t port, char *reason, size_t rlen)
+			const char *target, uint16_t port, char *reason,
+			size_t rlen)
 {
 	struct net_if *iface = net_if_get_default();
-	bool loopback = (ntohl(addr->s_addr) >> 24) == 127;
-	bool own = net_if_ipv4_addr_lookup(addr, NULL) != NULL;
 	const struct tedge_hooks *hooks = tedge_hook_table();
-	bool allowed;
+	enum tedge_ra_policy policy =
+		IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LOCAL)
+			? TEDGE_RA_POLICY_LOCAL
+		: IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LIST)
+			? TEDGE_RA_POLICY_LIST
+			: TEDGE_RA_POLICY_LAN;
+	struct tedge_ra_facts facts = {
+		.loopback = (ntohl(addr->s_addr) >> 24) == 127,
+		.own = net_if_ipv4_addr_lookup(addr, NULL) != NULL,
+		.on_subnet = iface != NULL &&
+			     net_if_ipv4_addr_mask_cmp(iface, addr),
+		.mdns = tedge_ra_is_mdns_name(host),
+	};
 
-	if (IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LOCAL)) {
-		allowed = loopback || own;
-		if (!allowed) {
-			snprintf(reason, rlen,
-				 "target %s:%u refused: this device only", host,
-				 port);
-		}
-	} else if (IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LIST)) {
-		allowed = tedge_ra_in_allow_list(
-			CONFIG_TEDGE_REMOTE_ACCESS_ALLOW_LIST, host, port);
-		if (!allowed) {
-			snprintf(reason, rlen,
-				 "target %s:%u refused: not in the allow-list",
-				 host, port);
-		}
-	} else { /* the device's own IPv4 subnets */
-		allowed = loopback || own ||
-			  (iface != NULL &&
-			   net_if_ipv4_addr_mask_cmp(iface, addr));
-		if (!allowed) {
-			snprintf(reason, rlen,
-				 "target %s:%u refused: not on this device's "
-				 "network", host, port);
-		}
-	}
-	if (!allowed) {
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS_TARGETS_LIST)
+	facts.in_list = tedge_ra_in_allow_list(
+		CONFIG_TEDGE_REMOTE_ACCESS_ALLOW_LIST, host, port);
+#endif
+
+	switch (tedge_ra_policy_decide(policy, &facts)) {
+	case TEDGE_RA_ALLOWED:
+		break;
+	case TEDGE_RA_REFUSED_OFF_LINK:
+		snprintf(reason, rlen,
+			 "target %s refused: an mDNS answer must be on this "
+			 "device's network", target);
+		return -EACCES;
+	default:
+		snprintf(reason, rlen, "target %s refused: %s", target,
+			 policy == TEDGE_RA_POLICY_LOCAL ? "this device only"
+			 : policy == TEDGE_RA_POLICY_LIST
+				 ? "not in the allow-list"
+				 : "not on this device's network");
 		return -EACCES;
 	}
 
@@ -134,19 +156,182 @@ static int policy_check(const struct in_addr *addr, const char *host,
 		struct sockaddr_in sa = { .sin_family = AF_INET,
 					  .sin_port = htons(port),
 					  .sin_addr = *addr };
-		struct tedge_remote_target target = {
+		struct tedge_remote_target t = {
 			.addr = (const struct sockaddr *)(const void *)&sa,
 			.port = port,
 		};
 
-		if (!hooks->remote_access_allow(&target, hooks->user_data)) {
+		if (!hooks->remote_access_allow(&t, hooks->user_data)) {
 			snprintf(reason, rlen,
-				 "target %s:%u refused by the application", host,
-				 port);
+				 "target %s refused by the application",
+				 target);
 			return -EACCES;
 		}
 	}
 	return 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Resolving the target                                                      */
+/* ------------------------------------------------------------------------ */
+
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS_MDNS)
+/* One mDNS lookup of s->host: 0 with s->answer, or a DNS_EAI_* code.
+ *
+ * Not Zephyr's resolver (4.4): it has an mDNS server only when the
+ * application sets static DNS servers, and when the application also runs
+ * the mDNS responder it sends from a socket it never reads, while
+ * responders answer such a query to the port it came from (RFC 6762 6.7).
+ * So the query goes out from a socket of our own, which reads the answer
+ * itself: the same "legacy unicast" exchange, whatever else is running. */
+static int mdns_once(struct session *s)
+{
+	struct sockaddr_in group = { .sin_family = AF_INET,
+				     .sin_port = htons(5353) };
+	uint16_t id = sys_rand16_get();
+	int64_t deadline = k_uptime_get() + RESOLVE_TIMEOUT_MS;
+	uint8_t buf[512];
+	int fd, n, status = DNS_EAI_CANCELED;
+
+	(void)zsock_inet_pton(AF_INET, "224.0.0.251", &group.sin_addr);
+	n = tedge_mdns_build_query(buf, sizeof(buf), id, s->host);
+	if (n < 0) {
+		return DNS_EAI_NONAME;
+	}
+	fd = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (fd < 0) {
+		return DNS_EAI_SYSTEM;
+	}
+	if (zsock_sendto(fd, buf, n, 0, (struct sockaddr *)&group,
+			 sizeof(group)) < 0) {
+		zsock_close(fd);
+		return DNS_EAI_SYSTEM;
+	}
+
+	/* Every responder that knows the name answers; take the first one
+	 * that answers this query, and ignore anything else. */
+	for (int64_t left; (left = deadline - k_uptime_get()) > 0;) {
+		struct zsock_pollfd pfd = { .fd = fd, .events = ZSOCK_POLLIN };
+		uint8_t a4[4];
+
+		if (zsock_poll(&pfd, 1, (int)left) <= 0) {
+			break;
+		}
+		n = zsock_recv(fd, buf, sizeof(buf), ZSOCK_MSG_DONTWAIT);
+		if (n <= 0) {
+			continue;
+		}
+		if (tedge_mdns_parse_a(buf, n, id, s->host, a4) == 0) {
+			memcpy(&s->answer, a4, sizeof(a4));
+			status = 0;
+			break;
+		}
+	}
+	zsock_close(fd);
+	return status;
+}
+#endif
+
+static void resolve_cb(enum dns_resolve_status status,
+		       struct dns_addrinfo *info, void *user_data)
+{
+	struct session *s = user_data;
+
+	if (status == DNS_EAI_INPROGRESS && info != NULL) {
+		if (!s->have_answer && info->ai_family == AF_INET) {
+			s->answer = ((struct sockaddr_in *)&info->ai_addr)
+					    ->sin_addr;
+			s->have_answer = true;
+		}
+		return;
+	}
+	s->resolve_status = (status == DNS_EAI_ALLDONE && s->have_answer)
+				    ? 0
+				    : (int)status;
+	k_sem_give(&s->resolved);
+}
+
+/* One lookup: 0 with s->answer, or a DNS_EAI_* code. */
+static int resolve_once(struct session *s)
+{
+	uint16_t id = 0;
+	int ret;
+
+#if defined(CONFIG_TEDGE_REMOTE_ACCESS_MDNS)
+	if (tedge_ra_is_mdns_name(s->host)) {
+		return mdns_once(s);
+	}
+#endif
+	k_sem_reset(&s->resolved);
+	s->have_answer = false;
+	s->resolve_status = DNS_EAI_CANCELED;
+
+	ret = dns_get_addr_info(s->host, DNS_QUERY_TYPE_A, &id, resolve_cb, s,
+				RESOLVE_TIMEOUT_MS);
+	if (ret < 0) {
+		/* An errno: no server to send to, or a query slot in use (one
+		 * at a time by default). getaddrinfo() calls this a system
+		 * error too. */
+		return DNS_EAI_SYSTEM;
+	}
+	/* The resolver times the query out itself and calls back with
+	 * DNS_EAI_CANCELED; the margin covers a callback that never comes,
+	 * and cancelling then makes sure none arrives later. */
+	if (k_sem_take(&s->resolved, K_MSEC(RESOLVE_TIMEOUT_MS + 500)) != 0) {
+		(void)dns_cancel_addr_info_with_name(s->host, DNS_QUERY_TYPE_A,
+						     id);
+		return DNS_EAI_CANCELED;
+	}
+	return s->resolve_status;
+}
+
+/* Resolve s->host into @p addr, retrying what is worth retrying. Returns 0,
+ * or -EHOSTUNREACH with the reason in @p reason. */
+static int resolve_target(struct session *s, struct in_addr *addr,
+			  char *reason, size_t rlen)
+{
+	bool mdns = tedge_ra_is_mdns_name(s->host);
+	int status = DNS_EAI_FAIL;
+	int attempt;
+
+	if (zsock_inet_pton(AF_INET, s->host, addr) == 1) {
+		s->addr_s[0] = '\0';
+		return 0;
+	}
+	if (mdns && !IS_ENABLED(CONFIG_TEDGE_REMOTE_ACCESS_MDNS)) {
+		snprintf(reason, rlen, "cannot resolve %s: mDNS is not built in",
+			 s->host);
+		return -EHOSTUNREACH;
+	}
+
+	for (attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++) {
+		if (attempt > 1) {
+			k_msleep(RESOLVE_RETRY_MS);
+		}
+		status = resolve_once(s);
+		if (status == 0) {
+			*addr = s->answer;
+			(void)zsock_inet_ntop(AF_INET, addr, s->addr_s,
+					      sizeof(s->addr_s));
+			return 0;
+		}
+		LOG_WRN("remote access: lookup %d/%d of %s failed (%d)",
+			attempt, RESOLVE_ATTEMPTS, s->host, status);
+		if (!tedge_ra_resolve_retryable(status)) {
+			break;
+		}
+	}
+	attempt = MIN(attempt, RESOLVE_ATTEMPTS);
+
+	if (status == DNS_EAI_CANCELED || status == DNS_EAI_AGAIN) {
+		snprintf(reason, rlen, "%s did not answer%s after %d attempt%s",
+			 s->host, mdns ? " over mDNS" : "", attempt,
+			 attempt == 1 ? "" : "s");
+	} else {
+		snprintf(reason, rlen, "cannot resolve %s after %d attempt%s (%d)",
+			 s->host, attempt, attempt == 1 ? "" : "s", status);
+	}
+	return -EHOSTUNREACH;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -277,10 +462,8 @@ static int send_all(int fd, const uint8_t *p, size_t n)
 static void bridge(void *a, void *b, void *c)
 {
 	struct session *s = a;
-	struct zsock_addrinfo hints = { .ai_family = AF_INET,
-					.ai_socktype = SOCK_STREAM };
 	struct in_addr addr;
-	char reason[112];
+	char reason[160], target[96];
 	uint64_t up = 0, down = 0;
 	int64_t t_up = 0, last_activity;
 	int tcp = -1, ws = -1, http_fd = -1, ret;
@@ -289,19 +472,17 @@ static void bridge(void *a, void *b, void *c)
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
 
-	if (zsock_inet_pton(AF_INET, s->host, &addr) != 1) {
-		struct zsock_addrinfo *res;
-
-		if (zsock_getaddrinfo(s->host, NULL, &hints, &res) != 0) {
-			post(TEDGE_RA_FAILED, "cannot resolve %s", s->host);
-			goto out;
-		}
-		addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
-		zsock_freeaddrinfo(res);
+	if (resolve_target(s, &addr, reason, sizeof(reason)) != 0) {
+		LOG_WRN("remote access: %s", reason);
+		post(TEDGE_RA_FAILED, "%s", reason);
+		goto out;
 	}
+	(void)tedge_ra_target_str(target, sizeof(target), s->host, s->addr_s,
+				  s->port);
 
 	/* The policy decides before any socket is opened. */
-	if (policy_check(&addr, s->host, s->port, reason, sizeof(reason)) != 0) {
+	if (policy_check(&addr, s->host, target, s->port, reason,
+			 sizeof(reason)) != 0) {
 		LOG_WRN("%s", reason);
 		post(TEDGE_RA_FAILED, "%s", reason);
 		goto out;
@@ -309,8 +490,7 @@ static void bridge(void *a, void *b, void *c)
 
 	tcp = tcp_connect(&addr, s->port);
 	if (tcp < 0) {
-		post(TEDGE_RA_FAILED, "cannot reach %s:%u (%d)", s->host, s->port,
-		     tcp);
+		post(TEDGE_RA_FAILED, "cannot reach %s (%d)", target, tcp);
 		goto out;
 	}
 	ws = wss_connect(s, &http_fd);
@@ -326,8 +506,8 @@ static void bridge(void *a, void *b, void *c)
 		s->since = ts.tv_sec;
 	}
 	t_up = k_uptime_get();
-	LOG_INF("remote access: tunnel to %s:%u is up", s->host, s->port);
-	post(TEDGE_RA_UP, "tunnel to %s:%u opened", s->host, s->port);
+	LOG_INF("remote access: tunnel to %s is up", target);
+	post(TEDGE_RA_UP, TEDGE_RA_OPENED_FMT, target);
 
 	/* Zephyr's telnet backend turns echo off and never offers it, and the
 	 * cloud's terminal waits for the server: without this nobody echoes. */
@@ -432,12 +612,10 @@ static void bridge(void *a, void *b, void *c)
 	{
 		int64_t secs = MAX((k_uptime_get() - t_up) / 1000, 1);
 
-		LOG_INF("remote access: tunnel to %s:%u ended (%s) after %lld s: "
-			"%llu B up, %llu B down", s->host, s->port, why, secs, up,
-			down);
-		post(TEDGE_RA_CLOSED,
-		     "tunnel to %s:%u closed (%s): %llu B up, %llu B down",
-		     s->host, s->port, why, up, down);
+		LOG_INF("remote access: tunnel to %s ended (%s) after %lld s: "
+			"%llu B up, %llu B down", target, why, secs, up, down);
+		post(TEDGE_RA_CLOSED, TEDGE_RA_CLOSED_FMT, target, why, up,
+		     down);
 	}
 out:
 	if (ws >= 0) {
@@ -450,6 +628,7 @@ out:
 		zsock_close(tcp);
 	}
 	s->since = 0;
+	s->addr_s[0] = '\0';
 	memset(s->key, 0, sizeof(s->key));
 	atomic_clear(&s->busy);
 }
@@ -499,6 +678,8 @@ int tedge_ra_request(const char *line, char *reason, size_t rlen)
 	}
 
 	snprintf(s->host, sizeof(s->host), "%s", host);
+	s->addr_s[0] = '\0';
+	k_sem_init(&s->resolved, 0, 1);
 	s->port = (uint16_t)strtoul(port_s, NULL, 10);
 	snprintf(s->key, sizeof(s->key), "%s", key);
 	memset(key, 0, sizeof(key));

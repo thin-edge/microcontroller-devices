@@ -59,6 +59,7 @@ if(CONFIG_TEDGE)
   zephyr_library_sources_ifdef(CONFIG_TEDGE_REMOTE_ACCESS
     src/tedge_remote_access.c
     src/tedge_ra_allow_list.c
+    src/tedge_ra_target.c
   )
   zephyr_library_sources_ifdef(CONFIG_TEDGE_AUTH_C8Y_CA
     src/tedge_enroll.c
