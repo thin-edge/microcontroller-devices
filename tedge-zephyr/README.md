@@ -587,6 +587,39 @@ keeps that from happening.
 and it has to be onboarded again, with a new registration and one-time
 password. That is why the alarm exists.
 
+### Remote-access targets
+
+A remote-access endpoint can name its target by IP address, by DNS name or
+by mDNS name (`rpi5-d83add9f145a.local:22`). An mDNS name is looked up
+afresh for every session, so the endpoint keeps working when the host's
+DHCP lease moves it. The address a name resolved to is judged by the target
+policy, and the session's open and close events name both:
+`tunnel to rpi5-d83add9f145a.local (192.168.68.84):22 opened`.
+
+| Option | Default | |
+|---|---|---|
+| `CONFIG_TEDGE_REMOTE_ACCESS_MDNS` | `y` | Resolve `.local` targets over mDNS. Off, a `.local` target fails with "mDNS is not built in" |
+| `CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_TIMEOUT_MS` | 5000 | How long each lookup waits |
+| `CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_ATTEMPTS` | 3 | Lookups before the session fails; `1` turns retrying off |
+| `CONFIG_TEDGE_REMOTE_ACCESS_RESOLVE_RETRY_DELAY_MS` | 500 | Pause between lookups |
+
+A lookup that times out or hits a transient error is retried; an
+authoritative "no such name" is not. Each failed attempt is logged as a
+warning, and the session's seat is held while it resolves: about 16 s at
+most with the defaults, never more than 30 s (checked at build time).
+
+Any host on the network can answer an mDNS query, so a `.local` name must
+resolve to an address on the device's own subnets, or the device itself,
+under every target policy. An allow-list entry matches the name as
+requested (`rpi5-d83add9f145a.local:22`).
+
+The client sends its own mDNS query rather than using Zephyr's resolver,
+which in Zephyr 4.4.2 cannot look up `.local` names on a device that takes
+DNS from DHCP or runs the mDNS responder
+([`docs/zephyr-mdns-resolver-bugs.md`](docs/zephyr-mdns-resolver-bugs.md)).
+It needs nothing from the application beyond UDP; each lookup holds one
+socket while it runs.
+
 ### Security limitations
 
 - The device key is stored in PSA ITS, encrypted with a key derived from the

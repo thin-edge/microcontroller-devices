@@ -398,13 +398,73 @@ enum tedge_ra_event_type {
 	TEDGE_RA_CLOSED, /* an established tunnel ended: publish the event */
 };
 
+/* Sized for the longest close event: a 63-character host, its address,
+ * the longest reason and two 20-digit counters (unit-tested). */
 struct tedge_ra_event {
 	enum tedge_ra_event_type type;
-	char text[144];
+	char text[200];
 };
+
+/* The open and close event texts; %s is tedge_ra_target_str(). */
+#define TEDGE_RA_OPENED_FMT "tunnel to %s opened"
+#define TEDGE_RA_CLOSED_FMT "tunnel to %s closed (%s): %llu B up, %llu B down"
 
 /** True when "<host>:<port>" is one of the comma-separated @p list entries. */
 bool tedge_ra_in_allow_list(const char *list, const char *host, uint16_t port);
+
+/* --- Remote-access targets (tedge_ra_target.c) ----------------------------- */
+
+/** True when @p host is an mDNS name: "<label>.local", any case, with or
+ * without the trailing dot. */
+bool tedge_ra_is_mdns_name(const char *host);
+
+/** True when a lookup that ended with @p status (a DNS_EAI_* code; map an
+ * errno from the resolver to DNS_EAI_SYSTEM first, as getaddrinfo() does)
+ * is worth another attempt. */
+bool tedge_ra_resolve_retryable(int status);
+
+enum tedge_ra_policy {
+	TEDGE_RA_POLICY_LAN,
+	TEDGE_RA_POLICY_LIST,
+	TEDGE_RA_POLICY_LOCAL,
+};
+
+/** What is known about a resolved target, for the policy. */
+struct tedge_ra_facts {
+	bool loopback;  /* 127.0.0.0/8 */
+	bool own;       /* one of the device's addresses */
+	bool on_subnet; /* on one of the device's IPv4 subnets */
+	bool in_list;   /* "<host>:<port>" is on the allow-list */
+	bool mdns;      /* the host was a ".local" name */
+};
+
+enum tedge_ra_verdict {
+	TEDGE_RA_ALLOWED,
+	TEDGE_RA_REFUSED_POLICY,   /* the build's policy refuses it */
+	TEDGE_RA_REFUSED_OFF_LINK, /* an mDNS answer from off the device's link */
+};
+
+/** The built-in policy's decision; the application's hook runs after. */
+enum tedge_ra_verdict tedge_ra_policy_decide(enum tedge_ra_policy policy,
+					     const struct tedge_ra_facts *f);
+
+/** An mDNS query for @p name's A record, with @p id, into @p buf. Sent from
+ * a port other than 5353, it is a "legacy unicast" query (RFC 6762 6.7):
+ * the responder answers to that port directly. Returns its length, or
+ * -EINVAL for a name that does not fit. */
+int tedge_mdns_build_query(uint8_t *buf, size_t len, uint16_t id,
+			   const char *name);
+
+/** The IPv4 address for @p name in the answer @p msg to query @p id.
+ * Returns 0 with @p addr, -ENOENT when it is not an answer to that query
+ * or names no such address, -EINVAL when it is malformed. */
+int tedge_mdns_parse_a(const uint8_t *msg, size_t len, uint16_t id,
+		       const char *name, uint8_t addr[4]);
+
+/** "<host>:<port>", or "<host> (<addr>):<port>" when @p addr is a resolved
+ * address that differs from @p host. Returns what snprintf() returns. */
+int tedge_ra_target_str(char *buf, size_t len, const char *host,
+			const char *addr, uint16_t port);
 
 /** Handle a "530,..." line: start a session, or fail with @p reason. */
 int tedge_ra_request(const char *line, char *reason, size_t rlen);

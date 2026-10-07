@@ -5,6 +5,7 @@
  */
 
 #include <zephyr/logging/log.h>
+#include <zephyr/net/dns_resolve.h>
 #include <zephyr/ztest.h>
 
 /* The module's sources log under this name; a test build has to register it
@@ -208,6 +209,202 @@ ZTEST(tedge_remote_access, test_allow_list)
 	zassert_false(tedge_ra_in_allow_list(list, "192.168.1.21", 22));
 	/* An empty list allows nothing. */
 	zassert_false(tedge_ra_in_allow_list("", "192.168.1.20", 22));
+}
+
+ZTEST(tedge_remote_access, test_mdns_name)
+{
+	zassert_true(tedge_ra_is_mdns_name("rpi5-d83add9f145a.local"));
+	zassert_true(tedge_ra_is_mdns_name("Pi.LOCAL"));
+	zassert_true(tedge_ra_is_mdns_name("pi.local."));
+	zassert_true(tedge_ra_is_mdns_name("a.b.local"));
+
+	zassert_false(tedge_ra_is_mdns_name("local"));
+	zassert_false(tedge_ra_is_mdns_name(".local"));
+	zassert_false(tedge_ra_is_mdns_name("x.localhost"));
+	zassert_false(tedge_ra_is_mdns_name("pilocal"));
+	zassert_false(tedge_ra_is_mdns_name("pi.local.example.com"));
+	zassert_false(tedge_ra_is_mdns_name("192.168.68.72"));
+	zassert_false(tedge_ra_is_mdns_name(""));
+}
+
+ZTEST(tedge_remote_access, test_resolve_retryable)
+{
+	/* Nobody answered, or the resolver was not ready: ask again. */
+	zassert_true(tedge_ra_resolve_retryable(DNS_EAI_CANCELED));
+	zassert_true(tedge_ra_resolve_retryable(DNS_EAI_AGAIN));
+	zassert_true(tedge_ra_resolve_retryable(DNS_EAI_SYSTEM));
+	zassert_true(tedge_ra_resolve_retryable(DNS_EAI_MEMORY));
+
+	/* An authoritative answer gives the same answer next time. */
+	zassert_false(tedge_ra_resolve_retryable(DNS_EAI_NONAME));
+	zassert_false(tedge_ra_resolve_retryable(DNS_EAI_NODATA));
+	zassert_false(tedge_ra_resolve_retryable(DNS_EAI_FAIL));
+	zassert_false(tedge_ra_resolve_retryable(DNS_EAI_FAMILY));
+}
+
+ZTEST(tedge_remote_access, test_policy_decide)
+{
+	const struct tedge_ra_facts lan_host = { .on_subnet = true };
+	const struct tedge_ra_facts far_host = { 0 };
+	const struct tedge_ra_facts self = { .own = true };
+	const struct tedge_ra_facts listed_far = { .in_list = true };
+	const struct tedge_ra_facts listed_lan = { .in_list = true,
+						   .on_subnet = true };
+	struct tedge_ra_facts f;
+
+	/* Unicast names and literals: the policy alone decides. */
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LAN, &lan_host),
+		      TEDGE_RA_ALLOWED);
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LAN, &far_host),
+		      TEDGE_RA_REFUSED_POLICY);
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LIST,
+					     &listed_far),
+		      TEDGE_RA_ALLOWED);
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LIST, &lan_host),
+		      TEDGE_RA_REFUSED_POLICY);
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LOCAL, &self),
+		      TEDGE_RA_ALLOWED);
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LOCAL,
+					     &lan_host),
+		      TEDGE_RA_REFUSED_POLICY);
+
+	/* A ".local" answer must be on the link, under every policy. */
+	f = lan_host;
+	f.mdns = true;
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LAN, &f),
+		      TEDGE_RA_ALLOWED);
+	f = listed_lan;
+	f.mdns = true;
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LIST, &f),
+		      TEDGE_RA_ALLOWED);
+	f = listed_far;
+	f.mdns = true;
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LIST, &f),
+		      TEDGE_RA_REFUSED_OFF_LINK);
+	f = self;
+	f.mdns = true;
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LOCAL, &f),
+		      TEDGE_RA_ALLOWED);
+	/* The policy's own refusal is reported first. */
+	f = far_host;
+	f.mdns = true;
+	zassert_equal(tedge_ra_policy_decide(TEDGE_RA_POLICY_LAN, &f),
+		      TEDGE_RA_REFUSED_POLICY);
+}
+
+ZTEST(tedge_remote_access, test_target_str)
+{
+	char buf[144];
+
+	tedge_ra_target_str(buf, sizeof(buf), "192.168.68.72", "192.168.68.72",
+			    22);
+	zassert_str_equal(buf, "192.168.68.72:22");
+	tedge_ra_target_str(buf, sizeof(buf), "rpi5.local", "192.168.68.84",
+			    22);
+	zassert_str_equal(buf, "rpi5.local (192.168.68.84):22");
+	tedge_ra_target_str(buf, sizeof(buf), "rpi5.local", NULL, 22);
+	zassert_str_equal(buf, "rpi5.local:22");
+}
+
+ZTEST(tedge_remote_access, test_mdns_query)
+{
+	static const uint8_t want[] = {
+		0x12, 0x34, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, /* id, 1 question */
+		4, 'r', 'p', 'i', '5', 5, 'l', 'o', 'c', 'a', 'l', 0,
+		0, 1, 0, 1, /* A, IN */
+	};
+	uint8_t buf[64];
+
+	zassert_equal(tedge_mdns_build_query(buf, sizeof(buf), 0x1234,
+					     "rpi5.local"),
+		      sizeof(want));
+	zassert_mem_equal(buf, want, sizeof(want));
+	/* The trailing dot is the same name. */
+	zassert_equal(tedge_mdns_build_query(buf, sizeof(buf), 0x1234,
+					     "rpi5.local."),
+		      sizeof(want));
+	zassert_mem_equal(buf, want, sizeof(want));
+
+	zassert_equal(tedge_mdns_build_query(buf, sizeof(buf), 1, "a..local"),
+		      -EINVAL);
+	zassert_equal(tedge_mdns_build_query(buf, sizeof(buf), 1, ""),
+		      -EINVAL);
+	zassert_equal(tedge_mdns_build_query(buf, 20, 1, "rpi5.local"),
+		      -EINVAL);
+}
+
+/* The answer a responder sends to a legacy-unicast query: the question
+ * echoed, then the A record with its name compressed to the question's. */
+static size_t mdns_answer(uint8_t *buf, size_t len, uint16_t id,
+			  const char *name)
+{
+	static const uint8_t rr[] = {
+		0xc0, 0x0c,             /* the question's name */
+		0, 1, 0x80, 1,          /* A, IN with the cache-flush bit */
+		0, 0, 0, 10, 0, 4,      /* TTL 10 s, 4 bytes */
+		192, 168, 68, 84,
+	};
+	int n = tedge_mdns_build_query(buf, len, id, name);
+
+	buf[2] = 0x84; /* QR, AA */
+	buf[7] = 1;    /* one answer */
+	memcpy(buf + n, rr, sizeof(rr));
+	return n + sizeof(rr);
+}
+
+ZTEST(tedge_remote_access, test_mdns_answer)
+{
+	const uint8_t expect[4] = { 192, 168, 68, 84 };
+	uint8_t buf[96], addr[4] = { 0 };
+	size_t n = mdns_answer(buf, sizeof(buf), 0x1234, "rpi5.local");
+
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x1234, "rpi5.local", addr),
+		      0);
+	zassert_mem_equal(addr, expect, 4);
+	/* Names compare without regard to case or the trailing dot. */
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x1234, "RPI5.local.", addr),
+		      0);
+
+	/* Someone else's answer, or another name, is not ours. */
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x4321, "rpi5.local", addr),
+		      -ENOENT);
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x1234, "pi.local", addr),
+		      -ENOENT);
+	/* A query is not an answer. */
+	buf[2] = 0;
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x1234, "rpi5.local", addr),
+		      -ENOENT);
+	buf[2] = 0x84;
+
+	/* Cut short, or a compression pointer that loops. */
+	zassert_equal(tedge_mdns_parse_a(buf, n - 3, 0x1234, "rpi5.local",
+					 addr),
+		      -EINVAL);
+	n = mdns_answer(buf, sizeof(buf), 0x1234, "rpi5.local");
+	buf[n - 16] = 0xc0;
+	buf[n - 15] = (uint8_t)(n - 16);
+	zassert_equal(tedge_mdns_parse_a(buf, n, 0x1234, "rpi5.local", addr),
+		      -EINVAL);
+}
+
+ZTEST(tedge_remote_access, test_close_event_fits)
+{
+	/* The longest close event: a 63-character host, the longest IPv4
+	 * address, the longest reason and the largest counters. The counters
+	 * are what an audit needs, so they must survive. */
+	char host[64], target[96];
+	struct tedge_ra_event ev;
+	int n;
+
+	memset(host, 'h', sizeof(host) - 1);
+	host[sizeof(host) - 1] = '\0';
+	tedge_ra_target_str(target, sizeof(target), host, "255.255.255.255",
+			    65535);
+	n = snprintf(ev.text, sizeof(ev.text),
+		     TEDGE_RA_CLOSED_FMT, target,
+		     "the cloud connection dropped", UINT64_MAX, UINT64_MAX);
+	zassert_true(n < (int)sizeof(ev.text),
+		     "a %d-character close event does not fit", n);
 }
 
 ZTEST_SUITE(tedge_remote_access, NULL, NULL, NULL, NULL, NULL);

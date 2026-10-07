@@ -1315,7 +1315,7 @@ static int c8y_poll(int timeout_ms)
 	{
 		struct tedge_ra_event ev;
 		static int64_t twin_due;
-		char sr[224], quoted[160];
+		char sr[272], quoted[208];
 
 		while (tedge_ra_poll_event(&ev) == 0) {
 			(void)tedge_sr_quote(ev.text, quoted, sizeof(quoted));

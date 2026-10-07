@@ -606,6 +606,46 @@ config TEDGE_REMOTE_ACCESS_IDLE_TIMEOUT_S
 	int "Close a session after this many idle seconds (0 = never)"
 	default 900
 
+config TEDGE_REMOTE_ACCESS_MDNS
+	bool "Resolve .local targets over mDNS"
+	default y
+	# The client sends its own one-shot query (tedge_remote_access.c,
+	# mdns_once()); Zephyr's mDNS resolver is not needed, and in 4.4 does
+	# not receive answers while the application runs the mDNS responder.
+	select NET_UDP
+	help
+	  A remote-access target named "<host>.local" is resolved by a
+	  multicast query on the device's network, so an operator can reach a
+	  LAN host by its mDNS name whatever its current DHCP address. Any host
+	  on the link can answer, so the answer must be on the device's own
+	  subnets under every target policy. Each lookup opens one UDP socket
+	  for its duration. Without this option a ".local" target fails with
+	  "mDNS is not built in".
+
+config TEDGE_REMOTE_ACCESS_RESOLVE_TIMEOUT_MS
+	int "How long each lookup of a target name waits (ms)"
+	range 500 10000
+	default 5000
+	help
+	  Applies to mDNS and unicast DNS names alike. A host waking from
+	  Wi-Fi power save can take seconds to answer.
+
+config TEDGE_REMOTE_ACCESS_RESOLVE_ATTEMPTS
+	int "Lookups of a target name before the session fails"
+	range 1 5
+	default 3
+	help
+	  A lookup that times out or hits a transient error is tried again,
+	  up to this many lookups in all; 1 turns retrying off. An
+	  authoritative "no such name" is not retried. The session's seat is
+	  held while it resolves: at most attempts x timeout plus the pauses
+	  between them, which the build keeps under 30 s.
+
+config TEDGE_REMOTE_ACCESS_RESOLVE_RETRY_DELAY_MS
+	int "Pause between lookups of a target name (ms)"
+	range 0 5000
+	default 500
+
 endif # TEDGE_REMOTE_ACCESS
 
 config TEDGE_PARAMETERS
