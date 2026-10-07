@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.9.0...v0.10.0) (2026-10-07)
+
+
+### Features
+
+* **remote-access:** reach targets by their mDNS .local name ([#15](https://github.com/thin-edge/microcontroller-devices/issues/15)) ([d7b8968](https://github.com/thin-edge/microcontroller-devices/commit/d7b8968c4f5bc27a0b859ffe8dd94bea51b45494))
+
 ## [0.9.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.8.0...v0.9.0) (2026-10-06)
 
 
