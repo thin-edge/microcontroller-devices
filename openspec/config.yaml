@@ -15,18 +15,19 @@ context: |
     2. Additional industry protocols as source options (Modbus TCP, SNMP;
        done), plus deployability: BLE Wi-Fi provisioning and the MCUboot
        A/B layout.
-    3. Started 2026-09-19: tedge-zephyr, a thin-edge.io device-management
-       client shipped as a reusable Zephyr module (`tedge-zephyr/`, API
-       `tedge_*`, Kconfig `CONFIG_TEDGE_*`) that ANY user's Zephyr
-       application can include. This repo's protocol apps are example user
-       applications. The module must never depend on `lib/` or `apps/`, and
-       must stay ready to move into its own repository. It connects directly
+    3. Started 2026-09-19: a thin-edge.io device-management client shipped
+       as a reusable Zephyr module (API `tedge_*`, Kconfig `CONFIG_TEDGE_*`)
+       that ANY user's Zephyr application can include. Since 2026-11-03 it
+       lives in its own repository, thin-edge/tiny-edge (a west project
+       pinned in west.yml; its specs moved with it). This repo's apps are
+       example user applications of it; changes to the client itself are
+       proposed in tiny-edge. It connects directly
        to Cumulocity first (MQTT Service :9883, SmartREST 2.0; onboarding
        via the Cumulocity CA); remote access, including forwarding to other
        LAN hosts, is the headline feature. The thin-edge.io gateway
        transport comes later. Roadmap: SCOPE.md, "Phase 3 roadmap". Every
        feature is selected at build time so constrained boards include only
-       what fits; see the device-management-features and
+       what fits; see tiny-edge's device-management-features and
        tedge-client-module specs.
 
   Design priorities (in order):
@@ -49,8 +50,9 @@ rules:
       keep thin-edge.io/Cumulocity out of scope.
     - For Phase 3 changes, list the Kconfig options the change adds, and
       their measured flash/RAM cost per target board.
-    - For Phase 3 changes, state any change to the public `tedge_*` API and
-      keep host-app glue out of `tedge-zephyr/`.
+    - For Phase 3 changes, keep host-app glue in `apps/<app>/src/`; a change
+      the client needs is a separate tiny-edge change, and west.yml pins
+      the tiny-edge release that carries it.
   tasks:
     - Break tasks into chunks of at most ~2 hours.
     - Separate firmware (device/source) work from client/collector work.

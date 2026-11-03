@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * The glue between this application and the tedge-zephyr client. It lives
+ * The glue between this application and the tiny-edge client. It lives
  * here, not in the module: the module knows nothing about lib/common.
  *
  * It gives the client this device's identity, shows the registration URL
@@ -203,7 +203,7 @@ static int cmd_crash(const struct shell *sh, size_t argc, char **argv)
 }
 #endif
 
-/* These hang off the client's own "tedge" root, which tedge-zephyr defines.
+/* These hang off the client's own "tedge" root, which tiny-edge defines.
  * An application that registered a root of the same name would give the
  * device two of them, and the shell would only ever reach one. */
 SHELL_SUBCMD_ADD((tedge), diag, NULL, "client state and TLS heap", cmd_diag,

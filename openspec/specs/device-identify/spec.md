@@ -96,7 +96,7 @@ send one event, not one each.
 
 ### Requirement: Device events reach Cumulocity on the MQTT Service transport
 
-The repository SHALL ship a Smart Function, `tedge-zephyr-events`, that maps
+tiny-edge SHALL ship a Smart Function, `tedge-zephyr-events`, that maps
 every `te/device/<id>///e/<type>` message to a Cumulocity event of type
 `<type>` on the device whose external ID (`c8y_Serial`) is the MQTT client ID,
 with the payload's `text`, its `time` when present (the message time

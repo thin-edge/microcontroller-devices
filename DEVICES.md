@@ -131,7 +131,7 @@ upload and the heap still in dram1 missed by 1.3 KB.
 192 KB dram0 and no PSRAM. The client fits beside **Modbus** or with **no
 protocol** (`apps/tedge-agent`), at the ota level plus remote access; not
 beside SNMP or OPC-UA at any level. Measured on the rpi5 WROOM
-(3c:71:bf:10:c2:e4) with `lib/common/tedge-boards/esp32-devkitc.conf`:
+(3c:71:bf:10:c2:e4) with `tiny-edge/ports/zephyr/profiles/boards/esp32-devkitc.conf`:
 8 KB TLS records, a 56 KB mbedTLS heap in internal RAM, 10 network
 connections. Each image was flashed `--app-only`, run against
 thin-edge-io.eu-latest and the board restored from a full flash backup
@@ -238,7 +238,7 @@ Telemetry was published throughout, but the test tenant had no mapping for
 
 ### Shell diagnostics measured (2026-09-22)
 
-`lib/common/tedge-boards/extras/shell-diagnostics.conf` adds the cloud shell
+`tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf` adds the cloud shell
 command (allow-list: `kernel uptime`, `kernel version`, `net iface`,
 `net conn`, `wifi status`, `tedge params list`, `tedge diag`, and since
 2026-10-06 `tedge identify`; `help` lists them, one per line). It costs about 16 KB of internal RAM.
@@ -434,7 +434,7 @@ CONFIG_NET_BUF_TX_COUNT=64
 Without them a session paints one screen, freezes, and the device drops off
 the cloud and reconnects. The failure is **burst depth, not bandwidth** —
 the same image streams 1 MB happily. See
-`tedge-zephyr/docs/debugging-against-real-devices.md`.
+`tiny-edge/ports/zephyr/docs/debugging-against-real-devices.md`.
 
 ## Known board quirks
 
@@ -451,8 +451,8 @@ the same image streams 1 MB happily. See
 ## Rebuilding one
 
 ```sh
-OVR="/ws/app/tedge-zephyr/profiles/<full|ota>.conf;\
-/ws/app/lib/common/tedge-boards/<device>.conf;\
+OVR="/ws/modules/lib/tiny-edge/ports/zephyr/profiles/<full|ota>.conf;\
+/ws/modules/lib/tiny-edge/ports/zephyr/profiles/boards/<device>.conf;\
 /ws/app/overlay-wifi-credentials.conf;/ws/app/tedge.local.conf"
 
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
@@ -462,8 +462,8 @@ docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
 ESPTOOL=~/flashenv/bin/esptool ./scripts/flash.sh build-x --port <port> --app-only
 ```
 
-The profile picks the features (`tedge-zephyr/profiles/`); the board file
-(`lib/common/tedge-boards/`, one per device, whatever the app) sizes the TLS
+The profile picks the features (`tiny-edge/ports/zephyr/profiles/`); the board file
+(`tiny-edge/ports/zephyr/profiles/boards/`, one per device, whatever the app) sizes the TLS
 heap, PSRAM, connections and network buffers, and goes after the profile so
 its sizes win. The ESP32-CAM also needs
 `-DEXTRA_DTC_OVERLAY_FILE=/ws/app/lib/common/dts/esp32cam-status-led.overlay`

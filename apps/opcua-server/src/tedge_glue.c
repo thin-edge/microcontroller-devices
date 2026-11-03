@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * The glue between this application and the tedge-zephyr client. It lives
+ * The glue between this application and the tiny-edge client. It lives
  * here, not in the module: the module knows nothing about lib/common.
  *
  * The OPC-UA server serves its address space to whoever browses it; the

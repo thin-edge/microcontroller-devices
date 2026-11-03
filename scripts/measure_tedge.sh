@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Footprint of the tedge-zephyr client: each application built with and
+# Footprint of the tiny-edge client: each application built with and
 # without CONFIG_TEDGE, so the table shows what the client costs a host
 # application. Reports for each build:
 #   image_B    the signed application image
@@ -30,9 +30,11 @@ nm_for() {
 }
 
 # --- MODE=module: the client's cost in a host application -------------------
-# The client at the minimal profile, with each board's tedge-zephyr settings.
-TB=/ws/app/lib/common/tedge-boards
-MIN=/ws/app/tedge-zephyr/profiles/minimal.conf
+# The client at the minimal profile, with each board's tiny-edge settings.
+# tiny-edge is a west project; its path in the workspace comes from west.
+TE=$(west list -f '{abspath}' tiny-edge)
+TB=$TE/ports/zephyr/profiles/boards
+MIN=$TE/ports/zephyr/profiles/minimal.conf
 # label : board : app : overlays (on top of the Wi-Fi credentials)
 CASES=${CASES:-"
 c6 modbus, no client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:
@@ -40,7 +42,7 @@ c6 modbus + client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/es
 s3 modbus, no client:esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:
 s3 modbus + client (PSRAM):esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:$MIN;$TB/esp32s3-devkitc.conf;/ws/app/tedge.local.conf
 c6 modbus + client + remote access:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/esp32c6-devkitc.conf;/ws/app/tedge.local.conf;/ws/app/build_measure_extra/ra.conf
-c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:tedge-zephyr/samples/minimal:!/ws/app/tedge-zephyr/samples/minimal/overlay-c8y.conf;/ws/app/tedge.local.conf
+c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:$TE/ports/zephyr/samples/minimal:!$TE/ports/zephyr/samples/minimal/overlay-c8y.conf;/ws/app/tedge.local.conf
 "}
 echo "| case | image_B | text_B | libc_B | tlsheap_B |"
 echo "|---|---|---|---|---|"

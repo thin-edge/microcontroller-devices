@@ -30,8 +30,8 @@ NOT be released.
 ### Requirement: Three variants per build
 
 Each build SHALL be one of three variants. A `standalone` build SHALL contain
-a protocol app with the Improv Wi-Fi provisioner and no `tedge-zephyr` code.
-A `tedge-full` build SHALL contain every `tedge-zephyr` feature
+a protocol app with the Improv Wi-Fi provisioner and no `tiny-edge` code.
+A `tedge-full` build SHALL contain every `tiny-edge` feature
 (`profiles/full.conf`). A `tedge-ota` build SHALL contain at least
 connection, inventory, health, telemetry, restart and firmware update
 (`profiles/ota.conf`), plus the extra features its manifest entry lists.
@@ -76,7 +76,7 @@ Cumulocity tenant, or any other site-specific setting.
 ### Requirement: A device-management-only application is released
 
 The project SHALL release `apps/tedge-agent` — `lib/common/` plus
-`tedge-zephyr`, no protocol frontend — as `tedge-full` and `tedge-ota` on
+`tiny-edge`, no protocol frontend — as `tedge-full` and `tedge-ota` on
 every board where they pass capacity measurement.
 
 #### Scenario: Remote access without a protocol app
@@ -145,7 +145,7 @@ version numbers, and only sets `EXTRAVERSION` in its own checkout. `<pre>`
 SHALL be lowercase letters, digits and dots, which Zephyr accepts as
 `EXTRAVERSION`. Every image SHALL carry that version in its MCUboot header
 and its `APP_VERSION_STRING`, with `-<pre>` appended to the latter for a
-pre-release tag and `-dev` for a non-tag build. `tedge-zephyr/VERSION` SHALL
+pre-release tag and `-dev` for a non-tag build. `tiny-edge/VERSION` SHALL
 be versioned independently, and the release notes SHALL state it for every
 `tedge` image.
 

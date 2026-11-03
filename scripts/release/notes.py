@@ -91,7 +91,7 @@ def notes(manifest, metas, tag, repo):
                 f"Each image reports a firmware name unique to its device and app, and "
                 f"the version `{tag.lstrip('v')}`; `c8y-firmware.json` lists them.",
                 "",
-                f"tedge-zephyr {', '.join(versions)}. Features per image:",
+                f"tiny-edge {', '.join(versions)}. Features per image:",
                 "",
                 "| Image | Features |",
                 "|---|---|"]

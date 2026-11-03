@@ -14,6 +14,8 @@ manifest:
       url-base: https://github.com/zephyrproject-rtos
     - name: open62541
       url-base: https://github.com/open62541
+    - name: thin-edge
+      url-base: https://github.com/thin-edge
 
   projects:
     # Upstream Zephyr. Pinned to v4.4.2, which targets Zephyr SDK 1.0.x and
@@ -43,6 +45,14 @@ manifest:
       revision: v1.4.0
       path: modules/lib/open62541
       submodules: true
+
+    # thin-edge.io device-management client. A Zephyr module (`tedge`): west
+    # adds it to every build, and it compiles nothing unless an image sets
+    # CONFIG_TEDGE=y. Pin a release tag; move the pin to pick up a new one.
+    - name: tiny-edge
+      remote: thin-edge
+      revision: 48a42201b5908a39497b4d82b55a2376e3dcb4c7
+      path: modules/lib/tiny-edge
 
   self:
     path: app

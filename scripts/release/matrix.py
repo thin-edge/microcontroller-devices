@@ -22,8 +22,10 @@ Also imported by the other release scripts (load(), builds()).
 """
 
 import argparse
+import functools
 import json
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,7 +35,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = ROOT / "release" / "devices.yml"
 
-# tedge_identity's firmware_name buffer in tedge-zephyr is 48 bytes.
+# A file from another west project is written "{project}/path", for example
+# "{tiny-edge}/ports/zephyr/profiles/full.conf". It is found with `west list`;
+# where west is not installed (the release workflow's matrix job) such a file
+# is not checked.
+PROJECT_REF = re.compile(r"^\{([\w.-]+)\}/(.+)$")
+
+# tedge_identity's firmware_name buffer in tiny-edge is 48 bytes.
 FIRMWARE_NAME_MAX = 47
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FLASH_RE = re.compile(r"^(1|2|4|8|16|32)MB$")
@@ -93,6 +101,30 @@ class Build:
         }
 
 
+@functools.lru_cache(maxsize=None)
+def west_project_dir(name):
+    """Absolute path of a west project, or None when west cannot say."""
+    try:
+        out = subprocess.run(["west", "list", "-f", "{abspath}", name],
+                             cwd=ROOT, capture_output=True, text=True,
+                             check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return Path(out.stdout.strip())
+
+
+def resolve(root, rel):
+    """A manifest path as a Path: repository-relative or "{project}/...".
+
+    None when it names a west project and west is not available.
+    """
+    m = PROJECT_REF.match(rel)
+    if not m:
+        return Path(root) / rel
+    base = west_project_dir(m.group(1))
+    return base / m.group(2) if base else None
+
+
 def board_dir_name(board):
     """esp32c6_devkitc/esp32c6/hpcore -> esp32c6_devkitc_esp32c6_hpcore"""
     return board.replace("/", "_")
@@ -122,7 +154,8 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
     problems = []
 
     def need_file(where, rel):
-        if not (root / rel).is_file():
+        path = resolve(root, rel)
+        if path is not None and not path.is_file():
             problems.append(f"{where}: {rel} does not exist")
 
     variants = manifest.get("variants") or {}
@@ -281,7 +314,13 @@ def main(argv=None):
             for b in builds:
                 print(f"  {b.firmware_name}", file=sys.stderr)
             return 1
-        for k, v in build.matrix_entry(manifest).items():
+        entry = build.matrix_entry(manifest)
+        # Files from other west projects become absolute paths here, where
+        # the build runs; build.sh makes the rest absolute.
+        entry["conf_files"] = ";".join(
+            str(resolve(args.root, f)) if PROJECT_REF.match(f) else f
+            for f in build.conf_files())
+        for k, v in entry.items():
             print(f"{k.upper()}='{v}'")
         return 0
     if args.subset == "pr":

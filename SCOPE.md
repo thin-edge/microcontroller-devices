@@ -27,7 +27,7 @@ Cumulocity are **not** involved in this primary phase.
   protocol), serving device/sensor data to an external client.
 - **Phase 2: Additional protocols / sources.**
   Extend beyond OPC-UA to other industry protocols as source options.
-- **Phase 3 (started 2026-09-19): tedge-zephyr, a device-management client.**
+- **Phase 3 (started 2026-09-19): tiny-edge, a device-management client.**
   A thin-edge.io client shipped as a **reusable Zephyr module** that any user's
   Zephyr application can include. The OPC-UA, Modbus and SNMP apps here serve
   as example user applications. It provides device-management features:
@@ -104,23 +104,24 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
   `west build -b <board> apps/<protocol>`. Today: `apps/opcua-server` (OPC-UA,
   env sim), `apps/modbus-server` (Modbus TCP on port 502, pump sim) and
   `apps/snmp-agent` (SNMPv2c on UDP 161 + traps on 162, switch sim).
-- `tedge-zephyr/` — (Phase 3) the thin-edge.io device-management client, a
-  standalone Zephyr module (`tedge`) for *any* Zephyr application. It never
-  depends on `lib/` or `apps/`, and it will move into its own repository. Apps
-  here opt in with `CONFIG_TEDGE` and keep their glue code in `apps/<app>/src/`.
+- The thin-edge.io device-management client is not in this repository. It
+  is [tiny-edge](https://github.com/thin-edge/tiny-edge), a Zephyr module
+  (`tedge`) that `west.yml` pins to a release. Apps here opt in with
+  `CONFIG_TEDGE` and keep their glue code in `apps/<app>/src/`.
 
 ## Phase 3 roadmap: device management client
 
 ### A module for any application
 
-The client lives in `tedge-zephyr/`, a self-contained Zephyr module named
-`tedge`:
+The client was developed here as `tedge-zephyr/` and now lives in its own
+repository, [tiny-edge](https://github.com/thin-edge/tiny-edge), which is
+also laid out for other RTOSes. It is a Zephyr module named `tedge`:
 
 - **Namespaced:** the API is `tedge_*` and Kconfig is `CONFIG_TEDGE_*`.
 - **Self-contained:** it depends only on Zephyr and MCUboot, and never on
   this repo's `lib/`.
-- **Portable:** it is laid out so it can move into its own repository and
-  west project later without changing its files.
+- **Portable:** a west project of its own, with a portable core and one port
+  per RTOS (Zephyr first).
 - **The host application owns** connectivity, identity, telemetry and the
   watchdog.
 - **The module owns** its threads, a bounded heap, its settings subtree
@@ -228,7 +229,7 @@ the strongest reason for the direct transport.
 | Step | Change | Content |
 |---|---|---|
 | P0 | `c8y-direct-spikes` (done 2026-09-19: go) | TLS/MQTT Service cost, OTA into `slot1`, CA enrollment, remote-access tunnel to a LAN host, module skeleton, footprint table |
-| P1 | `c8y-direct-core` (done 2026-09-20) | The `tedge-zephyr` module and public API; onboarding (CA and bootstrap), connection with reconnect and back-off, inventory, restart (full-system reset hook), availability, state on `te/` topics with reference Smart Functions; one protocol app and `samples/minimal` integrated |
+| P1 | `c8y-direct-core` (done 2026-09-20) | The `tiny-edge` module and public API; onboarding (CA and bootstrap), connection with reconnect and back-off, inventory, restart (full-system reset hook), availability, state on `te/` topics with reference Smart Functions; one protocol app and `samples/minimal` integrated |
 | P2 | `c8y-direct-remote-access` (done 2026-09-20) | **Remote access**: WSS bridge to LAN hosts and local services under the target policy, session cap, audit events, capacity as twin data |
 | P3 | `c8y-direct-firmware-update` (done 2026-09-20) | Firmware update: confirmed only after the new image reaches Cumulocity and passes the app's checks; MCUboot rolls back otherwise |
 | P4 | `c8y-direct-telemetry` (done 2026-09-20) | Telemetry (free-form, `te/`-shaped) and device-health measurements, buffered through an outage with the time each reading was taken |
@@ -237,7 +238,7 @@ the strongest reason for the direct transport.
 | P7 | `c8y-direct-parameters` (done 2026-09-20) | Typed device parameters the cloud can see and change (Cumulocity Parameter Update, as thin-edge.io's parameter plugin does), not configuration files; the client declares a set for itself too, so a device is adjustable in the field whatever its application does |
 | P8 | `gateway-transport` (proposed) | Gateway transport: a thin-edge.io child device with no TLS, no certificate and no cloud token, reusing the P1–P7 handlers |
 | — | separate small change | Full-system reset in `lib/common` (`liveness.c`, `net.c`): a CPU reset hangs MCUboot on the C6 |
-| — | — | Move `tedge-zephyr` into its own repository once the P1 API has settled |
+| — | done 2026-11-03 | Move the client into its own repository: [tiny-edge](https://github.com/thin-edge/tiny-edge) |
 | later | — | Device profiles, WROOM tuning, "software" via LLEXT or Wasm |
 
 ## Open questions
@@ -255,5 +256,5 @@ the strongest reason for the direct transport.
   open problems P1–P13 there carry into `c8y-direct-core`, notably reconnect
   after a network drop (P1), the C6 reset hang (P2) and key protection (P9).
 - Phase 3: free-form telemetry is turned into measurements by Cumulocity
-  Smart Functions. Which reference functions tedge-zephyr ships, and how
+  Smart Functions. Which reference functions tiny-edge ships, and how
   they're installed, is open (P12).

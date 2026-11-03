@@ -59,6 +59,15 @@ def app_version(app_dir):
     return m.group(1)
 
 
+def tiny_edge_version():
+    """The tiny-edge release the image was built with (its VERSION file)."""
+    path = matrix.resolve(ROOT, "{tiny-edge}/VERSION")
+    if path is None or not path.is_file():
+        raise SystemExit("cannot find tiny-edge's VERSION: is west installed "
+                         "and tiny-edge in the workspace (west update)?")
+    return path.read_text().strip()
+
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -94,7 +103,7 @@ def device_type(app):
 
 
 def features(cfg):
-    """tedge-zephyr features compiled in, e.g. ["firmware-update", ...]."""
+    """tiny-edge features compiled in, e.g. ["firmware-update", ...]."""
     skip = {"CONFIG_TEDGE", "CONFIG_TEDGE_TRANSPORT_C8Y",
             "CONFIG_TEDGE_C8Y_MQTT_SERVICE", "CONFIG_TEDGE_AUTH_C8Y_CA"}
     names = []
@@ -245,8 +254,7 @@ def main(argv=None):
         "tedge": build.tedge,
         "device_type": device_type(args.app) if build.tedge else None,
         "features": features(cfg) if build.tedge else [],
-        "tedge_zephyr_version": ((ROOT / "tedge-zephyr" / "VERSION").read_text().strip()
-                                 if build.tedge else None),
+        "tedge_zephyr_version": (tiny_edge_version() if build.tedge else None),
         "measured": build.measured,
         "signing": sign,
         "assets": {p.name: sha256(p) for p in (factory, app_bin, bundle)},
