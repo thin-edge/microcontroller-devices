@@ -77,6 +77,31 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(ota["firmware_name"], "modbus-server-tedge-ota-c6")
         json.dumps({"include": entries})  # serialisable
 
+    def test_west_project_paths(self):
+        """"{project}/..." resolves through west, and is skipped without it."""
+        text = VALID.replace("profiles/ota.conf", '"{tiny-edge}/profiles/ota.conf"')
+        project = self.root / "te"
+        (project / "profiles").mkdir(parents=True)
+        (project / "profiles/ota.conf").write_text("")
+        try:
+            matrix.west_project_dir.cache_clear()
+            orig = matrix.west_project_dir
+            # Found: the file is checked where west says the project is.
+            matrix.west_project_dir = lambda name: project if name == "tiny-edge" else None
+            manifest, builds = self.load(text)
+            self.assertEqual(matrix.resolve(self.root, builds[1].conf_files()[0]),
+                             project / "profiles/ota.conf")
+            (project / "profiles/ota.conf").unlink()
+            self.assertIn("{tiny-edge}/profiles/ota.conf does not exist",
+                          self.problems(text))
+            # No west (the matrix job): not checked, and kept as written.
+            matrix.west_project_dir = lambda name: None
+            manifest, builds = self.load(text)
+            self.assertEqual(builds[1].matrix_entry(manifest)["conf_files"],
+                             "{tiny-edge}/profiles/ota.conf;boards/c6.conf")
+        finally:
+            matrix.west_project_dir = orig
+
     def test_unknown_app(self):
         p = self.problems(VALID.replace("app: modbus-server\n", "app: nope\n"))
         self.assertIn("device c6, nope tedge-ota: there is no apps/nope", p)

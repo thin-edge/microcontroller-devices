@@ -41,9 +41,9 @@ done
 
 eval "$(python3 "$root/scripts/release/matrix.py" --entry "$name")"
 
-abs() { # "a;b" repository-relative -> "/root/a;/root/b"
+abs() { # "a;/x/b" repository-relative or absolute -> "/root/a;/x/b"
 	[[ -n $1 ]] || return 0
-	tr ';' '\n' <<< "$1" | sed "s#^#$root/#" | paste -sd';' -
+	tr ';' '\n' <<< "$1" | sed "s#^\([^/]\)#$root/\1#" | paste -sd';' -
 }
 
 args=("-DCONFIG_APP_FIRMWARE_NAME=\"$FIRMWARE_NAME\"")

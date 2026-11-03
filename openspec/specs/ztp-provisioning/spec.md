@@ -149,7 +149,7 @@ leaves the device with a tenant but no network.
 The provisioning image SHALL write the `c8y.v2` fields to
 `prov/c8y/url`, `prov/c8y/tenant`, `prov/c8y/external_id` and `prov/c8y/otp` in
 the shared `storage` partition. It SHALL NOT write to the `tedge/` settings
-subtree and SHALL NOT link the `tedge-zephyr` module.
+subtree and SHALL NOT link the `tiny-edge` module.
 
 The application image SHALL read those keys at boot, pass the tenant host and
 one-time password to the client through its public API, and use the external ID
@@ -190,7 +190,7 @@ another.
 #### Scenario: The provisioner stays independent of the client module
 
 - **WHEN** the provisioning image is built
-- **THEN** it links no symbol from `tedge-zephyr`, and the module contains no
+- **THEN** it links no symbol from `tiny-edge`, and the module contains no
   reference to ZTP or to BLE
 
 ### Requirement: The bundle's authenticity is trusted on first use, with pinning available

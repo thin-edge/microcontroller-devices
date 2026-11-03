@@ -178,7 +178,10 @@ group to flash.
 ## First-time workspace setup
 
 This repo is a Zephyr *workspace application* (T2 topology): it is the west
-manifest repo, and `west update` fetches Zephyr + modules + open62541.
+manifest repo, and `west update` fetches Zephyr + modules + open62541, and
+the thin-edge.io client, [tiny-edge](https://github.com/thin-edge/tiny-edge),
+into `/ws/modules/lib/tiny-edge`. West adds tiny-edge as a Zephyr module, so
+the applications do not name it in their CMake files.
 
 ```sh
 # Persistent build container with this repo mounted at /ws/app.
@@ -198,6 +201,12 @@ docker exec -w /ws     zephyr-dev west zephyr-export
 docker exec -w /ws zephyr-dev west blobs fetch hal_espressif
 docker exec zephyr-dev bash -lc 'cd /ws/modules/crypto/mbedtls && git submodule update --init --recursive'
 ```
+
+To change tiny-edge and an application together, work in the workspace's
+clone (`/ws/modules/lib/tiny-edge`), or mount your own clone over it with
+`-v /path/to/tiny-edge:/ws/modules/lib/tiny-edge` when you create the
+container. `west.yml` pins tiny-edge to a release, so a change to the
+client is released there first and then picked up here by moving the pin.
 
 ## Build & run on `native_sim`
 
@@ -610,8 +619,8 @@ has no room for both. Build the provisioner with `overlay-ztp.conf`, and leave
 the Wi-Fi and tenant overlays out — the bundle supplies both:
 
 ```sh
-OVR="/ws/app/tedge-zephyr/profiles/full.conf;\
-/ws/app/lib/common/tedge-boards/esp32c6-devkitc.conf"
+OVR="/ws/modules/lib/tiny-edge/ports/zephyr/profiles/full.conf;\
+/ws/modules/lib/tiny-edge/ports/zephyr/profiles/boards/esp32c6-devkitc.conf"
 
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
   west build --sysbuild -b esp32c6_devkitc/esp32c6/hpcore apps/modbus-server \
@@ -648,7 +657,7 @@ in PSA ITS, never exported); the relay forwards it, the server answers, the
 relay writes the answer back. The device joins the Wi-Fi network first —
 nothing is stored unless that works — then stores the Cumulocity data for the
 application and reboots into it. The application hands the tenant and password
-to `tedge-zephyr` (`tedge_set_c8y_url()`, `tedge_set_enroll_otp()`) and uses
+to `tiny-edge` (`tedge_set_c8y_url()`, `tedge_set_enroll_otp()`) and uses
 the external ID from the bundle as its identity from then on. A *pending*
 answer (the operator has not approved the device yet) leaves it provisionable:
 the relay simply asks again.
@@ -1080,7 +1089,7 @@ lib/frontend-template/ copy-me skeleton for a new protocol (CAN/...)
 apps/opcua-server/     OPC-UA firmware: lib/common (env sim) + lib/opcua
 apps/modbus-server/    Modbus TCP firmware: lib/common (pump sim) + lib/modbus
 apps/snmp-agent/       SNMP agent firmware: lib/common (switch sim) + lib/snmp
-apps/tedge-agent/      device-management agent: lib/common + tedge-zephyr, no protocol
+apps/tedge-agent/      device-management agent: lib/common + tiny-edge, no protocol
   ├── boards/<board>.conf       per-app board overlays (RAM/Wi-Fi tuning)
   └── points.d/<proto>/*.toml   point library: the app's address map for a
                                 collector (see "Point libraries" below)
@@ -1226,7 +1235,7 @@ demo lively but a device left running noisy. Override per build:
 `apps/tedge-agent` is the thin-edge.io client with **no industrial protocol**:
 `lib/common` (Wi-Fi, stored or provisioned credentials, the provisioner
 hand-off, identity, status LED, button, liveness watchdog) plus
-`tedge-zephyr`. It is for a device whose job is to be managed from Cumulocity
+`tiny-edge`. It is for a device whose job is to be managed from Cumulocity
 and to give it **remote access to hosts on its LAN** (SSH, web UIs) — the
 role the hand-built WROOM "remote-access enabler" played.
 
@@ -1237,7 +1246,7 @@ Remote access follows the client's Kconfig policy, which by default allows
 hosts on the device's own LAN. It advertises no DNS-SD service; it answers to
 `<hostname>.local` (`tedge-agent<mac>`).
 
-Build it with a `tedge-zephyr` profile and the board's settings, like the
+Build it with a `tiny-edge` profile and the board's settings, like the
 `tedge` builds of the protocol apps, and with the lab-ztp-provisioner
 provisioner so the tenant arrives at provisioning time:
 
@@ -1245,12 +1254,12 @@ provisioner so the tenant arrives at provisioning time:
 docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
   west build --sysbuild -b esp32c6_devkitc/esp32c6/hpcore apps/tedge-agent \
   --pristine -d build-agent -- \
-  "-DEXTRA_CONF_FILE=/ws/app/tedge-zephyr/profiles/full.conf;/ws/app/lib/common/tedge-boards/esp32c6-devkitc.conf" \
+  "-DEXTRA_CONF_FILE=/ws/modules/lib/tiny-edge/ports/zephyr/profiles/full.conf;/ws/modules/lib/tiny-edge/ports/zephyr/profiles/boards/esp32c6-devkitc.conf" \
   -Dwifi-provisioner_EXTRA_CONF_FILE=/ws/app/apps/wifi-provisioner/overlay-ztp.conf
 ```
 
-On an ESP32-WROOM-32 use `profiles/ota.conf`, `tedge-boards/esp32-devkitc.conf`
-and `tedge-boards/extras/parameters.conf`. Remote access links there but
+On an ESP32-WROOM-32 use `profiles/ota.conf`, `profiles/boards/esp32-devkitc.conf`
+and `profiles/extras/parameters.conf`. Remote access links there but
 does not work interactively: the board has room for about three Wi-Fi frames
 of receive buffers, and an `htop` session over a tunnel fails (DEVICES.md).
 
@@ -1271,7 +1280,7 @@ tenant needs, ready to deploy.
 
 Every payload is flat: `time` (UTC) and one number per series, two decimals,
 **no units** (the tables below give them, for the mapping to add). The format
-is the client's; see `tedge-zephyr/README.md`, "What the client publishes".
+is the client's; see `tiny-edge/ports/zephyr/README.md`, "What the client publishes".
 
 **`modbus-server`** — `te/device/<id>///m/pump`, every 30 s (the pump
 simulation it also serves over Modbus; values are 0 or ambient until a client
@@ -1361,7 +1370,7 @@ c8y operations create --device <device> \
 ```
 
 This needs an image with the cloud shell command, which today means the
-images built with `lib/common/tedge-boards/extras/shell-diagnostics.conf`
+images built with `tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf`
 (the S3-DevKitC and QT Py modbus-server and tedge-agent full builds; see
 DEVICES.md). That file puts `tedge identify` on the allow-list. On other
 images the cloud has no shell, so only the button works. The same command
@@ -1499,8 +1508,8 @@ Things to know:
 ## Releasing
 
 All applications share **one version**, kept in every `apps/*/VERSION`
-(`tedge-zephyr/VERSION` is the module's own and moves only when the module
-changes). [release-please](https://github.com/googleapis/release-please)
+(tiny-edge has its own version, and `west.yml` pins the release the
+applications are built with). [release-please](https://github.com/googleapis/release-please)
 chooses the next one from the commit messages on `main`:
 
 - **Pull requests are squash-merged**, and the PR title becomes the commit
@@ -1605,7 +1614,7 @@ fingerprint. Devices change keys only by a flash by cable.
 **Adding a device or a build.** Its board needs a provisioner layout
 (`lib/common/dts/layout-*.dtsi`, listed in `sysbuild/provisioning.cmake`) and
 board files for each app. For a `tedge-*` build, also a board settings file in
-[`lib/common/tedge-boards/`](lib/common/tedge-boards/README.md), and a run on
+[`tiny-edge/ports/zephyr/profiles/boards/`](https://github.com/thin-edge/tiny-edge/blob/main/ports/zephyr/profiles/boards/README.md), and a run on
 the board recorded in DEVICES.md — connection, telemetry, a firmware update
 that confirms, a tunnel if remote access is in — which the manifest entry
 names in `measured:`. `scripts/release/matrix.py` rejects an entry without

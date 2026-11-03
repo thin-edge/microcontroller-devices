@@ -7,35 +7,19 @@ talk to the **Cumulocity MQTT Service** on thin-edge.io `te/` topics
 what a **Smart Function** maps. Operations (restart, firmware, remote access,
 parameters, shell) need no mapping.
 
-| Directory | What it is | Needed for |
+The Smart Functions belong to the client and live in tiny-edge, with the
+DTM definitions of the client's own parameter sets: see
+[tiny-edge's `cumulocity/`](https://github.com/thin-edge/tiny-edge/tree/main/cumulocity)
+for how to deploy and test them. This directory holds what the applications
+here add: the DTM definitions of their parameter sets.
+
+| What | Where | Needed for |
 |---|---|---|
-| `smart-functions/tedge-zephyr-measurements/` | `te/device/*///m/*` → measurements | any measurement, including `tedge_health` |
-| `smart-functions/tedge-zephyr-twin/` | `te/device/*///twin/*` → managed-object fragments | `remoteAccess`, `tedge_Agent`, and the current parameter values the Parameters tab shows |
-| `smart-functions/tedge-zephyr-firmware-progress/` | `te/device/*///progress/firmware` → `c8y_FirmwareDownload` events | download progress while a firmware update runs (optional) |
-| `smart-functions/tedge-zephyr-events/` | `te/device/*///e/*` → events | any event, including `zephyr_Identify` from the sw0 identify pattern |
-| `dtm/*.json` | Digital Twin Manager property definitions | the Parameters tab |
+| Smart Functions (`tedge-zephyr-measurements`, `-twin`, `-firmware-progress`, `-events`) | tiny-edge `cumulocity/smart-functions/` | measurements, twin fragments, firmware progress and events from the device |
+| `zephyr_tedge`, `zephyr_tedge_remote_access` | tiny-edge `cumulocity/dtm/` | the client's own Parameters tab entries |
+| `dtm/zephyr_*.json` | here | the applications' Parameters tab entries |
 
-## Smart Functions
-
-Each directory is a Data Preparation rule package: `data-prep.yaml` (the
-topic pattern), the JavaScript, and `tests/*.yaml`. Create a Smart Function
-in the Data Preparation UI with the topic and the JavaScript, or deploy the
-package:
-
-```sh
-cd cumulocity/smart-functions/tedge-zephyr-twin
-# COPYFILE_DISABLE: macOS tar otherwise adds ._* files the service rejects
-COPYFILE_DISABLE=1 tar czf /tmp/rule.tar.gz data-prep.yaml twin.js tests
-# The archive must be the raw request body: `c8y api --file` sends a
-# multipart form, which the service answers with 400.
-curl -X PUT -H "Authorization: Bearer $C8Y_TOKEN" \
-  -H "Content-Type: application/gzip" --data-binary @/tmp/rule.tar.gz \
-  "$C8Y_HOST/service/dataprep/v1/rules/tedge-zephyr-twin/deployed"
-```
-
-`smart-functions/test.py` runs every rule's tests in a tenant's Data
-Preparation runtime (`/service/dataprep/v1/run-tests`) without deploying
-anything; run it after changing a function.
+## What the Smart Functions do for these applications
 
 **Measurements.** Known types get a Cumulocity type, one fragment and named
 series with units (the device sends none):
@@ -74,9 +58,11 @@ The tenant needs the `dtm` and `device-parameter` microservices, and the
 user registering needs `ROLE_DIGITAL_TWIN_DEFINITIONS_CREATE` and `_ADMIN`.
 
 ```sh
-cumulocity/dtm/register.sh             # registers every set not yet there
+cumulocity/dtm/register.sh             # registers every set here not yet there
 cumulocity/dtm/register.sh --replace zephyr_modbus_telemetry   # after a declaration changed
 ```
+
+Register the client's own sets with the same script in tiny-edge.
 
 | Identifier | Declared by | Parameters |
 |---|---|---|
@@ -84,8 +70,8 @@ cumulocity/dtm/register.sh --replace zephyr_modbus_telemetry   # after a declara
 | `zephyr_modbus_control` | `modbus-server` | `running`, `mode` (off/auto/manual), `speed_setpoint` (0–100 %), `local_writes` (whether Modbus clients may change the three) |
 | `zephyr_opcua_telemetry` | `opcua-server` | `interval_s` (5–3600 s), `telemetry` |
 | `zephyr_snmp_telemetry` | `snmp-agent` | `interval_s` (5–3600 s), `telemetry` |
-| `zephyr_tedge` | tedge-zephyr, every image | `log_level` (off/err/wrn/inf/dbg), `health_interval_s` (0–86400 s), `required_interval_min` (0–1440 min) |
-| `zephyr_tedge_remote_access` | tedge-zephyr, images with remote access | `remote_access` |
+| `zephyr_tedge` | tiny-edge, every image | `log_level` (off/err/wrn/inf/dbg), `health_interval_s` (0–86400 s), `required_interval_min` (0–1440 min) |
+| `zephyr_tedge_remote_access` | tiny-edge, images with remote access | `remote_access` |
 
 Every identifier starts with `zephyr_` and, for an application's own set,
 the application, so it cannot collide with a definition someone else
@@ -115,7 +101,7 @@ reason, and nothing is applied.
 ## Shell diagnostics
 
 The `tedge-full` Modbus and agent images of the ESP32-S3-DevKitC and the QT Py
-ESP32-S3 carry the shell command (`lib/common/tedge-boards/extras/shell-diagnostics.conf`)
+ESP32-S3 carry the shell command (`tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf`)
 for general checks from the device's **Shell** tab. Send `help` to see what
 the device runs:
 

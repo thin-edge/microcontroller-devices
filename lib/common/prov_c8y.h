@@ -4,7 +4,7 @@
  * application, through the shared settings store: `prov/c8y/url`,
  * `prov/c8y/tenant`, `prov/c8y/external_id` and `prov/c8y/otp`.
  *
- * The provisioner never writes the tedge-zephyr module's own `tedge/`
+ * The provisioner never writes the tiny-edge module's own `tedge/`
  * subtree, and does not link the module at all: the application reads these
  * keys and passes them to the module through its public API.
  */

@@ -23,17 +23,19 @@
 # How each variant is built. `profile` and the device's `tedge_board_conf` go
 # into EXTRA_CONF_FILE (profile first, so the board's sizes win), then the
 # build's `extra_conf`. `provisioner` selects the Wi-Fi provisioner image.
+# Paths are relative to this repository, or "{tiny-edge}/..." for files from
+# the tiny-edge west project (the client's profiles and board sizing).
 variants:
   standalone:
     description: the protocol server alone; Wi-Fi over Improv BLE
     provisioner: improv
   tedge-full:
     description: every thin-edge.io feature; Wi-Fi and Cumulocity over lab-ztp-provisioner
-    profile: tedge-zephyr/profiles/full.conf
+    profile: "{tiny-edge}/ports/zephyr/profiles/full.conf"
     provisioner: ztp
   tedge-ota:
     description: connection, telemetry, restart and firmware update, plus what else fits; Wi-Fi and Cumulocity over lab-ztp-provisioner
-    profile: tedge-zephyr/profiles/ota.conf
+    profile: "{tiny-edge}/ports/zephyr/profiles/ota.conf"
     provisioner: ztp
 
 provisioners:
@@ -47,7 +49,7 @@ devices:
     chip: esp32c6
     flash_size: 4MB
     esptool_before: usb-reset
-    tedge_board_conf: lib/common/tedge-boards/esp32c6-devkitc.conf
+    tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32c6-devkitc.conf"
     builds:
       - { app: modbus-server, variant: standalone, pr: true }
       - { app: opcua-server, variant: standalone }
@@ -79,7 +81,7 @@ devices:
     chip: esp32s3
     flash_size: 16MB
     esptool_before: default-reset
-    tedge_board_conf: lib/common/tedge-boards/esp32s3-devkitc.conf
+    tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32s3-devkitc.conf"
     builds:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone, pr: true }
@@ -87,7 +89,7 @@ devices:
       - app: modbus-server
         variant: tedge-full
         pr: true
-        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        extra_conf: ["{tiny-edge}/ports/zephyr/profiles/extras/shell-diagnostics.conf"]
         measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: modbus-server
         variant: tedge-ota
@@ -101,7 +103,7 @@ devices:
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
       - app: tedge-agent
         variant: tedge-full
-        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        extra_conf: ["{tiny-edge}/ports/zephyr/profiles/extras/shell-diagnostics.conf"]
         measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: tedge-agent
         variant: tedge-ota
@@ -113,14 +115,14 @@ devices:
     chip: esp32s3
     flash_size: 4MB
     esptool_before: usb-reset
-    tedge_board_conf: lib/common/tedge-boards/qtpy-esp32s3.conf
+    tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/qtpy-esp32s3.conf"
     builds:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone }
       - { app: snmp-agent, variant: standalone, pr: true }
       - app: modbus-server
         variant: tedge-full
-        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        extra_conf: ["{tiny-edge}/ports/zephyr/profiles/extras/shell-diagnostics.conf"]
         measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: modbus-server
         variant: tedge-ota
@@ -138,7 +140,7 @@ devices:
       - app: tedge-agent
         variant: tedge-full
         pr: true
-        extra_conf: [lib/common/tedge-boards/extras/shell-diagnostics.conf]
+        extra_conf: ["{tiny-edge}/ports/zephyr/profiles/extras/shell-diagnostics.conf"]
         measured: DEVICES.md#shell-diagnostics-measured-2026-09-22
       - app: tedge-agent
         variant: tedge-ota
@@ -150,7 +152,7 @@ devices:
     chip: esp32
     flash_size: 4MB
     esptool_before: default-reset
-    tedge_board_conf: lib/common/tedge-boards/esp32-devkitc.conf
+    tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32-devkitc.conf"
     builds:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone, pr: true }
@@ -164,13 +166,13 @@ devices:
         variant: tedge-ota
         pr: true
         extra_conf:
-          - lib/common/tedge-boards/extras/parameters.conf
+          - "{tiny-edge}/ports/zephyr/profiles/extras/parameters.conf"
         measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
       - app: tedge-agent
         variant: tedge-ota
         pr: true
         extra_conf:
-          - lib/common/tedge-boards/extras/parameters.conf
+          - "{tiny-edge}/ports/zephyr/profiles/extras/parameters.conf"
         measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
 
   - id: esp32-cam
@@ -179,7 +181,7 @@ devices:
     chip: esp32
     flash_size: 4MB
     esptool_before: default-reset
-    tedge_board_conf: lib/common/tedge-boards/esp32-cam.conf
+    tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32-cam.conf"
     dtc_overlays: [lib/common/dts/esp32cam-status-led.overlay]
     # One feature set for every tedge build on this board: ota (which
     # includes certificate renewal), parameters and log upload. dram1 (stacks, network buffers)
@@ -191,8 +193,8 @@ devices:
         variant: tedge-ota
         pr: true
         extra_conf: &cam-extras
-          - lib/common/tedge-boards/extras/parameters.conf
-          - lib/common/tedge-boards/extras/log-upload.conf
+          - "{tiny-edge}/ports/zephyr/profiles/extras/parameters.conf"
+          - "{tiny-edge}/ports/zephyr/profiles/extras/log-upload.conf"
         measured: DEVICES.md#wroom-and-esp32-cam-release-builds-measured-2026-09-23
       - app: modbus-server
         variant: tedge-ota

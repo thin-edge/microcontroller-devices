@@ -78,7 +78,7 @@ static int cmd_identify(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-/* Hangs off the client's own "tedge" root, which tedge-zephyr defines. */
+/* Hangs off the client's own "tedge" root, which tiny-edge defines. */
 SHELL_SUBCMD_ADD((tedge), identify, NULL,
 		 "blink the status LED to find this board: identify [seconds]",
 		 cmd_identify, 1, 1);

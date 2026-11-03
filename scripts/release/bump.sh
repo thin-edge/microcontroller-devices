@@ -10,7 +10,7 @@
 # EXTRAVERSION, and sets .release-please-manifest.json to the same version.
 # Commit the result, then tag that commit vX.Y.Z; the release workflow checks
 # the tag against these files (check-version.sh).
-# tedge-zephyr/VERSION is the module's own and is not touched.
+# tiny-edge has its own version (its VERSION file), pinned in west.yml.
 #
 # Normally release-please's release PR does this (README, "Releasing"); this
 # script is for a pre-release or a release cut by hand. The

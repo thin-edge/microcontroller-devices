@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * The glue between this application and the tedge-zephyr client. It lives
+ * The glue between this application and the tiny-edge client. It lives
  * here, not in the module: the module knows nothing about lib/common.
  *
  * This application has no protocol of its own, so the glue is most of it:
@@ -89,7 +89,7 @@ static const struct tedge_hooks hooks = {
 
 #if defined(CONFIG_SHELL)
 /* The client's state, for the cloud's shell command (a general health check
- * on the device; see lib/common/tedge-boards/extras/shell-diagnostics.conf). */
+ * on the device; see tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf). */
 static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
 {
 	static const char *const names[] = {
@@ -106,7 +106,7 @@ static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-/* Hangs off the client's own "tedge" root, which tedge-zephyr defines. */
+/* Hangs off the client's own "tedge" root, which tiny-edge defines. */
 SHELL_SUBCMD_ADD((tedge), diag, NULL, "client state", cmd_diag, 1, 0);
 #endif /* CONFIG_SHELL */
 

@@ -30,8 +30,8 @@ jobs:
       image: zephyrprojectrtos/zephyr-build:latest
       options: --user root
     env:
-      # See tedge-zephyr.yml: the image registers the SDK for its non-root
-      # user only, and this job runs as root.
+      # The image registers the SDK for its non-root user only, and this
+      # job runs as root.
       ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains
     steps:
       - uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Device-management agent. Shared options come from the lib/common module and
-# the client's from tedge-zephyr (both auto-sourced via Kconfig.zephyr below).
+# the client's from tiny-edge (both auto-sourced via Kconfig.zephyr below).
 
 mainmenu "thin-edge.io Device Agent Firmware"
 

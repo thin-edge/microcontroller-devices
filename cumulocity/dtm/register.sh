@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Register the tedge-zephyr parameter sets in a tenant's Digital Twin
+# Register the applications' parameter sets in a tenant's Digital Twin
 # Manager, so the device's Parameters tab can show and edit them.
 #
 #   cumulocity/dtm/register.sh [--replace] [set...]   # default: every *.json here
