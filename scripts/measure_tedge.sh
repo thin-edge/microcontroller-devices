@@ -42,7 +42,7 @@ c6 modbus + client:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/es
 s3 modbus, no client:esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:
 s3 modbus + client (PSRAM):esp32s3_devkitc/esp32s3/procpu:apps/modbus-server:$MIN;$TB/esp32s3-devkitc.conf;/ws/app/tedge.local.conf
 c6 modbus + client + remote access:esp32c6_devkitc/esp32c6/hpcore:apps/modbus-server:$MIN;$TB/esp32c6-devkitc.conf;/ws/app/tedge.local.conf;/ws/app/build_measure_extra/ra.conf
-c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:$TE/ports/zephyr/samples/minimal:!$TE/ports/zephyr/samples/minimal/overlay-c8y.conf;/ws/app/tedge.local.conf
+c6 samples/minimal:esp32c6_devkitc/esp32c6/hpcore:$TE/ports/zephyr/samples/minimal:!$MIN;$TB/esp32c6-devkitc.conf;/ws/app/tedge.local.conf
 "}
 echo "| case | image_B | text_B | libc_B | tlsheap_B |"
 echo "|---|---|---|---|---|"
