@@ -13,6 +13,7 @@
 #include <zephyr/logging/log.h>
 
 #include "net.h"
+#include "prov_tedge.h"
 #include "display.h"
 #include "snmp_agent.h"
 #if defined(CONFIG_TEDGE)
@@ -38,17 +39,9 @@ int main(void)
 		return 0;
 	}
 
-	bool onboarding = false;
-
-#if defined(CONFIG_APP_TEDGE_PROVISIONING)
-	/* No Wi-Fi network yet: the client starts first, since its
-	 * provisioning library is how the device gets one (tedge-onboard over
-	 * USB). The rest waits for the network as long as that takes. */
-	onboarding = !app_net_has_network();
-	if (onboarding) {
-		(void)tedge_glue_start();
-	}
-#endif
+	/* No Wi-Fi network yet: the client starts first (tedge-onboard gives
+	 * the device one), and the rest waits for the network. */
+	bool onboarding = app_prov_tedge_start_unprovisioned(tedge_glue_start);
 
 	LOG_INF("Waiting for network...");
 	ret = app_net_wait_connected(onboarding ? K_FOREVER : K_SECONDS(60));

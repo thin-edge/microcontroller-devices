@@ -51,7 +51,7 @@ manifest:
     # CONFIG_TEDGE=y. Pin a release tag; move the pin to pick up a new one.
     - name: tiny-edge
       remote: thin-edge
-      revision: e2cdf677978e70a190d810556e75a522246b24e3
+      revision: 8388bb6988952f556efc03f2b514785e679c0202
       path: modules/lib/tiny-edge
 
   self:

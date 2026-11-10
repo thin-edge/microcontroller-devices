@@ -2,8 +2,9 @@
  *
  * Setting the device up over USB with tedge-onboard: the hooks of
  * tiny-edge's provisioning library for these applications. The Wi-Fi
- * network goes through net.c, which tries it before keeping it; identify
- * flashes the status LED; the scan is the tiny-edge Zephyr port's.
+ * network goes through net.c, which owns connecting and tries a network
+ * before keeping it; identify flashes the status LED. The rest (the scan,
+ * the chip) are the tiny-edge Zephyr port's defaults.
  */
 
 #include "prov_tedge.h"
@@ -50,11 +51,11 @@ static void identify(void *ctx)
 	status_led_flash(STATUS_LED_IDENTIFY, IDENTIFY_MS);
 }
 
+/* What these applications do their own way; the scan and the chip are the
+ * tiny-edge Zephyr port's. */
 static struct tedge_provisioning_hooks hooks = {
 	.wifi_connect = wifi_connect,
 	.identify = identify,
-	.wifi_scan = tedge_provisioning_wifi_scan,
-	.chip = CONFIG_SOC,
 };
 
 int app_prov_tedge_init(void)
@@ -63,10 +64,20 @@ int app_prov_tedge_init(void)
 
 	hooks.firmware_name = app_identity_firmware_name();
 	hooks.firmware_version = app_identity_firmware_version();
-	rc = tedge_provisioning_init(&hooks);
-
+	rc = tedge_provisioning_zephyr_init(&hooks);
 	if (rc != 0) {
 		LOG_ERR("tedge-onboard support did not start (%d)", rc);
 	}
 	return rc;
+}
+
+bool app_prov_tedge_start_unprovisioned(int (*client_start)(void))
+{
+	if (app_net_has_network()) {
+		return false;
+	}
+	/* No Wi-Fi network yet: the client starts first, since its
+	 * provisioning library is how the device gets one. */
+	(void)client_start();
+	return true;
 }
