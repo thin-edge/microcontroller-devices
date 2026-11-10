@@ -73,8 +73,9 @@ bundle, checking first that the board has the flash it was laid out for.
 Verify downloads with `sha256sum -c SHA256SUMS`.
 
 Then provision the device: [Improv](#provisioning-a-device) for
-`standalone`, [lab-ztp-provisioner](#provisioning-wi-fi-and-cumulocity-with-lab-ztp-provisioner)
-for `tedge-*`. The security notes there apply to prebuilt images too.
+`standalone`, and for `tedge-*`
+[tedge-onboard over USB](#setting-a-device-up-over-usb-with-tedge-onboard) or
+[lab-ztp-provisioner](#provisioning-wi-fi-and-cumulocity-with-lab-ztp-provisioner). The security notes there apply to prebuilt images too.
 
 > **Release images are signed with MCUboot's public development key** unless
 > a release says otherwise (its notes and every `flash.json` state the key).
@@ -414,10 +415,30 @@ If you'd rather not bake credentials into the image, see the next section: on
 the ESP32-C6, the ESP32-S3 boards and the ESP32-WROOM-32 a device can be given
 its network over BLE after flashing.
 
+## Setting a device up over USB with tedge-onboard
+
+The `tedge-*` builds are set up from a computer by default. Plug the device
+into a computer with a USB data cable and run
+[`tedge-onboard`](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard)
+there. It finds the device, gives it the computer's Wi-Fi network (the one
+the device can see), registers it in Cumulocity through your go-c8y-cli
+session, and waits until it is connected. Download it from the
+[tiny-edge releases](https://github.com/thin-edge/tiny-edge/releases).
+
+A `tedge-*` device with no Wi-Fi network waits for the tool: its status LED
+shows the provisioning pattern (two short blinks, then a pause), and the log
+says so. To provision it over BLE instead (Improv, or lab-ztp-provisioner),
+**press the button 3 times within 2 seconds**: it reboots into the Wi-Fi
+provisioner described below.
+
+The Wi-Fi network the tool sends is tried before it is stored: if the device
+cannot join it, the device keeps its previous network.
+
 ## Provisioning Wi-Fi over BLE
 
 On boards with a BLE radio the device can join any network without a rebuild.
-A device with no credentials boots into the **Wi-Fi provisioner**: it advertises
+A `standalone` device with no credentials boots into the **Wi-Fi provisioner**
+(a `tedge-*` device does after the button pattern above): it advertises
 the [Improv Wi-Fi](https://www.improv-wifi.com/ble/) BLE service, a phone or
 laptop sends it an SSID and password, and the device checks them by actually
 joining the network, stores them, and reboots into the application.

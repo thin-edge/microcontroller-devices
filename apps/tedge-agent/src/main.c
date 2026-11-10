@@ -15,6 +15,7 @@
 #include <zephyr/logging/log.h>
 
 #include "net.h"
+#include "prov_tedge.h"
 #include "display.h"
 #include "tedge_glue.h"
 
@@ -37,15 +38,19 @@ int main(void)
 		return 0;
 	}
 
+	/* No Wi-Fi network yet: the client starts first (tedge-onboard gives
+	 * the device one), and the rest waits for the network. */
+	bool onboarding = app_prov_tedge_start_unprovisioned(tedge_glue_start);
+
 	LOG_INF("Waiting for network...");
-	ret = app_net_wait_connected(K_SECONDS(60));
+	ret = app_net_wait_connected(onboarding ? K_FOREVER : K_SECONDS(60));
 	if (ret) {
 		LOG_ERR("Network did not come up in time (%d)", ret);
 		display_status_stage(DISPLAY_STAGE_ERROR);
 		return 0;
 	}
 
-	ret = tedge_glue_start();
+	ret = onboarding ? 0 : tedge_glue_start();
 	if (ret) {
 		LOG_ERR("Device management did not start (%d)", ret);
 		display_status_stage(DISPLAY_STAGE_ERROR);

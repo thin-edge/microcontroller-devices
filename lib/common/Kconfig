@@ -301,6 +301,18 @@ config APP_BOOT_REQUEST
 	help
 	  The boot request record in bootreq_partition (boot_request.h).
 
+config APP_TEDGE_PROVISIONING
+	bool "Set the device up over USB with tedge-onboard"
+	default y
+	depends on TEDGE && APP_WIFI_CRED_STORE && !APP_WIFI_PROVISIONER
+	select TEDGE_PROVISIONING
+	help
+	  tiny-edge's provisioning library on the console (Improv Serial):
+	  tedge-onboard, run on a computer the device is plugged into, gives it
+	  the Wi-Fi network and registers it in Cumulocity. A device without a
+	  Wi-Fi network then waits for it, rather than starting the Wi-Fi
+	  provisioner image (the button pattern still starts that).
+
 config APP_PROV_HANDOFF
 	bool "Hand over to the Wi-Fi provisioner image"
 	default y if BOOTLOADER_MCUBOOT && $(dt_nodelabel_exists,prov_partition)

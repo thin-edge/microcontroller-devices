@@ -430,8 +430,21 @@ static int stored_creds(struct app_wifi_creds *out)
 }
 #endif
 
+#if defined(CONFIG_APP_WIFI_CRED_STORE) && !defined(CONFIG_APP_WIFI_PROVISIONER)
+/* A network being tried (app_net_switch_network()): what every connect
+ * uses until the trial ends. */
+static struct app_wifi_creds switch_creds;
+static atomic_t switching;
+#endif
+
 int app_wifi_creds_resolve(struct app_wifi_creds *out)
 {
+#if defined(CONFIG_APP_WIFI_CRED_STORE) && !defined(CONFIG_APP_WIFI_PROVISIONER)
+	if (atomic_get(&switching)) {
+		*out = switch_creds;
+		return 0;
+	}
+#endif
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
 	if (stored_creds(out) == 0) {
 		return 0;
@@ -455,6 +468,16 @@ int app_wifi_creds_resolve(struct app_wifi_creds *out)
 	return -ENOENT;
 #endif
 }
+
+bool app_net_has_network(void)
+{
+	struct app_wifi_creds creds;
+	bool have = app_wifi_creds_resolve(&creds) == 0;
+
+	memset(&creds, 0, sizeof(creds));
+	return have;
+}
+
 
 #if defined(CONFIG_NET_NATIVE_OFFLOADED_SOCKETS)
 
@@ -605,7 +628,11 @@ static void reconnect_handler(struct k_work *work)
 
 	struct app_wifi_creds creds;
 
-	(void)app_wifi_creds_resolve(&creds);
+	if (app_wifi_creds_resolve(&creds) != 0) {
+		/* No network yet (waiting for tedge-onboard): nothing to join,
+		 * and nothing to retry until one is given. */
+		return;
+	}
 	int rc = wifi_connect(&creds);
 
 	memset(&creds, 0, sizeof(creds));
@@ -792,7 +819,9 @@ int app_net_init(void)
 	bool have_creds = app_wifi_creds_resolve(&creds) == 0;
 
 #if defined(CONFIG_APP_PROV_HANDOFF)
-	if (!have_creds) {
+	/* With tedge-onboard support the device waits for it on the console
+	 * instead; the button pattern still starts the provisioner. */
+	if (!have_creds && !IS_ENABLED(CONFIG_APP_TEDGE_PROVISIONING)) {
 		/* Record the identity first: a factory-fresh device has never been
 		 * online, and without it the provisioner advertises — and a ZTP
 		 * server registers the device — under the provisioner's fallback
@@ -806,6 +835,20 @@ int app_net_init(void)
 #endif
 
 	if (!have_creds) {
+		if (IS_ENABLED(CONFIG_APP_TEDGE_PROVISIONING)) {
+#if defined(CONFIG_APP_PROV_HANDOFF)
+			LOG_INF("No Wi-Fi network yet: set the device up over USB "
+				"with tedge-onboard, or press the button %d times "
+				"for BLE provisioning",
+				CONFIG_APP_WIFI_PROV_PRESS_COUNT);
+#else
+			LOG_INF("No Wi-Fi network yet: set the device up over USB "
+				"with tedge-onboard");
+#endif
+			/* "Needs setting up" on the LED until it is. */
+			status_led_set_mode(STATUS_LED_PROVISIONING);
+			return 0;
+		}
 		LOG_ERR("Wi-Fi SSID is empty — set APP_WIFI_SSID via a local "
 			"overlay (see overlay-wifi-credentials.conf.example)");
 		return -EINVAL;
@@ -822,6 +865,54 @@ struct k_work_q *app_net_workq(void)
 {
 	return &net_wq;
 }
+
+#if defined(CONFIG_APP_WIFI_CRED_STORE) && !defined(CONFIG_APP_WIFI_PROVISIONER)
+int app_net_switch_network(const struct app_wifi_creds *creds,
+			   k_timeout_t timeout)
+{
+	struct net_if *iface = net_if_get_first_wifi();
+	enum wifi_security_type security;
+	int rc;
+
+	if (iface == NULL) {
+		return -ENODEV;
+	}
+	switch_creds = *creds;
+	atomic_set(&switching, 1);
+	k_sem_reset(&net_connected_sem);
+	/* Leave the current network; the reconnect path joins the new one,
+	 * since app_wifi_creds_resolve() returns it while switching. */
+	(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+	mark_connected(false);
+	net_wq_reschedule(&reconnect_work, K_MSEC(500));
+
+	rc = k_sem_take(&net_connected_sem, timeout) == 0 ? 0 : -ETIMEDOUT;
+	if (rc == 0) {
+		/* It works: keep it, and only it. */
+		security = creds->psk_len ? WIFI_SECURITY_TYPE_PSK
+					  : WIFI_SECURITY_TYPE_NONE;
+		(void)wifi_credentials_delete_all();
+		rc = wifi_credentials_set_personal(creds->ssid, creds->ssid_len,
+						   security, NULL, 0, creds->psk,
+						   creds->psk_len, 0, 0, 0);
+		if (rc != 0) {
+			LOG_ERR("Joined \"%s\" but could not store it (%d)",
+				creds->ssid, rc);
+		}
+	}
+	atomic_set(&switching, 0);
+	memset(&switch_creds, 0, sizeof(switch_creds));
+	if (rc == -ETIMEDOUT) {
+		/* Back to the stored network, if there is one. */
+		LOG_WRN("Could not join \"%s\"; back to the stored network",
+			creds->ssid);
+		(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+		mark_connected(false);
+		net_wq_reschedule(&reconnect_work, K_MSEC(500));
+	}
+	return rc;
+}
+#endif
 
 #if defined(CONFIG_APP_WIFI_PROVISIONER)
 int app_net_try_credentials(const struct app_wifi_creds *creds,

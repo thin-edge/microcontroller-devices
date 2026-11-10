@@ -12,6 +12,7 @@
 #include <zephyr/logging/log.h>
 
 #include "net.h"
+#include "prov_tedge.h"
 #include "display.h"
 
 #if defined(CONFIG_APP_OPCUA_SERVER)
@@ -40,8 +41,12 @@ int main(void)
 		return 0;
 	}
 
+	/* No Wi-Fi network yet: the client starts first (tedge-onboard gives
+	 * the device one), and the rest waits for the network. */
+	bool onboarding = app_prov_tedge_start_unprovisioned(tedge_glue_start);
+
 	LOG_INF("Waiting for network...");
-	ret = app_net_wait_connected(K_SECONDS(60));
+	ret = app_net_wait_connected(onboarding ? K_FOREVER : K_SECONDS(60));
 	if (ret) {
 		LOG_ERR("Network did not come up in time (%d)", ret);
 		display_status_stage(DISPLAY_STAGE_ERROR);
@@ -63,7 +68,7 @@ int main(void)
 
 #if defined(CONFIG_TEDGE)
 	/* Device management runs alongside the protocol server. */
-	if (tedge_glue_start() == 0) {
+	if (onboarding || tedge_glue_start() == 0) {
 #if defined(CONFIG_TEDGE_TELEMETRY)
 		tedge_glue_start_telemetry();
 #endif
