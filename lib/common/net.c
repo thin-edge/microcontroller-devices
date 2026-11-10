@@ -836,8 +836,17 @@ int app_net_init(void)
 
 	if (!have_creds) {
 		if (IS_ENABLED(CONFIG_APP_TEDGE_PROVISIONING)) {
+#if defined(CONFIG_APP_PROV_HANDOFF)
+			LOG_INF("No Wi-Fi network yet: set the device up over USB "
+				"with tedge-onboard, or press the button %d times "
+				"for BLE provisioning",
+				CONFIG_APP_WIFI_PROV_PRESS_COUNT);
+#else
 			LOG_INF("No Wi-Fi network yet: set the device up over USB "
 				"with tedge-onboard");
+#endif
+			/* "Needs setting up" on the LED until it is. */
+			status_led_set_mode(STATUS_LED_PROVISIONING);
 			return 0;
 		}
 		LOG_ERR("Wi-Fi SSID is empty — set APP_WIFI_SSID via a local "
