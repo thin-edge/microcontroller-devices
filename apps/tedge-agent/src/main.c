@@ -37,15 +37,27 @@ int main(void)
 		return 0;
 	}
 
+	bool onboarding = false;
+
+#if defined(CONFIG_APP_TEDGE_PROVISIONING)
+	/* No Wi-Fi network yet: the client starts first, since its
+	 * provisioning library is how the device gets one (tedge-onboard over
+	 * USB). The rest waits for the network as long as that takes. */
+	onboarding = !app_net_has_network();
+	if (onboarding) {
+		(void)tedge_glue_start();
+	}
+#endif
+
 	LOG_INF("Waiting for network...");
-	ret = app_net_wait_connected(K_SECONDS(60));
+	ret = app_net_wait_connected(onboarding ? K_FOREVER : K_SECONDS(60));
 	if (ret) {
 		LOG_ERR("Network did not come up in time (%d)", ret);
 		display_status_stage(DISPLAY_STAGE_ERROR);
 		return 0;
 	}
 
-	ret = tedge_glue_start();
+	ret = onboarding ? 0 : tedge_glue_start();
 	if (ret) {
 		LOG_ERR("Device management did not start (%d)", ret);
 		display_status_stage(DISPLAY_STAGE_ERROR);

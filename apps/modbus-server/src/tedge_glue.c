@@ -17,6 +17,7 @@
 #include "identity.h"
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
 #include "prov_c8y.h"
+#include "prov_tedge.h"
 #endif
 #include "status_led.h"
 
@@ -478,6 +479,9 @@ int tedge_glue_start(void)
 		LOG_ERR("tedge_init failed (%d)", rc);
 		return rc;
 	}
+#if defined(CONFIG_APP_TEDGE_PROVISIONING)
+	(void)app_prov_tedge_init();
+#endif
 #if defined(CONFIG_APP_WIFI_CRED_STORE)
 	/* Tenant and one-time password from the ZTP provisioner, if it left
 	 * any. The external ID already came through app_identity_device_id(). */

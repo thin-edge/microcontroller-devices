@@ -29,6 +29,7 @@ zephyr_library_sources(status_led.c)
 zephyr_library_sources_ifdef(CONFIG_APP_BOOT_REQUEST boot_request.c)
 zephyr_library_sources_ifdef(CONFIG_APP_WIFI_CRED_STORE prov_identity.c prov_c8y.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PROV_HANDOFF prov_handoff.c)
+zephyr_library_sources_ifdef(CONFIG_APP_TEDGE_PROVISIONING prov_tedge.c)
 
 # Identify: `tedge identify` blinks the status LED, the sw0 identify pattern
 # sends an event.

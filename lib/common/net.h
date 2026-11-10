@@ -70,8 +70,26 @@ struct app_wifi_creds {
  */
 int app_wifi_creds_resolve(struct app_wifi_creds *out);
 
+/** @return true when the device has a Wi-Fi network to join (stored, or
+ *  built in). */
+bool app_net_has_network(void);
+
 /** The connectivity work queue (the sw0 monitors run on it). */
 struct k_work_q *app_net_workq(void);
+
+#if defined(CONFIG_APP_WIFI_CRED_STORE) && !defined(CONFIG_APP_WIFI_PROVISIONER)
+/**
+ * Join another Wi-Fi network, and keep it only once it works: the device
+ * tries @p creds, and when it gets an address within @p timeout they replace
+ * the stored network. Otherwise it goes back to the stored network, so a
+ * mistyped password cannot strand a device.
+ *
+ * @return 0 once joined and stored; -ETIMEDOUT when the network could not be
+ *         joined in time; -ENODEV without a Wi-Fi interface.
+ */
+int app_net_switch_network(const struct app_wifi_creds *creds,
+			   k_timeout_t timeout);
+#endif
 
 #if defined(CONFIG_APP_WIFI_PROVISIONER)
 /**
