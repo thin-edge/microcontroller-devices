@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/thin-edge/microcontroller-devices/compare/v0.11.0...v0.11.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* start the protocol server after onboarding over USB ([#21](https://github.com/thin-edge/microcontroller-devices/issues/21)) ([6f9d3a9](https://github.com/thin-edge/microcontroller-devices/commit/6f9d3a9a2cb74fddf861408084378667c31804ef))
+
 ## [0.11.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.10.0...v0.11.0) (2026-11-10)
 
 
