@@ -90,8 +90,12 @@ const char *app_net_hostname(void)
 #endif
 }
 
-/* Signalled once L4 connectivity is available. */
+/* Signalled once L4 connectivity is available. A binary semaphore wakes
+ * one waiter, so app_net_switch_network() has its own: it can wait while
+ * main() is still in app_net_wait_connected() on a device being onboarded,
+ * and each must see the network come up. */
 static K_SEM_DEFINE(net_connected_sem, 0, 1);
+static K_SEM_DEFINE(switch_connected_sem, 0, 1);
 static atomic_t connected;
 static uint32_t current_ipv4; /* network byte order */
 
@@ -386,6 +390,7 @@ static void mark_connected(bool up)
 		current_ipv4 = read_iface_ipv4();
 		render_status(DISPLAY_STAGE_CONNECTED);
 		k_sem_give(&net_connected_sem);
+		k_sem_give(&switch_connected_sem);
 		try_done(0);
 #if defined(CONFIG_APP_PROV_HANDOFF)
 		app_prov_identity_update();
@@ -879,14 +884,14 @@ int app_net_switch_network(const struct app_wifi_creds *creds,
 	}
 	switch_creds = *creds;
 	atomic_set(&switching, 1);
-	k_sem_reset(&net_connected_sem);
+	k_sem_reset(&switch_connected_sem);
 	/* Leave the current network; the reconnect path joins the new one,
 	 * since app_wifi_creds_resolve() returns it while switching. */
 	(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
 	mark_connected(false);
 	net_wq_reschedule(&reconnect_work, K_MSEC(500));
 
-	rc = k_sem_take(&net_connected_sem, timeout) == 0 ? 0 : -ETIMEDOUT;
+	rc = k_sem_take(&switch_connected_sem, timeout) == 0 ? 0 : -ETIMEDOUT;
 	if (rc == 0) {
 		/* It works: keep it, and only it. */
 		security = creds->psk_len ? WIFI_SECURITY_TYPE_PSK
