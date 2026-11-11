@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.11.1...v0.12.0) (2026-11-11)
+
+
+### Features
+
+* run cloud shell commands on the ESP32-C6 Modbus full image ([#23](https://github.com/thin-edge/microcontroller-devices/issues/23)) ([c048d81](https://github.com/thin-edge/microcontroller-devices/commit/c048d8121ec55418cadaca88da1a9fd6d9e0f51e))
+
 ## [0.11.1](https://github.com/thin-edge/microcontroller-devices/compare/v0.11.0...v0.11.1) (2026-11-10)
 
 
