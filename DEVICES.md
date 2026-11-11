@@ -263,6 +263,49 @@ Test note: a TCP probe of a local `c8y remoteaccess server` port opens a
 tunnel of its own, which holds the device's single session for a moment; an
 SSH connection straight after it can find the slot busy.
 
+### Lean cloud shell on the ESP32-C6 (2026-11-11)
+
+The C6 Modbus `tedge-full` image now carries the cloud shell command too,
+with `release/extras/shell-lean.conf` after `shell-diagnostics.conf`. The
+full extra did not fit: +15.9 KB of RAM, and +120 KB of flash, which put the
+image at 82.4 % of its slot (budget 80 %). The lean extra keeps the
+allow-list's purpose and drops what a cloud command cannot use:
+
+- No network or Wi-Fi shell (about 65 KB of flash). `net iface` and
+  `wifi status` print more than a result holds (it is cut at about 220
+  bytes), so `tedge net` (lib/common/net.c, `CONFIG_APP_NET_SHELL_CMD`)
+  answers instead: Wi-Fi state, SSID, channel and RSSI, address and prefix,
+  gateway, DNS server and the gateway ping count.
+- No history, completion, VT100, metakeys, wildcards, stats, shell log
+  backend, device shell, log commands or stack painting; a 1.5 KB shell
+  thread (it only starts the dummy backend; commands run on the client's
+  command thread).
+- Output buffers of 256 B instead of 512 B (the result queue holds two).
+- `kernel heap` joins the allow-list: it reports the kernel heap that the
+  Wi-Fi driver and the tunnel's websocket allocate from.
+
+Against `main` (0.11.1), measured with `scripts/release/build.sh`:
+
+| Image | Flash | RAM (sram0) | malloc arena |
+|---|---|---|---|
+| modbus `tedge-full` | 959,692 B | 435,312 B | 74,128 B |
+| + full shell extra | 1,080,508 B (82.4 %) | +15,928 B | 63,280 B |
+| + lean shell extra | 966,202 B (73.7 %) | +9,360 B | 64,768 B |
+
+Of the 9.4 KB: the command thread's stack 4,096 B (tiny-edge's default, not
+yet measured), the shell thread's stack 1,536 B, the dummy backend 528 B, the
+shell instance 512 B, the result queue 520 B, two thread objects 592 B, the
+job 176 B, and about 1.4 KB of small objects and code in RAM. The Wi-Fi
+driver allocates from the kernel heap (`k_malloc`, about 55 KB, fixed by the
+drivers' minimums), which none of this touches; the shell takes its RAM from
+the libc malloc arena.
+
+On the board (eu-latest, `tedge-modbuse8f60afb8198`): the image installed
+over the air and confirmed, and the device lists `c8y_Command`. The commands,
+a refused command, and a 30-minute run with a firmware download and a tunnel
+(where the full extra failed on the agent image in September) are still to
+be recorded here.
+
 ### Identify measured (2026-10-06)
 
 `device-identify` adds `tedge identify [seconds]` (cloud shell) and the sw0

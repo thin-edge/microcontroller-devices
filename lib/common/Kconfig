@@ -346,6 +346,17 @@ config APP_WIFI_PROV_ERASE_HOLD_S
 
 endif # APP_PROV_HANDOFF
 
+config APP_NET_SHELL_CMD
+	bool "Shell command `tedge net`: the network state in one short answer"
+	depends on TEDGE && SHELL && !NET_SOCKETS_OFFLOAD
+	help
+	  Prints the Wi-Fi network, signal and channel, the address, gateway
+	  and DNS server, and the gateway ping count, in less than a cloud
+	  command's result holds (about 220 bytes). For builds that leave out
+	  the network and Wi-Fi shells to save flash (release/extras/
+	  shell-lean.conf); the cloud runs it once it is on the
+	  TEDGE_SHELL_COMMAND_ALLOW_LIST.
+
 config APP_IDENTIFY
 	bool "Identify the device from the cloud and from its button"
 	default y

@@ -998,3 +998,78 @@ int app_net_init(void)
 }
 
 #endif
+
+#if defined(CONFIG_APP_NET_SHELL_CMD)
+#include <zephyr/shell/shell.h>
+#if defined(CONFIG_DNS_RESOLVER)
+#include <zephyr/net/dns_resolve.h>
+#endif
+
+/* `tedge net`: the network state in one short answer. A cloud command's
+ * result is cut at about 220 bytes, which `net iface` and `wifi status`
+ * overrun on their own, and those shells cost about 65 KB of flash. This
+ * prints what a support call asks first. */
+static int cmd_net(const struct shell *sh, size_t argc, char **argv)
+{
+	struct net_if *iface = net_if_get_default();
+	char ip[16], gw[16];
+	int prefix = 0;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+#if defined(CONFIG_WIFI)
+	struct net_if *wifi = net_if_get_first_wifi();
+	struct wifi_iface_status st = {0};
+
+	if (wifi != NULL &&
+	    net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, wifi, &st, sizeof(st)) == 0) {
+		if (st.state >= WIFI_STATE_ASSOCIATED) {
+			shell_print(sh, "wifi %s \"%.32s\" ch %u rssi %d dBm",
+				    wifi_state_txt(st.state), st.ssid,
+				    st.channel, st.rssi);
+		} else {
+			shell_print(sh, "wifi %s", wifi_state_txt(st.state));
+		}
+	}
+#endif
+	fmt_ip(ip, sizeof(ip), current_ipv4);
+	if (iface != NULL) {
+		struct net_in_addr self = { .s_addr = current_ipv4 };
+		uint32_t mask = net_ntohl(
+			net_if_ipv4_get_netmask_by_addr(iface, &self).s_addr);
+
+		fmt_ip(gw, sizeof(gw), net_if_ipv4_get_gw(iface).s_addr);
+		while (mask & 0x80000000U) {
+			prefix++;
+			mask <<= 1;
+		}
+		shell_print(sh, "ip %s/%d gw %s", ip, prefix, gw);
+	}
+#if defined(CONFIG_DNS_RESOLVER)
+	struct dns_resolve_context *dns = dns_resolve_get_default();
+
+	for (int i = 0; dns != NULL && i < DNS_RESOLVER_MAX_SERVERS; i++) {
+		const struct net_sockaddr *sa = &dns->servers[i].dns_server;
+
+		if (dns->servers[i].is_mdns || sa->sa_family != NET_AF_INET) {
+			continue;
+		}
+		fmt_ip(ip, sizeof(ip), net_sin(sa)->sin_addr.s_addr);
+		shell_print(sh, "dns %s", ip);
+	}
+#endif
+#if defined(CONFIG_NET_IPV4)
+	shell_print(sh, "gateway ping %d/%u", (int)atomic_get(&ping_ok),
+		    ping_sent);
+#endif
+	if (g_last_reason >= 0) {
+		shell_print(sh, "last wifi reason %d", g_last_reason);
+	}
+	return 0;
+}
+
+/* Hangs off the client's own "tedge" root, which tiny-edge defines. */
+SHELL_SUBCMD_ADD((tedge), net, NULL,
+		 "network state: Wi-Fi, address, gateway, DNS", cmd_net, 1, 0);
+#endif /* CONFIG_APP_NET_SHELL_CMD */

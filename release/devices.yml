@@ -56,7 +56,11 @@ devices:
       - { app: snmp-agent, variant: standalone }
       - app: modbus-server
         variant: tedge-full
-        measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+        pr: true
+        extra_conf:
+          - "{tiny-edge}/ports/zephyr/profiles/extras/shell-diagnostics.conf"
+          - release/extras/shell-lean.conf
+        measured: DEVICES.md#lean-cloud-shell-on-the-esp32-c6-2026-11-11
       - app: modbus-server
         variant: tedge-ota
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
