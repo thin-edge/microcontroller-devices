@@ -116,7 +116,16 @@ the device runs:
 `net ping` is not offered: Zephyr prints the replies after the command
 returns, so the cloud would only ever see the `PING <host>` line.
 
+The ESP32-C6 Modbus `tedge-full` image carries a leaner set
+(`release/extras/shell-lean.conf`), because the full one costs too much RAM
+and flash there (DEVICES.md, "Lean cloud shell on the ESP32-C6"). In place
+of `net iface`, `net conn` and `wifi status` it has:
+
+| Command | Answers |
+|---|---|
+| `tedge net` | Wi-Fi state, SSID, channel and RSSI, address, gateway, DNS server |
+| `kernel heap` | free and peak use of the kernel heap (Wi-Fi driver, tunnel) |
+
 Anything else is refused with the reason. Output travels in one SmartREST
-field, so a long answer is cut. The other boards' images leave it out: on
-the ESP32-C6 its ~16 KB of RAM left too little for the Wi-Fi driver and the
-firmware download (DEVICES.md, "Shell diagnostics measured").
+field of about 220 bytes, so a long answer is cut. The other boards' images
+leave the shell out.

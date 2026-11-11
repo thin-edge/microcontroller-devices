@@ -1392,8 +1392,9 @@ c8y operations create --device <device> \
 
 This needs an image with the cloud shell command, which today means the
 images built with `tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf`
-(the S3-DevKitC and QT Py modbus-server and tedge-agent full builds; see
-DEVICES.md). That file puts `tedge identify` on the allow-list. On other
+(the S3-DevKitC and QT Py modbus-server and tedge-agent full builds, and the
+ESP32-C6 modbus-server full build with `release/extras/shell-lean.conf`; see
+DEVICES.md). Both put `tedge identify` on the allow-list. On other
 images the cloud has no shell, so only the button works. The same command
 works on a local console where the image has one.
 

@@ -74,13 +74,13 @@
     }
   },
   "modbus-server-tedge-full-esp32c6-devkitc": {
-    "image": 959692,
-    "content": 839144,
+    "image": 966203,
+    "content": 862607,
     "ram": {
-      "sram0_0_seg": 435312,
+      "sram0_0_seg": 444672,
       "lp_ram_seg": 36
     },
-    "arena": 74128,
+    "arena": 64768,
     "provisioner": {
       "image": 1013963,
       "content": 909467,
