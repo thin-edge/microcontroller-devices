@@ -57,6 +57,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      idf_matrix: ${{ steps.matrix.outputs.idf_matrix }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -165,10 +166,50 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  # The ESP-IDF applications (`framework: esp-idf` in release/devices.yml),
+  # in Espressif's ESP-IDF container: idf.py instead of west, no MCUboot
+  # signing, the same assets and metadata.
+  build-idf:
+    name: ${{ matrix.group }}
+    needs: matrix
+    if: ${{ fromJSON(needs.matrix.outputs.idf_matrix).include[0] != null }}
+    runs-on: ubuntu-24.04
+    container:
+      image: espressif/idf:v6.1
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.idf_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Build and package
+        working-directory: app
+        shell: bash
+        run: |
+          set -e
+          . "$IDF_PATH/export.sh"
+          pip install pyyaml
+          scripts/release/check-version.sh --apply "${{ github.ref_name }}"
+          for name in ${{ matrix.builds }}; do
+            echo "::group::$name"
+            scripts/release/build.sh "$name" --build-dir "../build/$name" --out ../dist
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.group }}
+          path: dist/
+          if-no-files-found: error
+
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [matrix, build]
+    # build-idf is skipped when release/devices.yml lists no ESP-IDF build.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && !cancelled() &&
+      needs.build.result == 'success' &&
+      (needs.build-idf.result == 'success' || needs.build-idf.result == 'skipped')
+    needs: [matrix, build, build-idf]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

@@ -25,6 +25,10 @@
 # build's `extra_conf`. `provisioner` selects the Wi-Fi provisioner image.
 # Paths are relative to this repository, or "{tiny-edge}/..." for files from
 # the tiny-edge west project (the client's profiles and board sizing).
+#
+# `framework: esp-idf` marks an ESP-IDF application (apps/<app> built with
+# idf.py, the device's `chip` as the target): no Zephyr profile, board files
+# or tiny-edge board configuration; it brings its own sdkconfig.defaults.
 variants:
   standalone:
     description: the protocol server alone; Wi-Fi over Improv BLE
@@ -37,10 +41,16 @@ variants:
     description: connection, telemetry, restart and firmware update, plus what else fits; Wi-Fi and Cumulocity over lab-ztp-provisioner
     profile: "{tiny-edge}/ports/zephyr/profiles/ota.conf"
     provisioner: ztp
+  tedge-onboard:
+    description: the device agent on ESP-IDF (FreeRTOS) with every thin-edge.io feature; Wi-Fi and Cumulocity over USB with tedge-onboard
+    framework: esp-idf
+    provisioner: tedge-onboard
 
 provisioners:
   improv: null
   ztp: apps/wifi-provisioner/overlay-ztp.conf
+  # tiny-edge's tools/onboard, run on the computer the board is plugged into.
+  tedge-onboard: null
 
 devices:
   - id: esp32c6-devkitc
@@ -78,6 +88,10 @@ devices:
         variant: tedge-ota
         pr: true
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      - app: tedge-agent-idf
+        variant: tedge-onboard
+        pr: true
+        measured: DEVICES.md#esp-idf-agent-on-the-esp32-c6-2026-11-12
 
   - id: esp32s3-devkitc
     name: ESP32-S3-DevKitC-1 (N16R8)

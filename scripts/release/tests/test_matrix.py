@@ -186,6 +186,60 @@ class MatrixTest(unittest.TestCase):
         p = self.problems(VALID.replace("pr: true", "pr: yes please"))
         self.assertIn("pr must be true or false", p)
 
+    IDF = VALID.replace("""  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
+""", """  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
+  tedge-onboard: {framework: esp-idf, provisioner: onboard}
+""").replace("""  ztp: prov/ztp.conf
+""", """  ztp: prov/ztp.conf
+  onboard: null
+""") + """      - app: agent-idf
+        variant: tedge-onboard
+        measured: DEVICES.md#measured-on-the-c6
+"""
+
+    def idf_app(self, defaults=True):
+        app = self.root / "apps" / "agent-idf"
+        app.mkdir(parents=True)
+        (app / "CMakeLists.txt").write_text("")
+        if defaults:
+            (app / "sdkconfig.defaults").write_text("")
+
+    def test_esp_idf_build(self):
+        """An ESP-IDF build needs no Zephyr board files or profile, and
+        lands in a matrix of its own."""
+        self.idf_app()
+        manifest, builds = self.load(self.IDF)
+        idf = [b for b in builds if b.app == "agent-idf"][0]
+        entry = idf.matrix_entry(manifest)
+        self.assertEqual(entry["framework"], "esp-idf")
+        self.assertEqual(entry["conf_files"], "")
+        self.assertEqual(entry["firmware_name"], "agent-idf-tedge-onboard-c6")
+
+        from contextlib import redirect_stdout
+        import io
+        path = self.root / "devices.yml"
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = matrix.main(["--manifest", str(path), "--root", str(self.root),
+                              "--github-output"])
+        self.assertEqual(rc, 0)
+        lines = dict(l.split("=", 1) for l in out.getvalue().splitlines())
+        zephyr = json.loads(lines["matrix"])["include"]
+        idf_jobs = json.loads(lines["idf_matrix"])["include"]
+        self.assertEqual([j["app"] for j in zephyr], ["modbus-server"])
+        self.assertEqual([j["builds"] for j in idf_jobs],
+                         ["agent-idf-tedge-onboard-c6"])
+
+    def test_esp_idf_app_must_be_an_idf_project(self):
+        self.idf_app(defaults=False)
+        p = self.problems(self.IDF)
+        self.assertIn("apps/agent-idf is not an ESP-IDF project", p)
+
+    def test_unknown_framework(self):
+        self.idf_app()
+        p = self.problems(self.IDF.replace("framework: esp-idf", "framework: nuttx"))
+        self.assertIn("variant tedge-onboard: framework must be one of", p)
+
     def test_repository_manifest_is_valid(self):
         manifest, builds = matrix.load()
         self.assertTrue(builds)

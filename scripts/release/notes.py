@@ -34,7 +34,8 @@ def notes(manifest, metas, tag, repo):
     signing = {json.dumps(m["signing"], sort_keys=True): m["signing"] for m in metas.values()}
     out = [f"Prebuilt firmware for {len({m['device'] for m in metas.values()})} "
            f"devices, version `{tag.lstrip('v')}`. Pick your device and a variant, "
-           "flash the `.factory.bin`, then provision the device over Bluetooth.",
+           "flash the `.factory.bin`, then set the device up: over Bluetooth, or over "
+           "USB with `tedge-onboard` for the `tedge-onboard` images.",
            "",
            "## Variants",
            ""]
@@ -59,7 +60,7 @@ def notes(manifest, metas, tag, repo):
             "[ESPHome Web](https://web.esphome.io/), connect the board, choose "
             "*Install*, tick *Erase device*, and pick the `.factory.bin`. "
             "When it offers to set up Wi-Fi afterwards, skip it: these images are "
-            "provisioned over Bluetooth.",
+            "set up over Bluetooth or with `tedge-onboard`.",
             "",
             "**With esptool**:",
             "",
@@ -72,9 +73,16 @@ def notes(manifest, metas, tag, repo):
             "bundle's `README.txt` has the exact commands, and "
             "`scripts/flash.sh <bundle-dir>` flashes a bundle from a checkout.",
             "",
-            f"Then provision it: `standalone` images with Improv Wi-Fi, `tedge-*` "
-            f"images with lab-ztp-provisioner. See [Provisioning Wi-Fi over BLE]"
-            f"({readme}#provisioning-wi-fi-over-ble), including its security notes.",
+            f"Then provision it: `standalone` images with Improv Wi-Fi, `tedge-full` "
+            f"and `tedge-ota` images with lab-ztp-provisioner. See [Provisioning "
+            f"Wi-Fi over BLE]({readme}#provisioning-wi-fi-over-ble), including its "
+            f"security notes.",
+            "",
+            "`tedge-onboard` images (ESP-IDF) are set up over USB instead: run "
+            "[tedge-onboard](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard) "
+            "on the computer the board is plugged into. It gives the device the "
+            "computer's Wi-Fi network, registers it in your tenant, and passes it "
+            "the tenant and a one-time password.",
             ""]
     tedge = [m for m in metas.values() if m["tedge"]]
     if tedge:
@@ -115,7 +123,7 @@ def notes(manifest, metas, tag, repo):
     for s in signing.values():
         out.append(f"- {s['statement']}")
     out += ["",
-            "A device's bootloader only accepts images signed with its own key: a "
+            "An MCUboot bootloader only accepts images signed with its own key: a "
             "device flashed from one key cannot be updated over the air to images "
             "signed with another.",
             "",

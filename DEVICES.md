@@ -306,6 +306,42 @@ a refused command, and a 30-minute run with a firmware download and a tunnel
 (where the full extra failed on the agent image in September) are still to
 be recorded here.
 
+### ESP-IDF agent on the ESP32-C6 (2026-11-12)
+
+`apps/tedge-agent-idf` is the device agent on ESP-IDF 6.1 and FreeRTOS, with
+tiny-edge 0.5.0's FreeRTOS port, released for this board as the
+`tedge-onboard` variant.
+
+| Chip | Application image | Share of a 1.75 MB OTA slot |
+|---|---|---|
+| ESP32-C6 | 1,158,240 B | 63 % |
+| ESP32-S3 | 988,240 B | 54 % |
+
+On the ESP32-C6-DevKitC (eu-latest, `tedge-e8f60afb8198`):
+
+- **Onboarding:** NVS cleared, the merged image flashed at `0x0`, then
+  `tedge-onboard --reonboard` from the Mac it was plugged into. The device
+  joined Wi-Fi, enrolled for its certificate, and connected over the MQTT
+  Service.
+- **Restart:** after a reset it used the stored network and certificate and
+  connected again. The access point refused the first three joins (reason
+  2, authentication expired), so the connection took about 27 s from boot.
+  The same happens with tiny-edge's ESP-IDF sample on this board.
+- **Cumulocity:** `c8y_Agent` (tiny-edge 0.5.0), `tedge_OS` (FreeRTOS
+  10.5.1, ESP-IDF v6.1), `c8y_Hardware` (`esp32c6`, `v0.2`), `c8y_Firmware`
+  (`tedge-agent-idf-esp32c6` 0.12.0), the `tiny_edge` parameter sets, the
+  `c8y_Device` measurement (60 s after boot: 151,628 B free heap,
+  -61 dBm), and `c8y_TedgeHealth`.
+- **The device type** in Cumulocity is `thin-edge.io`, not the image's
+  `thin-edge.io-esp-idf-agent`: the registration created the managed object,
+  and the device's own `100` message does not change the type of one that
+  exists.
+
+Firmware update with rollback, log upload, a remote access tunnel,
+parameters, and the cloud shell were tested with the same FreeRTOS port in
+tiny-edge's own ESP-IDF sample on this board (tiny-edge 0.4.0, 2026-11-11),
+not yet with this application.
+
 ### Identify measured (2026-10-06)
 
 `device-identify` adds `tedge identify [seconds]` (cloud shell) and the sw0

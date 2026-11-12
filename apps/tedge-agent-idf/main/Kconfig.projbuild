@@ -1,0 +1,28 @@
+menu "Device agent"
+
+config APP_FIRMWARE_NAME
+	string "Firmware name in Cumulocity"
+	default ""
+	help
+	  The name the device reports in c8y_Firmware. Empty: the project's
+	  name and the chip, for example "tedge-agent-idf-esp32c6", so a
+	  firmware update offered under it only ever holds images for that
+	  chip.
+
+config APP_DEVICE_TYPE
+	string "Device type in Cumulocity"
+	default "thin-edge.io-esp-idf-agent"
+
+config APP_MEASUREMENT_TYPE
+	string "Measurement type of the device's own telemetry"
+	default "device"
+	help
+	  "device" is what the tiny-edge measurements Smart Function maps to
+	  c8y_Device (uptime, free heap, signal strength).
+
+config APP_MEASUREMENT_INTERVAL_S
+	int "Seconds between device telemetry measurements"
+	default 60
+	range 5 86400
+
+endmenu

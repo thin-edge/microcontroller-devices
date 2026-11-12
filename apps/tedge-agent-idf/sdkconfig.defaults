@@ -1,0 +1,17 @@
+# Firmware update: two OTA slots and the bootloader's rollback.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# The firmware confirmation deadline runs on the timer task.
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=3072
+
+# Plain lines in the uploaded log.
+CONFIG_LOG_COLORS=n
+
+# Set up over USB with tedge-onboard: Wi-Fi, tenant, and registration.
+CONFIG_TEDGE_PROVISIONING=y
+
+# The cloud's shell runs the agent's own commands (main.c), and nothing else.
+CONFIG_TEDGE_SHELL_COMMAND_ALLOW_LIST="free,version,uptime"
