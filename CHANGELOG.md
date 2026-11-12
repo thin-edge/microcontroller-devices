@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.12.0...v0.13.0) (2026-11-12)
+
+
+### Features
+
+* add a device agent on ESP-IDF, set up with tedge-onboard, and release it for the ESP32-C6 ([#25](https://github.com/thin-edge/microcontroller-devices/issues/25)) ([8500134](https://github.com/thin-edge/microcontroller-devices/commit/85001342bebe55c2cb941e5b9eae9baf1f3beb59))
+
 ## [0.12.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.11.1...v0.12.0) (2026-11-11)
 
 
