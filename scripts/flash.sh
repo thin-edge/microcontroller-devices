@@ -24,6 +24,11 @@
 #
 # A bundle built for more flash than the connected chip has is refused.
 #
+# An ESP-IDF bundle (a `tedge-onboard` image: flash.json says
+# "framework": "esp-idf") is flashed the same way: everything, or with
+# --app-only the application into ota_0; --erase-storage erases its NVS
+# partition (the Wi-Fi network and the Cumulocity certificate).
+#
 # Local builds are signed with MCUboot's public development key: fine for
 # development, never for production devices. A bundle's flash.json says which
 # key signed it.
@@ -48,14 +53,47 @@ while [[ $# -gt 0 ]]; do
 done
 esptool=${ESPTOOL:-esptool}
 
-vars=$(python3 "$(dirname "$0")/release/offsets.py" "$build" --shell) || exit 1
-eval "$vars"
-before=${before:-${ESPTOOL_BEFORE:-default-reset}}
-
 run() {
 	echo "+ $*"
 	[[ $dry -eq 1 ]] || "$@"
 }
+
+if [[ -f $build/flash.json ]] && grep -q '"framework": "esp-idf"' "$build/flash.json"; then
+	vars=$(python3 - "$build" <<'PY'
+import json, shlex, sys
+from pathlib import Path
+d = Path(sys.argv[1])
+f = json.loads((d / "flash.json").read_text())
+imgs = [(i["offset"], str(d / i["file"])) for i in f["images"]]
+app = next(i for i in f["images"] if i["name"] == "app")
+nvs = f["partitions"].get("nvs", {})
+for k, v in {"CHIP": f["chip"], "ESPTOOL_BEFORE": f["esptool_before"],
+             "FLASH_ARGS": " ".join(f["flash_args"]),
+             "ALL_IMAGES": " ".join(f"{o} {shlex.quote(p)}" for o, p in imgs),
+             "APP_IMAGE": f"{app['offset']} {shlex.quote(str(d / app['file']))}",
+             "NVS_OFF": nvs.get("offset", ""), "NVS_SIZE": nvs.get("size", "")}.items():
+    print(f"{k}={shlex.quote(v)}")
+PY
+	) || exit 1
+	eval "$vars"
+	before=${before:-$ESPTOOL_BEFORE}
+	tool=("$esptool" --chip "$CHIP" "${port[@]}" --before "$before")
+	if [[ $erase_all -eq 1 ]]; then
+		run "${tool[@]}" --after no-reset erase-flash
+	elif [[ $erase_storage -eq 1 && -n $NVS_OFF ]]; then
+		run "${tool[@]}" --after no-reset erase-region "$NVS_OFF" "$NVS_SIZE"
+	fi
+	images=$ALL_IMAGES
+	[[ $app_only -eq 0 ]] || images=$APP_IMAGE
+	# shellcheck disable=SC2086 # offset/file pairs, quoted by the parser above
+	eval "run \"\${tool[@]}\" --after hard-reset write-flash $FLASH_ARGS $images"
+	exit 0
+fi
+
+vars=$(python3 "$(dirname "$0")/release/offsets.py" "$build" --shell) || exit 1
+eval "$vars"
+before=${before:-${ESPTOOL_BEFORE:-default-reset}}
+
 tool=("$esptool" --chip "$CHIP" "${port[@]}" --before "$before")
 
 # A bundle states the flash size it was laid out for; a smaller chip would

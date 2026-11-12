@@ -3,7 +3,8 @@
 """Validate release/devices.yml and turn it into the release build matrix.
 
     scripts/release/matrix.py                 # GitHub matrix JSON on stdout
-    scripts/release/matrix.py --github-output # "matrix=<json>" for $GITHUB_OUTPUT
+    scripts/release/matrix.py --github-output # "matrix=<json>" and "idf_matrix=<json>"
+                                              # for $GITHUB_OUTPUT
     scripts/release/matrix.py --subset pr     # only the builds marked `pr: true`
     scripts/release/matrix.py --markdown      # supported-devices table
     scripts/release/matrix.py --entry NAME    # one build, as shell variables
@@ -13,6 +14,11 @@ another in that job, so the job pays for its setup once and the later builds
 reuse the first one's compiler cache. Pull requests build the `pr` subset
 (every device, app, variant and extra, with each board's tightest builds);
 a release builds everything.
+
+A variant with `framework: esp-idf` is an ESP-IDF project (apps/<app> with
+idf.py) instead of a Zephyr sysbuild: it has no Zephyr profile, board files
+or tiny-edge board configuration, and its builds form a matrix of their own
+(`idf_matrix`), which runs in Espressif's ESP-IDF container.
 
 Every problem found is reported, each naming the device and build it is
 in, and the exit status is non-zero; nothing is printed on stdout then, so a
@@ -46,6 +52,7 @@ FIRMWARE_NAME_MAX = 47
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FLASH_RE = re.compile(r"^(1|2|4|8|16|32)MB$")
 ESPTOOL_BEFORE = {"default-reset", "usb-reset", "no-reset"}
+FRAMEWORKS = {"zephyr", "esp-idf"}
 
 
 class ManifestError(Exception):
@@ -69,12 +76,18 @@ class Build:
         return self.variant != "standalone"
 
     @property
+    def framework(self):
+        return self.variant_def.get("framework", "zephyr")
+
+    @property
     def firmware_name(self):
         return f"{self.app}-{self.variant}-{self.device['id']}"
 
     def conf_files(self):
         """EXTRA_CONF_FILE for the application, repository-relative."""
         files = []
+        if self.framework != "zephyr":
+            return files
         if self.variant_def.get("profile"):
             files.append(self.variant_def["profile"])
         if self.tedge:
@@ -93,6 +106,7 @@ class Build:
             "esptool_before": self.device.get("esptool_before", "default-reset"),
             "app": self.app,
             "variant": self.variant,
+            "framework": self.framework,
             "firmware_name": self.firmware_name,
             "conf_files": ";".join(self.conf_files()),
             "dtc_overlays": ";".join(self.device.get("dtc_overlays", [])),
@@ -165,7 +179,11 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
             problems.append(f"variant {name}: unknown provisioner {v.get('provisioner')!r}")
         if v.get("profile"):
             need_file(f"variant {name}", v["profile"])
-        if name != "standalone" and not v.get("profile"):
+        framework = v.get("framework", "zephyr")
+        if framework not in FRAMEWORKS:
+            problems.append(f"variant {name}: framework must be one of "
+                            f"{', '.join(sorted(FRAMEWORKS))}")
+        elif framework == "zephyr" and name != "standalone" and not v.get("profile"):
             problems.append(f"variant {name}: a tedge variant needs a profile")
     for name, conf in provisioners.items():
         if conf:
@@ -208,15 +226,19 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
             if (did, app, variant) in seen_builds:
                 problems.append(f"{bwhere}: listed twice")
             seen_builds.add((did, app, variant))
-            if not (root / "apps" / app / "CMakeLists.txt").is_file():
-                problems.append(f"{bwhere}: there is no apps/{app}")
-            elif board and not (root / "apps" / app / "boards" /
-                                f"{board_dir_name(board)}.conf").is_file():
-                problems.append(f"{bwhere}: apps/{app}/boards/"
-                                f"{board_dir_name(board)}.conf does not exist")
             if variant not in variants:
                 problems.append(f"{bwhere}: unknown variant")
                 continue
+            idf = variants[variant].get("framework", "zephyr") == "esp-idf"
+            if not (root / "apps" / app / "CMakeLists.txt").is_file():
+                problems.append(f"{bwhere}: there is no apps/{app}")
+            elif idf and not (root / "apps" / app / "sdkconfig.defaults").is_file():
+                problems.append(f"{bwhere}: apps/{app} is not an ESP-IDF "
+                                "project (no sdkconfig.defaults)")
+            elif not idf and board and not (root / "apps" / app / "boards" /
+                                            f"{board_dir_name(board)}.conf").is_file():
+                problems.append(f"{bwhere}: apps/{app}/boards/"
+                                f"{board_dir_name(board)}.conf does not exist")
             for conf in b.get("extra_conf", []):
                 need_file(bwhere, conf)
             if not isinstance(b.get("pr", False), bool):
@@ -225,7 +247,7 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
                           list(b.get("extra_conf", [])), b.get("measured", ""),
                           b.get("pr", False) is True)
             if build.tedge:
-                if not dev.get("tedge_board_conf"):
+                if build.framework == "zephyr" and not dev.get("tedge_board_conf"):
                     problems.append(f"{bwhere}: the device has no tedge_board_conf")
                 if not build.measured:
                     problems.append(f"{bwhere}: a tedge build needs `measured`, "
@@ -267,6 +289,7 @@ def groups(builds):
             "device_name": b.device["name"],
             "chip": b.device["chip"],
             "app": b.app,
+            "framework": b.framework,
             "builds": [],
         })
         g["builds"].append(b.firmware_name)
@@ -274,11 +297,12 @@ def groups(builds):
 
 
 def markdown(manifest, builds):
-    rows = ["| Device | Zephyr board | standalone | tedge-full | tedge-ota |",
-            "|---|---|---|---|---|"]
+    variants = list(manifest["variants"])
+    rows = ["| Device | Zephyr board | " + " | ".join(variants) + " |",
+            "|---|---|" + "---|" * len(variants)]
     for dev in manifest["devices"]:
         cells = []
-        for variant in ("standalone", "tedge-full", "tedge-ota"):
+        for variant in variants:
             apps = [b.app for b in builds
                     if b.device is dev and b.variant == variant]
             cells.append(", ".join(f"`{a}`" for a in apps) or "—")
@@ -325,8 +349,13 @@ def main(argv=None):
         return 0
     if args.subset == "pr":
         builds = [b for b in builds if b.pr]
-    matrix = json.dumps({"include": groups(builds)})
-    print(f"matrix={matrix}" if args.github_output else matrix)
+    zephyr = [b for b in builds if b.framework == "zephyr"]
+    idf = [b for b in builds if b.framework == "esp-idf"]
+    if args.github_output:
+        print(f"matrix={json.dumps({'include': groups(zephyr)})}")
+        print(f"idf_matrix={json.dumps({'include': groups(idf)})}")
+    else:
+        print(json.dumps({"include": groups(builds)}))
     return 0
 
 

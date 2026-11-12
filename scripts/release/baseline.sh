@@ -25,8 +25,11 @@ else
 import sys
 sys.path.insert(0, sys.argv[1] + "/scripts/release")
 import matrix
+# The size baseline covers the Zephyr builds; an ESP-IDF build is checked
+# against its OTA slot by package_idf.py and runs in another container.
 for b in matrix.load()[1]:
-    print(b.firmware_name)
+    if b.framework == "zephyr":
+        print(b.firmware_name)
 PY
 	)
 fi

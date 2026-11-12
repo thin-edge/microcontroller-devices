@@ -107,7 +107,8 @@ single-purpose devices (OPC-UA today; SNMP/Modbus/CAN as later Phase-2 apps):
 - `apps/tedge-agent-idf/` — the device agent on ESP-IDF and FreeRTOS, with
   tiny-edge's FreeRTOS port: no protocol server, set up over USB with
   `tedge-onboard`. An ESP-IDF project (`idf.py build`), built by the `esp-idf`
-  workflow for the ESP32-C6 and ESP32-S3; not in the releases yet.
+  workflow for the ESP32-C6 and ESP32-S3; the releases carry the ESP32-C6
+  image (`tedge-onboard` variant in `release/devices.yml`).
 - The thin-edge.io device-management client is not in this repository. It
   is [tiny-edge](https://github.com/thin-edge/tiny-edge), a Zephyr module
   (`tedge`) that `west.yml` pins to a release. Apps here opt in with

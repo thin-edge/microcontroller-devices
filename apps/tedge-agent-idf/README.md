@@ -14,9 +14,12 @@ Cumulocity and reports its own vitals.
 | Device type | `thin-edge.io-esp-idf-agent` |
 | Version | `VERSION`, the same file and format as the Zephyr applications, so a release bumps it with them |
 
-Built and run on the ESP32-C6. CI also builds it for the ESP32-S3. The
-images are not in the GitHub releases yet: the workflow `esp-idf` keeps them
-as artifacts.
+Built and run on the ESP32-C6, and released for it as the `tedge-onboard`
+variant: `tedge-agent-idf-tedge-onboard-esp32c6-devkitc-<version>` with
+`.factory.bin`, `.app.bin`, and `.zip`, like the Zephyr images. The release
+build (`scripts/release/build.sh`) names the firmware after the variant and
+the board instead of the chip. CI also builds it for the ESP32-S3 (workflow
+`esp-idf`); the S3 image joins the releases once it has run on that board.
 
 ## Build
 

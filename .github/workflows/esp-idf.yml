@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build the ESP-IDF applications (apps/tedge-agent-idf) for each chip they
-# support, in Espressif's ESP-IDF container. The images are kept as workflow
-# artifacts: a merged image to flash at 0x0, and the application image for
-# a firmware update. They are not part of a release yet.
+# Build the ESP-IDF applications (apps/tedge-agent-idf) for every chip they
+# support, in Espressif's ESP-IDF container, including chips no release
+# image is listed for yet. The images are kept as workflow artifacts: a
+# merged image to flash at 0x0, and the application image for a firmware
+# update. Released images come from release/devices.yml and the release
+# workflow.
 name: esp-idf
 
 on:

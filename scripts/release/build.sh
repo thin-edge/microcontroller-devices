@@ -16,6 +16,11 @@
 # first to set a pre-release or dev suffix. KEY_FILE, when set, signs with that
 # key instead of MCUboot's development key.
 #
+# An ESP-IDF build (`framework: esp-idf` in release/devices.yml) runs idf.py
+# in apps/<app> instead, inside Espressif's ESP-IDF container with ESP-IDF's
+# environment exported; scripts/release/package_idf.py packages it and fails
+# it when the application takes more than 80 % of its OTA slot.
+#
 # The size step (scripts/release/size.py) fails the build when an image is
 # over its flash budget or when any RAM region or image has grown past the
 # build's entry in release/size-baseline.json. A change that moves a build's
@@ -40,6 +45,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 eval "$(python3 "$root/scripts/release/matrix.py" --entry "$name")"
+
+if [[ $FRAMEWORK == esp-idf ]]; then
+	# The release's firmware name and the device's flash size, on top of
+	# the application's own sdkconfig.defaults. A fresh build directory, as
+	# --pristine gives the Zephyr builds.
+	rm -rf "$build"
+	mkdir -p "$build" "$out"
+	printf 'CONFIG_APP_FIRMWARE_NAME="%s"\nCONFIG_ESPTOOLPY_FLASHSIZE_%s=y\n' \
+		"$FIRMWARE_NAME" "$FLASH_SIZE" > "$build/release.defaults"
+	(cd "$root/apps/$APP" && idf.py -B "$build" -D IDF_TARGET="$CHIP" \
+		-D SDKCONFIG="$build/sdkconfig" \
+		-D SDKCONFIG_DEFAULTS="sdkconfig.defaults;$build/release.defaults" build)
+	python3 "$root/scripts/release/package_idf.py" "$build" --device "$DEVICE" \
+		--app "$APP" --variant "$VARIANT" --out "$out"
+	exit 0
+fi
 
 abs() { # "a;/x/b" repository-relative or absolute -> "/root/a;/x/b"
 	[[ -n $1 ]] || return 0

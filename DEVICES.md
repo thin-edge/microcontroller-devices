@@ -309,8 +309,8 @@ be recorded here.
 ### ESP-IDF agent on the ESP32-C6 (2026-11-12)
 
 `apps/tedge-agent-idf` is the device agent on ESP-IDF 6.1 and FreeRTOS, with
-tiny-edge 0.5.0's FreeRTOS port. Built by the `esp-idf` workflow; not in the
-releases yet.
+tiny-edge 0.5.0's FreeRTOS port, released for this board as the
+`tedge-onboard` variant.
 
 | Chip | Application image | Share of a 1.75 MB OTA slot |
 |---|---|---|
