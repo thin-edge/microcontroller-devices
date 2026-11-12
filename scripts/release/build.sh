@@ -44,6 +44,11 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
+# Relative to where the script was started: the ESP-IDF build runs from the
+# application's directory.
+case $build in /*) ;; *) build=$PWD/$build ;; esac
+case $out in /*) ;; *) out=$PWD/$out ;; esac
+
 eval "$(python3 "$root/scripts/release/matrix.py" --entry "$name")"
 
 if [[ $FRAMEWORK == esp-idf ]]; then
