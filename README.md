@@ -1411,7 +1411,7 @@ works on a local console where the image has one.
 `zephyr_Identify` event ("Identify button pressed on <hostname>"), which shows
 up on its own device in Cumulocity. Pressing again within 5 s sends no second
 event. The device keeps serving throughout. On the MQTT Service the event
-reaches the tenant only through the `tedge-zephyr-events` Smart Function
+reaches the tenant only through the `tiny-edge-events` Smart Function
 ([`cumulocity/`](cumulocity/README.md)); deploy it once per tenant.
 
 ## Point libraries (for a tedge-dot collector)
