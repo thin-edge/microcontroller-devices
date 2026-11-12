@@ -15,9 +15,17 @@ here add: the DTM definitions of their parameter sets.
 
 | What | Where | Needed for |
 |---|---|---|
-| Smart Functions (`tedge-zephyr-measurements`, `-twin`, `-firmware-progress`, `-events`) | tiny-edge `cumulocity/smart-functions/` | measurements, twin fragments, firmware progress and events from the device |
-| `zephyr_tedge`, `zephyr_tedge_remote_access` | tiny-edge `cumulocity/dtm/` | the client's own Parameters tab entries |
+| Smart Functions (`tiny-edge-measurements`, `-twin`, `-firmware-progress`, `-events`) | tiny-edge `cumulocity/smart-functions/` | measurements, twin fragments, firmware progress and events from the device |
+| `tiny_edge`, `tiny_edge_remote_access` | tiny-edge `cumulocity/dtm/` | the client's own Parameters tab entries |
 | `dtm/zephyr_*.json` | here | the applications' Parameters tab entries |
+
+Images up to 0.12 used tiny-edge 0.3, which named the client's sets
+`zephyr_tedge` and `zephyr_tedge_remote_access` and its rules
+`tedge-zephyr-*`. From 0.13 (tiny-edge 0.5) they are `tiny_edge`,
+`tiny_edge_remote_access` and `tiny-edge-*`: tiny-edge's
+[`cumulocity/README.md`](https://github.com/thin-edge/tiny-edge/blob/main/cumulocity/README.md),
+"Moving a tenant from tedge-zephyr names", lists what a tenant needs. The
+applications' own sets (`zephyr_modbus_*` and the others) keep their names.
 
 ## What the Smart Functions do for these applications
 
@@ -40,7 +48,7 @@ own timestamp is used when it sends one.
 under a fragment named `<name>`, except `tedge_RemoteAccess`, which becomes
 `remoteAccess`. That is what puts a parameter set's current values
 (`zephyr_modbus_telemetry`, `zephyr_modbus_control`, `zephyr_opcua_telemetry`,
-`zephyr_snmp_telemetry`, `zephyr_tedge`) on the managed object, where the Parameters tab
+`zephyr_snmp_telemetry`, `tiny_edge`) on the managed object, where the Parameters tab
 reads them. It replaces a rule that mapped only `tedge_RemoteAccess`; do not
 deploy both.
 
@@ -70,8 +78,8 @@ Register the client's own sets with the same script in tiny-edge.
 | `zephyr_modbus_control` | `modbus-server` | `running`, `mode` (off/auto/manual), `speed_setpoint` (0–100 %), `local_writes` (whether Modbus clients may change the three) |
 | `zephyr_opcua_telemetry` | `opcua-server` | `interval_s` (5–3600 s), `telemetry` |
 | `zephyr_snmp_telemetry` | `snmp-agent` | `interval_s` (5–3600 s), `telemetry` |
-| `zephyr_tedge` | tiny-edge, every image | `log_level` (off/err/wrn/inf/dbg), `health_interval_s` (0–86400 s), `required_interval_min` (0–1440 min) |
-| `zephyr_tedge_remote_access` | tiny-edge, images with remote access | `remote_access` |
+| `tiny_edge` | tiny-edge, every image | `log_level` (off/err/wrn/inf/dbg), `health_interval_s` (0–86400 s), `required_interval_min` (0–1440 min) |
+| `tiny_edge_remote_access` | tiny-edge, images with remote access | `remote_access` |
 
 Every identifier starts with `zephyr_` and, for an application's own set,
 the application, so it cannot collide with a definition someone else
@@ -89,8 +97,8 @@ agree. The files were printed by the firmware
 A device refuses a change that names a parameter it does not declare, and
 the Parameters tab sends the whole set, so every field in a definition has
 to be declared by every device that declares the set. That is why
-`remote_access` is a set of its own, `zephyr_tedge_remote_access`, declared
-only by images with remote access: inside `zephyr_tedge` it made every
+`remote_access` is a set of its own, `tiny_edge_remote_access`, declared
+only by images with remote access: inside `tiny_edge` it made every
 change to that set fail on the WROOM and the ESP32-CAM.
 
 The tab appears on a device whose managed object carries the set's fragment,
