@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build the ESP-IDF applications (apps/tedge-agent-idf) for each chip they
+# support, in Espressif's ESP-IDF container. The images are kept as workflow
+# artifacts: a merged image to flash at 0x0, and the application image for
+# a firmware update. They are not part of a release yet.
+name: esp-idf
+
+on:
+  pull_request:
+    paths:
+      - "apps/tedge-agent-idf/**"
+      - ".github/workflows/esp-idf.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/tedge-agent-idf/**"
+      - ".github/workflows/esp-idf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: tedge-agent-idf, ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    container:
+      image: espressif/idf:v6.1
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32c6, esp32s3]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: apps/tedge-agent-idf
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          # ESP-IDF compiles with -Werror, so a new warning in the
+          # application or in tiny-edge fails the build.
+          idf.py -B build -D IDF_TARGET=${{ matrix.target }} \
+            -D SDKCONFIG=build/sdkconfig build
+          idf.py -B build merge-bin -o tedge-agent-idf.factory.bin
+          mkdir -p ../../dist
+          version=$(sed -n 's/.*"project_version": *"\([^"]*\)".*/\1/p' build/project_description.json)
+          stem=tedge-agent-idf-${{ matrix.target }}-$version
+          cp build/tedge-agent-idf.factory.bin "../../dist/$stem.factory.bin"
+          cp build/tedge-agent-idf.bin "../../dist/$stem.app.bin"
+          ls -l ../../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tedge-agent-idf-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error

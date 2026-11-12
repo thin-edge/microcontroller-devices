@@ -1111,13 +1111,16 @@ apps/opcua-server/     OPC-UA firmware: lib/common (env sim) + lib/opcua
 apps/modbus-server/    Modbus TCP firmware: lib/common (pump sim) + lib/modbus
 apps/snmp-agent/       SNMP agent firmware: lib/common (switch sim) + lib/snmp
 apps/tedge-agent/      device-management agent: lib/common + tiny-edge, no protocol
+apps/tedge-agent-idf/  the same agent on ESP-IDF (FreeRTOS), set up with tedge-onboard;
+                       an ESP-IDF project, built with idf.py (its README.md)
   ├── boards/<board>.conf       per-app board overlays (RAM/Wi-Fi tuning)
   └── points.d/<proto>/*.toml   point library: the app's address map for a
                                 collector (see "Point libraries" below)
 ```
 
-Each firmware is built by targeting its app directory, e.g.
-`west build -b <board> apps/modbus-server`. A new protocol becomes a new
+Each Zephyr firmware is built by targeting its app directory, e.g.
+`west build -b <board> apps/modbus-server`. `apps/tedge-agent-idf` is an
+ESP-IDF project instead: `idf.py build` in its directory. A new protocol becomes a new
 `lib/<protocol>` + `apps/<protocol>` pair; nothing else needs to change.
 
 ### Simulations (per-firmware, selectable)

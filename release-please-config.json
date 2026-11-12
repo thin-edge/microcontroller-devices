@@ -77,6 +77,10 @@
         },
         {
           "type": "generic",
+          "path": "apps/tedge-agent-idf/VERSION"
+        },
+        {
+          "type": "generic",
           "path": "apps/wifi-provisioner/VERSION"
         }
       ]

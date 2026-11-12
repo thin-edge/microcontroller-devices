@@ -36,3 +36,10 @@ credentials/
 
 # Release packaging output (scripts/release/build.sh)
 dist/
+
+# ESP-IDF application outputs (apps/tedge-agent-idf)
+apps/*/sdkconfig
+apps/*/sdkconfig.old
+apps/*/managed_components/
+apps/*/dependencies.lock
+apps/*/*.factory.bin
