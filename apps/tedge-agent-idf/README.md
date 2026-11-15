@@ -31,18 +31,15 @@ idf.py set-target esp32c6
 idf.py build
 ```
 
-The build fetches tiny-edge at the tag in `CMakeLists.txt`
-(`TINY_EDGE_VERSION`). To try a change to the client, point it at a local
-checkout:
+tiny-edge comes from the ESP-IDF component manager, at the tag in
+`main/idf_component.yml`. The component fetches the rest of tiny-edge (the
+portable core and the shared port code) into the build directory on the
+first build, so that build needs `git` and network access. To try a change
+to the client, point it at a local checkout:
 
 ```sh
 idf.py -D TINY_EDGE_DIR=/path/to/tiny-edge build
 ```
-
-tiny-edge is fetched as a whole repository, not through the component
-manager: its ESP-IDF component builds the portable core from beside it, and
-the component manager's `git` + `path` dependency copies only the
-component's own directory.
 
 ## Flash and set up
 
@@ -78,5 +75,6 @@ tiny-edge Smart Functions and DTM definitions:
   slots and the rollback, and set-up is `tedge-onboard` over USB instead of
   Improv BLE or lab-ztp-provisioner.
 - No status LED or identify pattern yet.
-- tiny-edge 0.5.0, so the client's parameter sets are `tiny_edge` and
-  `tiny_edge_remote_access`, not `zephyr_tedge`.
+- tiny-edge 0.6.0, so the client's parameter sets are `tiny_edge` and
+  `tiny_edge_remote_access`, not `zephyr_tedge`, and `tedge-onboard`
+  registers the device with the image's type, `thin-edge.io-esp-idf-agent`.

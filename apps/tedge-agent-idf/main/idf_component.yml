@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+dependencies:
+  # tiny-edge, pinned to a release. The component fetches the rest of
+  # tiny-edge into the build directory on the first build (git and network
+  # access). To build against a local checkout instead:
+  #   idf.py -D TINY_EDGE_DIR=/path/to/tiny-edge build
+  tiny_edge:
+    git: https://github.com/thin-edge/tiny-edge.git
+    path: ports/freertos/esp-idf/tiny_edge
+    version: v0.6.0

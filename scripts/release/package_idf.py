@@ -208,7 +208,9 @@ def main(argv=None):
         z.writestr(f"{stem}/flash.json", json.dumps(flash, indent=2) + "\n")
         z.writestr(f"{stem}/README.txt", readme)
 
-    tiny_edge = bdir / "_deps" / "tiny_edge-src" / "VERSION"
+    # The rest of tiny-edge, which the component fetches into the build
+    # directory beside the component the component manager installed.
+    tiny_edge = next(iter(sorted(bdir.glob("tiny_edge-src-*/VERSION"))), None)
     meta = {
         **{k: flash[k] for k in ("device", "device_name", "board", "app",
                                  "variant", "version", "firmware_name", "chip",
@@ -216,16 +218,14 @@ def main(argv=None):
         "framework": "esp-idf",
         "stem": stem,
         "tedge": True,
-        # No device type for the firmware repository's filter: tedge-onboard
-        # registers every device as "thin-edge.io", so an entry restricted to
-        # the image's own type would not be offered in the devices' Firmware
-        # tab. The firmware name already names the app, variant and board.
-        "device_type": None,
-        "image_device_type": cfg.get("APP_DEVICE_TYPE"),
+        # tedge-onboard (tiny-edge 0.6.0 and later) registers the device with
+        # the type the image reports, so the firmware repository entry is
+        # offered to exactly the devices running this app.
+        "device_type": cfg.get("APP_DEVICE_TYPE") or None,
         "features": [k.lower().replace("_", "-") for k in FEATURES
                      if cfg.get(f"TEDGE_{k}") is True],
         "tedge_zephyr_version": (tiny_edge.read_text().strip()
-                                 if tiny_edge.is_file() else None),
+                                 if tiny_edge else None),
         "measured": build.measured,
         "signing": SIGNING,
         "assets": {p.name: sha256(p) for p in (factory, app_bin, bundle)},
