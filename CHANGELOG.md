@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.13.0...v0.14.0) (2026-11-16)
+
+
+### Features
+
+* take tiny-edge 0.5.0 ([#27](https://github.com/thin-edge/microcontroller-devices/issues/27)) ([37e1de7](https://github.com/thin-edge/microcontroller-devices/commit/37e1de73f6196804973b96e031d58b93ec7333d6))
+* take tiny-edge 0.6.0 and install it with the ESP-IDF component manager ([#29](https://github.com/thin-edge/microcontroller-devices/issues/29)) ([cfd6117](https://github.com/thin-edge/microcontroller-devices/commit/cfd611757346ab049ffe5de750425d8ef121e77a))
+
 ## [0.13.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.12.0...v0.13.0) (2026-11-12)
 
 
