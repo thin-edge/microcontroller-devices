@@ -21,28 +21,7 @@ if(_EXTRAVERSION)
   string(APPEND PROJECT_VER "-${_EXTRAVERSION}")
 endif()
 
-# tiny-edge, pinned to a release. The whole repository is fetched, not only
-# its ESP-IDF component: the component builds the portable core and the
-# shared ports from beside it, which the component manager's git+path
-# dependency does not bring along. TINY_EDGE_DIR (environment or -D) uses a
-# local checkout instead, to try a client change.
-set(TINY_EDGE_VERSION v0.5.0)
-if(NOT TINY_EDGE_DIR AND DEFINED ENV{TINY_EDGE_DIR})
-  set(TINY_EDGE_DIR $ENV{TINY_EDGE_DIR})
-endif()
-if(NOT TINY_EDGE_DIR)
-  include(FetchContent)
-  FetchContent_Declare(tiny_edge
-    GIT_REPOSITORY https://github.com/thin-edge/tiny-edge.git
-    GIT_TAG ${TINY_EDGE_VERSION}
-    GIT_SHALLOW TRUE
-    # Only the sources: tiny-edge has no top-level project to add.
-    SOURCE_SUBDIR do-not-add)
-  FetchContent_MakeAvailable(tiny_edge)
-  set(TINY_EDGE_DIR ${tiny_edge_SOURCE_DIR})
-endif()
-message(STATUS "tiny-edge: ${TINY_EDGE_DIR}")
-set(EXTRA_COMPONENT_DIRS ${TINY_EDGE_DIR}/ports/freertos/esp-idf/tiny_edge)
+# tiny-edge comes from the component manager: main/idf_component.yml.
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(tedge-agent-idf)
