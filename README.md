@@ -18,7 +18,7 @@ carries ready-to-flash images for these devices — no toolchain, no build:
 | Device | Zephyr board | standalone | tedge-full | tedge-ota | tedge-onboard | nuttx |
 |---|---|---|---|---|---|---|
 | ESP32-C6-DevKitC-1 (N4) | `esp32c6_devkitc/esp32c6/hpcore` | `modbus-server`, `opcua-server`, `snmp-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | `tedge-agent-idf` | `tedge-agent` |
-| ESP32-S3-DevKitC-1 (N16R8) | `esp32s3_devkitc/esp32s3/procpu` | `modbus-server`, `opcua-server`, `snmp-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | — | — |
+| ESP32-S3-DevKitC-1 (N16R8) | `esp32s3_devkitc/esp32s3/procpu` | `modbus-server`, `opcua-server`, `snmp-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | — | `tedge-agent` |
 | Adafruit QT Py ESP32-S3 (N4R2) | `adafruit_qt_py_esp32s3/esp32s3/procpu` | `modbus-server`, `opcua-server`, `snmp-agent` | `modbus-server`, `snmp-agent`, `tedge-agent` | `modbus-server`, `opcua-server`, `snmp-agent`, `tedge-agent` | — | — |
 | ESP32-WROOM-32 DevKitC | `esp32_devkitc/esp32/procpu` | `modbus-server`, `opcua-server`, `snmp-agent` | — | `modbus-server`, `tedge-agent` | — | — |
 | ESP32-CAM (ESP32 + 4 MB PSRAM) | `esp32_devkitc/esp32/procpu` | — | — | `snmp-agent`, `modbus-server`, `tedge-agent` | — | — |
@@ -44,7 +44,9 @@ carries ready-to-flash images for these devices — no toolchain, no build:
   `tedge-onboard` like the `tedge-onboard` images (on a DevKitC, the connector labelled
   USB). It boots through MCUboot, so a firmware update that cannot connect is
   rolled back. The images are not signed with a key: MCUboot checks their
-  hash.
+  hash. The ESP32-S3 image needs the module's 8 MB of octal PSRAM (an
+  `N16R8` module, as on the ESP32-S3-DevKitC-1 listed) and does not start
+  on a module without PSRAM.
 
 Each image comes as `<app>-<variant>-<device>-<version>` with:
 
