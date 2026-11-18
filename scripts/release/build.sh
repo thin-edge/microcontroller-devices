@@ -21,6 +21,14 @@
 # environment exported; scripts/release/package_idf.py packages it and fails
 # it when the application takes more than 80 % of its OTA slot.
 #
+# A NuttX build (`framework: nuttx`) is tiny-edge's NuttX agent: it runs
+# tiny-edge's ports/nuttx/scripts/build.sh for the device's `nuttx_board`,
+# inside tiny-edge's NuttX container (ports/nuttx/docker), with the release's
+# firmware name and apps/<app>/VERSION, and the build's `extra_conf` as
+# NuttX fragments. TINY_EDGE_DIR names the tiny-edge checkout where west is
+# not installed; NUTTX_WS, NuttX's workspace (default: in the build
+# directory). scripts/release/package_nuttx.py packages it.
+#
 # The size step (scripts/release/size.py) fails the build when an image is
 # over its flash budget or when any RAM region or image has grown past the
 # build's entry in release/size-baseline.json. A change that moves a build's
@@ -28,7 +36,7 @@
 # does every build) and commits it in the same pull request.
 set -euo pipefail
 
-[[ $# -ge 1 ]] || { sed -n '4,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 ]] || { sed -n '4,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 name=$1; shift
 root=$(cd "$(dirname "$0")/../.." && pwd)
 build=$root/build-release/$name
@@ -64,6 +72,42 @@ if [[ $FRAMEWORK == esp-idf ]]; then
 		-D SDKCONFIG_DEFAULTS="sdkconfig.defaults;$build/release.defaults" build)
 	python3 "$root/scripts/release/package_idf.py" "$build" --device "$DEVICE" \
 		--app "$APP" --variant "$VARIANT" --out "$out"
+	exit 0
+fi
+
+if [[ $FRAMEWORK == nuttx ]]; then
+	te=$(python3 - "$root" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/scripts/release")
+import matrix
+print(matrix.west_project_dir("tiny-edge") or "")
+PY
+	)
+	[[ -x $te/ports/nuttx/scripts/build.sh ]] || {
+		echo "tiny-edge's NuttX port not found (set TINY_EDGE_DIR)" >&2; exit 1; }
+	v=$root/apps/$APP/VERSION
+	field() { sed -n "s/^$1 *= *\([^ #]*\).*/\1/p" "$v"; }
+	version="$(field VERSION_MAJOR).$(field VERSION_MINOR).$(field PATCHLEVEL)"
+	extra=$(field EXTRAVERSION)
+	[[ -z $extra ]] || version="$version-$extra"
+	rm -rf "$build"
+	mkdir -p "$build" "$out"
+	# The release's firmware name, which an update must carry.
+	printf 'CONFIG_TINY_EDGE_FIRMWARE_NAME="%s"\n' "$FIRMWARE_NAME" \
+		> "$build/release.conf"
+	args=(--agent --version "$version")
+	while IFS= read -r frag; do
+		case $frag in "") continue ;; /*) ;; *) frag=$root/$frag ;; esac
+		args+=(--extra "$frag")
+	done < <(tr ';' '\n' <<< "$CONF_FILES")
+	ws=${NUTTX_WS:-$build/nuttx}
+	NUTTX_WS=$ws "$te/ports/nuttx/scripts/build.sh" \
+		"$NUTTX_BOARD" "${args[@]}" --extra "$build/release.conf" \
+		--out "$build/out"
+	python3 "$root/scripts/release/package_nuttx.py" "$build/out" \
+		--config "$ws/nuttx/.config" \
+		--device "$DEVICE" --app "$APP" --variant "$VARIANT" --out "$out" \
+		--version "$version" --tiny-edge "$te"
 	exit 0
 fi
 

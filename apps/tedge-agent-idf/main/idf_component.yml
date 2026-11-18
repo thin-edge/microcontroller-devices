@@ -7,4 +7,4 @@ dependencies:
   tiny_edge:
     git: https://github.com/thin-edge/tiny-edge.git
     path: ports/freertos/esp-idf/tiny_edge
-    version: v0.6.0
+    version: v0.7.0

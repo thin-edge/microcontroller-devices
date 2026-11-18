@@ -3,7 +3,8 @@
 """Validate release/devices.yml and turn it into the release build matrix.
 
     scripts/release/matrix.py                 # GitHub matrix JSON on stdout
-    scripts/release/matrix.py --github-output # "matrix=<json>" and "idf_matrix=<json>"
+    scripts/release/matrix.py --github-output # "matrix=<json>", "idf_matrix=<json>"
+                                              # and "nuttx_matrix=<json>"
                                               # for $GITHUB_OUTPUT
     scripts/release/matrix.py --subset pr     # only the builds marked `pr: true`
     scripts/release/matrix.py --markdown      # supported-devices table
@@ -20,6 +21,11 @@ idf.py) instead of a Zephyr sysbuild: it has no Zephyr profile, board files
 or tiny-edge board configuration, and its builds form a matrix of their own
 (`idf_matrix`), which runs in Espressif's ESP-IDF container.
 
+A variant with `framework: nuttx` is tiny-edge's NuttX agent, built with
+tiny-edge's ports/nuttx/scripts/build.sh for the device's `nuttx_board`. Its
+builds' `extra_conf` are NuttX configuration fragments, and they form
+`nuttx_matrix`, which runs in tiny-edge's NuttX container.
+
 Every problem found is reported, each naming the device and build it is
 in, and the exit status is non-zero; nothing is printed on stdout then, so a
 workflow step cannot build from a half-valid manifest.
@@ -30,6 +36,7 @@ Also imported by the other release scripts (load(), builds()).
 import argparse
 import functools
 import json
+import os
 import re
 import subprocess
 import sys
@@ -44,7 +51,9 @@ DEFAULT_MANIFEST = ROOT / "release" / "devices.yml"
 # A file from another west project is written "{project}/path", for example
 # "{tiny-edge}/ports/zephyr/profiles/full.conf". It is found with `west list`;
 # where west is not installed (the release workflow's matrix job) such a file
-# is not checked.
+# is not checked. <PROJECT>_DIR in the environment (TINY_EDGE_DIR for
+# tiny-edge) names the project's directory instead of west, as in the NuttX
+# container.
 PROJECT_REF = re.compile(r"^\{([\w.-]+)\}/(.+)$")
 
 # tedge_identity's firmware_name buffer in tiny-edge is 48 bytes.
@@ -52,7 +61,7 @@ FIRMWARE_NAME_MAX = 47
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FLASH_RE = re.compile(r"^(1|2|4|8|16|32)MB$")
 ESPTOOL_BEFORE = {"default-reset", "usb-reset", "no-reset"}
-FRAMEWORKS = {"zephyr", "esp-idf"}
+FRAMEWORKS = {"zephyr", "esp-idf", "nuttx"}
 
 
 class ManifestError(Exception):
@@ -84,8 +93,11 @@ class Build:
         return f"{self.app}-{self.variant}-{self.device['id']}"
 
     def conf_files(self):
-        """EXTRA_CONF_FILE for the application, repository-relative."""
+        """EXTRA_CONF_FILE for the application, repository-relative; for
+        NuttX, the configuration fragments build.sh --extra adds."""
         files = []
+        if self.framework == "nuttx":
+            return list(self.extra_conf)
         if self.framework != "zephyr":
             return files
         if self.variant_def.get("profile"):
@@ -107,6 +119,7 @@ class Build:
             "app": self.app,
             "variant": self.variant,
             "framework": self.framework,
+            "nuttx_board": self.device.get("nuttx_board", ""),
             "firmware_name": self.firmware_name,
             "conf_files": ";".join(self.conf_files()),
             "dtc_overlays": ";".join(self.device.get("dtc_overlays", [])),
@@ -118,6 +131,9 @@ class Build:
 @functools.lru_cache(maxsize=None)
 def west_project_dir(name):
     """Absolute path of a west project, or None when west cannot say."""
+    env = os.environ.get(name.upper().replace("-", "_") + "_DIR")
+    if env:
+        return Path(env)
     try:
         out = subprocess.run(["west", "list", "-f", "{abspath}", name],
                              cwd=ROOT, capture_output=True, text=True,
@@ -229,14 +245,17 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
             if variant not in variants:
                 problems.append(f"{bwhere}: unknown variant")
                 continue
-            idf = variants[variant].get("framework", "zephyr") == "esp-idf"
+            fw = variants[variant].get("framework", "zephyr")
             if not (root / "apps" / app / "CMakeLists.txt").is_file():
                 problems.append(f"{bwhere}: there is no apps/{app}")
-            elif idf and not (root / "apps" / app / "sdkconfig.defaults").is_file():
+            elif fw == "esp-idf" and not (root / "apps" / app / "sdkconfig.defaults").is_file():
                 problems.append(f"{bwhere}: apps/{app} is not an ESP-IDF "
                                 "project (no sdkconfig.defaults)")
-            elif not idf and board and not (root / "apps" / app / "boards" /
-                                            f"{board_dir_name(board)}.conf").is_file():
+            elif fw == "nuttx" and not dev.get("nuttx_board"):
+                problems.append(f"{bwhere}: a NuttX build needs the device's "
+                                "nuttx_board (a tiny-edge NuttX board name)")
+            elif fw == "zephyr" and board and not (root / "apps" / app / "boards" /
+                                                   f"{board_dir_name(board)}.conf").is_file():
                 problems.append(f"{bwhere}: apps/{app}/boards/"
                                 f"{board_dir_name(board)}.conf does not exist")
             for conf in b.get("extra_conf", []):
@@ -280,11 +299,18 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
 
 
 def groups(builds):
-    """One matrix job per (device, app), in manifest order."""
+    """One matrix job per (device, app, framework), in manifest order.
+
+    The group names the job's artifact. The NuttX agent shares its app name
+    with the Zephyr tedge-agent builds, so its group names the framework.
+    """
     out = {}
     for b in builds:
-        g = out.setdefault((b.device["id"], b.app), {
-            "group": f"{b.app}-{b.device['id']}",
+        name = f"{b.app}-{b.device['id']}"
+        if b.framework == "nuttx":
+            name = f"{b.app}-nuttx-{b.device['id']}"
+        g = out.setdefault((b.device["id"], b.app, b.framework), {
+            "group": name,
             "device": b.device["id"],
             "device_name": b.device["name"],
             "chip": b.device["chip"],
@@ -351,9 +377,11 @@ def main(argv=None):
         builds = [b for b in builds if b.pr]
     zephyr = [b for b in builds if b.framework == "zephyr"]
     idf = [b for b in builds if b.framework == "esp-idf"]
+    nuttx = [b for b in builds if b.framework == "nuttx"]
     if args.github_output:
         print(f"matrix={json.dumps({'include': groups(zephyr)})}")
         print(f"idf_matrix={json.dumps({'include': groups(idf)})}")
+        print(f"nuttx_matrix={json.dumps({'include': groups(nuttx)})}")
     else:
         print(json.dumps({"include": groups(builds)}))
     return 0

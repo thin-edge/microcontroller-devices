@@ -5,10 +5,12 @@
 """
 
 import json
+import os
 import sys
 import tempfile
 import textwrap
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -237,8 +239,68 @@ class MatrixTest(unittest.TestCase):
 
     def test_unknown_framework(self):
         self.idf_app()
-        p = self.problems(self.IDF.replace("framework: esp-idf", "framework: nuttx"))
+        p = self.problems(self.IDF.replace("framework: esp-idf", "framework: threadx"))
         self.assertIn("variant tedge-onboard: framework must be one of", p)
+
+    NUTTX = VALID.replace("""  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
+""", """  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
+  nuttx: {framework: nuttx, provisioner: onboard}
+""").replace("""  ztp: prov/ztp.conf
+""", """  ztp: prov/ztp.conf
+  onboard: null
+""").replace("""    tedge_board_conf: boards/c6.conf
+""", """    tedge_board_conf: boards/c6.conf
+    nuttx_board: esp32c6-devkitc
+""") + """      - app: modbus-server
+        variant: nuttx
+        extra_conf: [nuttx/psram.conf]
+        measured: DEVICES.md#measured-on-the-c6
+"""
+
+    def test_nuttx_build(self):
+        """A NuttX build passes its fragments and board to tiny-edge's
+        build.sh, and lands in a matrix of its own, whose group is not the
+        same app's Zephyr group."""
+        (self.root / "nuttx").mkdir()
+        (self.root / "nuttx/psram.conf").write_text("")
+        manifest, builds = self.load(self.NUTTX)
+        nx = [b for b in builds if b.variant == "nuttx"][0]
+        entry = nx.matrix_entry(manifest)
+        self.assertEqual(entry["framework"], "nuttx")
+        self.assertEqual(entry["nuttx_board"], "esp32c6-devkitc")
+        self.assertEqual(entry["conf_files"], "nuttx/psram.conf")
+        self.assertEqual(entry["firmware_name"], "modbus-server-nuttx-c6")
+
+        from contextlib import redirect_stdout
+        import io
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = matrix.main(["--manifest", str(self.root / "devices.yml"),
+                              "--root", str(self.root), "--github-output"])
+        self.assertEqual(rc, 0)
+        lines = dict(l.split("=", 1) for l in out.getvalue().splitlines())
+        zephyr = json.loads(lines["matrix"])["include"]
+        nuttx = json.loads(lines["nuttx_matrix"])["include"]
+        self.assertEqual([j["group"] for j in zephyr], ["modbus-server-c6"])
+        self.assertEqual([j["group"] for j in nuttx], ["modbus-server-nuttx-c6"])
+        self.assertEqual([j["builds"] for j in nuttx], ["modbus-server-nuttx-c6"])
+
+    def test_nuttx_build_needs_a_board(self):
+        (self.root / "nuttx").mkdir()
+        (self.root / "nuttx/psram.conf").write_text("")
+        p = self.problems(self.NUTTX.replace("    nuttx_board: esp32c6-devkitc\n", ""))
+        self.assertIn("a NuttX build needs the device's nuttx_board", p)
+
+    def test_project_dir_from_the_environment(self):
+        """Where west is not installed (the NuttX container), <PROJECT>_DIR
+        names a west project's directory."""
+        matrix.west_project_dir.cache_clear()
+        try:
+            with unittest.mock.patch.dict(os.environ, {"TINY_EDGE_DIR": "/x/te"}):
+                self.assertEqual(matrix.resolve(self.root, "{tiny-edge}/VERSION"),
+                                 Path("/x/te/VERSION"))
+        finally:
+            matrix.west_project_dir.cache_clear()
 
     def test_repository_manifest_is_valid(self):
         manifest, builds = matrix.load()

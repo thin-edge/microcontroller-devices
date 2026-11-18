@@ -27,14 +27,17 @@
 # An ESP-IDF bundle (a `tedge-onboard` image: flash.json says
 # "framework": "esp-idf") is flashed the same way: everything, or with
 # --app-only the application into ota_0; --erase-storage erases its NVS
-# partition (the Wi-Fi network and the Cumulocity certificate).
+# partition (the Wi-Fi network and the Cumulocity certificate). A NuttX
+# bundle ("framework": "nuttx", tiny-edge's NuttX agent) too: MCUboot and
+# the confirmed image, or with --app-only the image into the primary slot;
+# --erase-storage erases its LittleFS data partition.
 #
 # Local builds are signed with MCUboot's public development key: fine for
 # development, never for production devices. A bundle's flash.json says which
 # key signed it.
 set -euo pipefail
 
-usage() { sed -n '4,29p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '4,37p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 [[ $# -ge 1 ]] || usage 1
 build=$1; shift
@@ -58,7 +61,7 @@ run() {
 	[[ $dry -eq 1 ]] || "$@"
 }
 
-if [[ -f $build/flash.json ]] && grep -q '"framework": "esp-idf"' "$build/flash.json"; then
+if [[ -f $build/flash.json ]] && grep -qE '"framework": "(esp-idf|nuttx)"' "$build/flash.json"; then
 	vars=$(python3 - "$build" <<'PY'
 import json, shlex, sys
 from pathlib import Path
@@ -66,7 +69,8 @@ d = Path(sys.argv[1])
 f = json.loads((d / "flash.json").read_text())
 imgs = [(i["offset"], str(d / i["file"])) for i in f["images"]]
 app = next(i for i in f["images"] if i["name"] == "app")
-nvs = f["partitions"].get("nvs", {})
+# The partition with the device's settings: NVS on ESP-IDF, LittleFS on NuttX.
+nvs = f["partitions"].get("nvs") or f["partitions"].get("data") or {}
 for k, v in {"CHIP": f["chip"], "ESPTOOL_BEFORE": f["esptool_before"],
              "FLASH_ARGS": " ".join(f["flash_args"]),
              "ALL_IMAGES": " ".join(f"{o} {shlex.quote(p)}" for o, p in imgs),
