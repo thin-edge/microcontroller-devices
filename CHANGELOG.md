@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.15.0...v0.16.0) (2026-11-18)
+
+
+### Features
+
+* take tiny-edge 0.8.0, and set devices up with c8y tinyedge onboard ([#32](https://github.com/thin-edge/microcontroller-devices/issues/32)) ([4752dcd](https://github.com/thin-edge/microcontroller-devices/commit/4752dcdca6853f81b6bdf39468c810aae2cd8b59))
+
 ## [0.15.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.14.0...v0.15.0) (2026-11-18)
 
 
