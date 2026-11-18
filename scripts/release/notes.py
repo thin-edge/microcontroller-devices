@@ -33,9 +33,12 @@ def notes(manifest, metas, tag, repo):
     readme = README.format(repo=repo, tag=tag)
     signing = {json.dumps(m["signing"], sort_keys=True): m["signing"] for m in metas.values()}
     out = [f"Prebuilt firmware for {len({m['device'] for m in metas.values()})} "
-           f"devices, version `{tag.lstrip('v')}`. Pick your device and a variant, "
-           "flash the `.factory.bin`, then set the device up: over Bluetooth, or over "
-           "USB with `tedge-onboard` for the `tedge-onboard` images.",
+           f"devices, version `{tag.lstrip('v')}`. Pick your device, an app, its "
+           "operating system and a set, flash the `.factory.bin`, then set the "
+           "device up: over Bluetooth, or over USB with `tedge-onboard`.",
+           "",
+           "Every image is named `<app>-<os>-<set>-<device>`, and the device "
+           "reports the same name as its firmware in Cumulocity.",
            "",
            "## Variants",
            ""]
@@ -44,15 +47,16 @@ def notes(manifest, metas, tag, repo):
     out += ["",
             "## Images",
             "",
-            "| Device | App | Variant | Flash this first | Update / OTA | Bundle |",
-            "|---|---|---|---|---|---|"]
+            "| Device | App | OS | Set | Flash this first | Update / OTA | Bundle |",
+            "|---|---|---|---|---|---|---|"]
     for dev in manifest["devices"]:
         for (did, app, variant), m in metas.items():
             if did != dev["id"]:
                 continue
             s = m["stem"]
-            out.append(f"| {dev['name']} | `{app}` | {variant} | `{s}.factory.bin` | "
-                       f"`{s}.app.bin` | `{s}.zip` |")
+            os_name, _, set_name = variant.partition("-")
+            out.append(f"| {dev['name']} | `{app}` | {os_name} | {set_name} | "
+                       f"`{s}.factory.bin` | `{s}.app.bin` | `{s}.zip` |")
     out += ["",
             "## Flashing",
             "",
@@ -73,12 +77,13 @@ def notes(manifest, metas, tag, repo):
             "bundle's `README.txt` has the exact commands, and "
             "`scripts/flash.sh <bundle-dir>` flashes a bundle from a checkout.",
             "",
-            f"Then provision it: `standalone` images with Improv Wi-Fi, `tedge-full` "
-            f"and `tedge-ota` images with lab-ztp-provisioner. See [Provisioning "
+            f"Then provision it: `zephyr-standalone` images with Improv Wi-Fi, "
+            f"`zephyr-full` and `zephyr-ota` images with lab-ztp-provisioner (or "
+            f"`tedge-onboard`, below). See [Provisioning "
             f"Wi-Fi over BLE]({readme}#provisioning-wi-fi-over-ble), including its "
             f"security notes.",
             "",
-            "The ESP-IDF (`tedge-onboard`) and NuttX (`nuttx`) agent images are "
+            "The `idf` (ESP-IDF) and `nuttx` (NuttX) agent images are "
             "set up over USB instead: run "
             "[tedge-onboard](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard) "
             "(or `c8y tinyedge onboard`, after `c8y extensions install "

@@ -7,7 +7,7 @@
 
 The ESP-IDF counterpart of package.py, with the same outputs, so the release
 notes, c8y-firmware.json and SHA256SUMS treat both alike. With
-<stem> = <app>-<variant>-<device>-<version>:
+<stem> = <app>-<os>-<set>-<device>-<version>:
 
   <stem>.factory.bin  bootloader, partition table, OTA data and application
                       merged into one image that is written at 0x0
@@ -186,7 +186,7 @@ def main(argv=None):
         "device": dev["id"],
         "device_name": dev["name"],
         "board": dev["board"],
-        "app": args.app,
+        "app": build.name,
         "variant": args.variant,
         "version": version,
         "firmware_name": build.firmware_name,
@@ -202,7 +202,7 @@ def main(argv=None):
     }
     readme = README.format(
         name=stem, rule="=" * len(stem), stem=stem, device_name=dev["name"],
-        app=args.app, variant=args.variant, version=version, chip=chip,
+        app=build.name, variant=args.variant, version=version, chip=chip,
         before=before, app_off=flasher["app"]["offset"],
         writes=" ".join(f"{i['offset']} {NAMES[n]}" for n, i in images),
         signing=SIGNING["statement"])

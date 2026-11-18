@@ -7,7 +7,7 @@
 One entry per tedge image (standalone images have no cloud client). The
 version is exactly what the image reports once installed — the application's
 own version string — so an install is recognised as done rather than as a
-rollback. The name is unique per (app, variant, device), so a firmware
+rollback. The name, <app>-<os>-<set>-<device>, is unique per build, so a firmware
 repository entry only ever holds images for one kind of hardware.
 scripts/release/c8y-upload.sh reads it.
 """

@@ -61,7 +61,7 @@ def elf32(sections):
 
 def report(image=100, ram=None, arena=1000, prov_image=None, prov_ram=None):
     r = {
-        "name": "modbus-server-tedge-ota-c6", "app": "modbus-server",
+        "name": "modbus-server-zephyr-ota-c6", "app": "modbus-server",
         "image": image, "slot0": 1000, "slot0_percent": image / 10.0,
         "ram": [{"region": k, "used": v, "size": 2 * v, "percent": 50.0}
                 for k, v in (ram or {"sram0_0_seg": 500}).items()],
@@ -142,15 +142,15 @@ class BaselineTest(unittest.TestCase):
     def test_write_keeps_other_builds_and_exceptions(self):
         self.path.write_text(json.dumps({
             "other-build": {"image": 1, "ram": {}, "arena": None},
-            "modbus-server-tedge-ota-c6": {
+            "modbus-server-zephyr-ota-c6": {
                 "image": 1, "ram": {}, "arena": None,
                 "budget_exceptions": {"provisioner": "96.8 % on 2026-09-22"}},
         }))
         size.write_baseline(self.path, report())
         data = json.loads(self.path.read_text())
         self.assertIn("other-build", data)
-        self.assertEqual(data["modbus-server-tedge-ota-c6"]["image"], 100)
-        self.assertEqual(data["modbus-server-tedge-ota-c6"]["budget_exceptions"],
+        self.assertEqual(data["modbus-server-zephyr-ota-c6"]["image"], 100)
+        self.assertEqual(data["modbus-server-zephyr-ota-c6"]["budget_exceptions"],
                          {"provisioner": "96.8 % on 2026-09-22"})
 
     def test_ram_growth_past_tolerance_fails(self):
@@ -158,7 +158,7 @@ class BaselineTest(unittest.TestCase):
         problems, _ = size.compare(report(ram={"sram0_0_seg": 800}),
                                    size.load_baseline(self.path), 256)
         self.assertEqual(len(problems), 1)
-        self.assertIn("modbus-server-tedge-ota-c6: sram0_0_seg grew by 300 B", problems[0])
+        self.assertIn("modbus-server-zephyr-ota-c6: sram0_0_seg grew by 300 B", problems[0])
 
     def test_growth_within_tolerance_passes(self):
         size.write_baseline(self.path, report(image=100, ram={"sram0_0_seg": 500}))
@@ -169,7 +169,7 @@ class BaselineTest(unittest.TestCase):
     def test_image_growth_fails_and_names_delta(self):
         size.write_baseline(self.path, report(image=100))
         problems, _ = size.compare(report(image=1000), size.load_baseline(self.path), 256)
-        self.assertEqual(problems, ["modbus-server-tedge-ota-c6: image grew by 900 B "
+        self.assertEqual(problems, ["modbus-server-zephyr-ota-c6: image grew by 900 B "
                                     "past the baseline (100 -> 1000 B, tolerance 256 B)"])
 
     def test_provisioner_growth_fails(self):
@@ -189,7 +189,7 @@ class BaselineTest(unittest.TestCase):
 
     def test_unknown_build_fails(self):
         problems, _ = size.compare(report(), {}, 256)
-        self.assertEqual(problems, ["modbus-server-tedge-ota-c6: not in the baseline; "
+        self.assertEqual(problems, ["modbus-server-zephyr-ota-c6: not in the baseline; "
                                     "add it with --write-baseline"])
 
     def test_new_region_fails(self):
@@ -207,7 +207,7 @@ class BudgetTest(unittest.TestCase):
 
     def test_app_over_budget_names_partition_and_percent(self):
         problems, _ = size.budget(report(image=850), 80, 92, 95, {})
-        self.assertEqual(problems, ["modbus-server-tedge-ota-c6: app image is 850 B, 85.0% "
+        self.assertEqual(problems, ["modbus-server-zephyr-ota-c6: app image is 850 B, 85.0% "
                                     "of the 1000 B slot0 partition (budget 80%)"])
 
     def test_provisioner_over_budget(self):
@@ -216,7 +216,7 @@ class BudgetTest(unittest.TestCase):
         self.assertIn("provisioner image is 950 B, 95.0% of the 1000 B prov partition", problems[0])
 
     def test_known_exception_is_a_warning(self):
-        baseline = {"modbus-server-tedge-ota-c6": {
+        baseline = {"modbus-server-zephyr-ota-c6": {
             "budget_exceptions": {"provisioner": "until group 9 trims it"}}}
         problems, warnings = size.budget(report(prov_image=950), 80, 92, 95, baseline)
         self.assertEqual(problems, [])
@@ -224,7 +224,7 @@ class BudgetTest(unittest.TestCase):
         self.assertIn("known exception: until group 9 trims it", warnings[0])
 
     def test_ota_ceiling_is_separate_and_not_excepted(self):
-        baseline = {"modbus-server-tedge-ota-c6": {"budget_exceptions": {"app": "x"}}}
+        baseline = {"modbus-server-zephyr-ota-c6": {"budget_exceptions": {"app": "x"}}}
         problems, warnings = size.budget(report(image=960), 80, 92, 95, baseline)
         self.assertEqual(len(warnings), 1)  # the budget, excepted
         self.assertEqual(len(problems), 1)  # the ceiling, never excepted

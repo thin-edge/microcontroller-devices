@@ -8,9 +8,9 @@
 #                            [--write-baseline]
 #
 #   docker exec -w /ws/app -e ZEPHYR_SDK_INSTALL_DIR=$SDK zephyr-dev \
-#     scripts/release/build.sh modbus-server-tedge-full-esp32c6-devkitc
+#     scripts/release/build.sh modbus-server-zephyr-full-esp32c6-devkitc
 #
-# <firmware-name> is <app>-<variant>-<device> from release/devices.yml
+# <firmware-name> is <app>-<os>-<set>-<device> from release/devices.yml
 # (scripts/release/matrix.py lists them). The version is whatever the
 # apps/*/VERSION files say; run scripts/release/check-version.sh --apply
 # first to set a pre-release or dev suffix. KEY_FILE, when set, signs with that

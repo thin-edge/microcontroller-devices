@@ -1,79 +1,5 @@
 {
-  "modbus-server-standalone-esp32-devkitc": {
-    "image": 590360,
-    "content": 590360,
-    "ram": {
-      "iram0_0_seg": 59648,
-      "dram0_0_seg": 97304,
-      "dram1_0_seg": 46904
-    },
-    "arena": 99288,
-    "provisioner": {
-      "image": 740422,
-      "content": 740422,
-      "ram": {
-        "iram0_0_seg": 92928,
-        "dram0_0_seg": 125688,
-        "dram1_0_seg": 55280
-      },
-      "arena": 14744
-    }
-  },
-  "modbus-server-standalone-esp32c6-devkitc": {
-    "image": 733899,
-    "content": 633083,
-    "ram": {
-      "sram0_0_seg": 205924,
-      "lp_ram_seg": 36
-    },
-    "arena": 303520,
-    "provisioner": {
-      "image": 943756,
-      "content": 863692,
-      "ram": {
-        "sram0_0_seg": 282496,
-        "lp_ram_seg": 36
-      },
-      "arena": 226944
-    }
-  },
-  "modbus-server-standalone-esp32s3-devkitc": {
-    "image": 583883,
-    "content": 583883,
-    "ram": {
-      "iram0_0_seg": 56672,
-      "dram0_0_seg": 196248
-    },
-    "arena": 202852,
-    "provisioner": {
-      "image": 662059,
-      "content": 662059,
-      "ram": {
-        "iram0_0_seg": 57688,
-        "dram0_0_seg": 230784
-      },
-      "arena": 168316
-    }
-  },
-  "modbus-server-standalone-qtpy-esp32s3": {
-    "image": 584028,
-    "content": 584028,
-    "ram": {
-      "iram0_0_seg": 56200,
-      "dram0_0_seg": 193652
-    },
-    "arena": 205444,
-    "provisioner": {
-      "image": 662219,
-      "content": 662219,
-      "ram": {
-        "iram0_0_seg": 57216,
-        "dram0_0_seg": 228168
-      },
-      "arena": 170932
-    }
-  },
-  "modbus-server-tedge-full-esp32c6-devkitc": {
+  "modbus-server-zephyr-full-esp32c6-devkitc": {
     "image": 966571,
     "content": 864319,
     "ram": {
@@ -94,7 +20,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "modbus-server-tedge-full-esp32s3-devkitc": {
+  "modbus-server-zephyr-full-esp32s3-devkitc": {
     "image": 932636,
     "content": 932636,
     "ram": {
@@ -112,7 +38,7 @@
       "arena": 148244
     }
   },
-  "modbus-server-tedge-full-qtpy-esp32s3": {
+  "modbus-server-zephyr-full-qtpy-esp32s3": {
     "image": 932827,
     "content": 932827,
     "ram": {
@@ -130,7 +56,7 @@
       "arena": 150860
     }
   },
-  "modbus-server-tedge-ota-esp32-cam": {
+  "modbus-server-zephyr-ota-esp32-cam": {
     "image": 803255,
     "content": 803255,
     "ram": {
@@ -150,7 +76,7 @@
       "arena": 13416
     }
   },
-  "modbus-server-tedge-ota-esp32-devkitc": {
+  "modbus-server-zephyr-ota-esp32-devkitc": {
     "image": 798711,
     "content": 798711,
     "ram": {
@@ -170,7 +96,7 @@
       "arena": 13416
     }
   },
-  "modbus-server-tedge-ota-esp32c6-devkitc": {
+  "modbus-server-zephyr-ota-esp32c6-devkitc": {
     "image": 888684,
     "content": 814564,
     "ram": {
@@ -191,7 +117,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "modbus-server-tedge-ota-esp32s3-devkitc": {
+  "modbus-server-zephyr-ota-esp32s3-devkitc": {
     "image": 737532,
     "content": 737532,
     "ram": {
@@ -209,7 +135,7 @@
       "arena": 148244
     }
   },
-  "modbus-server-tedge-ota-qtpy-esp32s3": {
+  "modbus-server-zephyr-ota-qtpy-esp32s3": {
     "image": 737675,
     "content": 737675,
     "ram": {
@@ -227,7 +153,99 @@
       "arena": 150860
     }
   },
-  "opcua-server-standalone-esp32-devkitc": {
+  "modbus-server-zephyr-standalone-esp32-devkitc": {
+    "image": 590360,
+    "content": 590360,
+    "ram": {
+      "iram0_0_seg": 59648,
+      "dram0_0_seg": 97304,
+      "dram1_0_seg": 46904
+    },
+    "arena": 99288,
+    "provisioner": {
+      "image": 740422,
+      "content": 740422,
+      "ram": {
+        "iram0_0_seg": 92928,
+        "dram0_0_seg": 125688,
+        "dram1_0_seg": 55280
+      },
+      "arena": 14744
+    }
+  },
+  "modbus-server-zephyr-standalone-esp32c6-devkitc": {
+    "image": 733899,
+    "content": 633083,
+    "ram": {
+      "sram0_0_seg": 205924,
+      "lp_ram_seg": 36
+    },
+    "arena": 303520,
+    "provisioner": {
+      "image": 943756,
+      "content": 863692,
+      "ram": {
+        "sram0_0_seg": 282496,
+        "lp_ram_seg": 36
+      },
+      "arena": 226944
+    }
+  },
+  "modbus-server-zephyr-standalone-esp32s3-devkitc": {
+    "image": 583883,
+    "content": 583883,
+    "ram": {
+      "iram0_0_seg": 56672,
+      "dram0_0_seg": 196248
+    },
+    "arena": 202852,
+    "provisioner": {
+      "image": 662059,
+      "content": 662059,
+      "ram": {
+        "iram0_0_seg": 57688,
+        "dram0_0_seg": 230784
+      },
+      "arena": 168316
+    }
+  },
+  "modbus-server-zephyr-standalone-qtpy-esp32s3": {
+    "image": 584028,
+    "content": 584028,
+    "ram": {
+      "iram0_0_seg": 56200,
+      "dram0_0_seg": 193652
+    },
+    "arena": 205444,
+    "provisioner": {
+      "image": 662219,
+      "content": 662219,
+      "ram": {
+        "iram0_0_seg": 57216,
+        "dram0_0_seg": 228168
+      },
+      "arena": 170932
+    }
+  },
+  "opcua-server-zephyr-ota-qtpy-esp32s3": {
+    "image": 921627,
+    "content": 921627,
+    "ram": {
+      "iram0_0_seg": 58668,
+      "dram0_0_seg": 309756
+    },
+    "arena": 89332,
+    "provisioner": {
+      "image": 732283,
+      "content": 732283,
+      "ram": {
+        "iram0_0_seg": 57216,
+        "dram0_0_seg": 248228
+      },
+      "arena": 150860
+    }
+  },
+  "opcua-server-zephyr-standalone-esp32-devkitc": {
     "image": 750072,
     "content": 750072,
     "ram": {
@@ -247,7 +265,7 @@
       "arena": 14744
     }
   },
-  "opcua-server-standalone-esp32c6-devkitc": {
+  "opcua-server-zephyr-standalone-esp32c6-devkitc": {
     "image": 854154,
     "content": 794154,
     "ram": {
@@ -265,7 +283,7 @@
       "arena": 226944
     }
   },
-  "opcua-server-standalone-esp32s3-devkitc": {
+  "opcua-server-zephyr-standalone-esp32s3-devkitc": {
     "image": 768668,
     "content": 768668,
     "ram": {
@@ -283,7 +301,7 @@
       "arena": 168316
     }
   },
-  "opcua-server-standalone-qtpy-esp32s3": {
+  "opcua-server-zephyr-standalone-qtpy-esp32s3": {
     "image": 768810,
     "content": 768810,
     "ram": {
@@ -301,99 +319,7 @@
       "arena": 170932
     }
   },
-  "opcua-server-tedge-ota-qtpy-esp32s3": {
-    "image": 921627,
-    "content": 921627,
-    "ram": {
-      "iram0_0_seg": 58668,
-      "dram0_0_seg": 309756
-    },
-    "arena": 89332,
-    "provisioner": {
-      "image": 732283,
-      "content": 732283,
-      "ram": {
-        "iram0_0_seg": 57216,
-        "dram0_0_seg": 248228
-      },
-      "arena": 150860
-    }
-  },
-  "snmp-agent-standalone-esp32-devkitc": {
-    "image": 578823,
-    "content": 578823,
-    "ram": {
-      "iram0_0_seg": 59648,
-      "dram0_0_seg": 105752,
-      "dram1_0_seg": 45144
-    },
-    "arena": 90840,
-    "provisioner": {
-      "image": 740424,
-      "content": 740424,
-      "ram": {
-        "iram0_0_seg": 92928,
-        "dram0_0_seg": 125688,
-        "dram1_0_seg": 55280
-      },
-      "arena": 14744
-    }
-  },
-  "snmp-agent-standalone-esp32c6-devkitc": {
-    "image": 732011,
-    "content": 616763,
-    "ram": {
-      "sram0_0_seg": 212504,
-      "lp_ram_seg": 36
-    },
-    "arena": 296928,
-    "provisioner": {
-      "image": 943756,
-      "content": 863692,
-      "ram": {
-        "sram0_0_seg": 282496,
-        "lp_ram_seg": 36
-      },
-      "arena": 226944
-    }
-  },
-  "snmp-agent-standalone-esp32s3-devkitc": {
-    "image": 582428,
-    "content": 582428,
-    "ram": {
-      "iram0_0_seg": 56560,
-      "dram0_0_seg": 202832
-    },
-    "arena": 196260,
-    "provisioner": {
-      "image": 662058,
-      "content": 662058,
-      "ram": {
-        "iram0_0_seg": 57688,
-        "dram0_0_seg": 230784
-      },
-      "arena": 168316
-    }
-  },
-  "snmp-agent-standalone-qtpy-esp32s3": {
-    "image": 582571,
-    "content": 582571,
-    "ram": {
-      "iram0_0_seg": 56088,
-      "dram0_0_seg": 200236
-    },
-    "arena": 198852,
-    "provisioner": {
-      "image": 662218,
-      "content": 662218,
-      "ram": {
-        "iram0_0_seg": 57216,
-        "dram0_0_seg": 228168
-      },
-      "arena": 170932
-    }
-  },
-  "snmp-agent-tedge-full-esp32c6-devkitc": {
+  "snmp-agent-zephyr-full-esp32c6-devkitc": {
     "image": 892475,
     "content": 831215,
     "ram": {
@@ -414,7 +340,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "snmp-agent-tedge-full-esp32s3-devkitc": {
+  "snmp-agent-zephyr-full-esp32s3-devkitc": {
     "image": 806938,
     "content": 806938,
     "ram": {
@@ -432,7 +358,7 @@
       "arena": 148244
     }
   },
-  "snmp-agent-tedge-full-qtpy-esp32s3": {
+  "snmp-agent-zephyr-full-qtpy-esp32s3": {
     "image": 807083,
     "content": 807083,
     "ram": {
@@ -450,7 +376,7 @@
       "arena": 150860
     }
   },
-  "snmp-agent-tedge-ota-esp32-cam": {
+  "snmp-agent-zephyr-ota-esp32-cam": {
     "image": 797622,
     "content": 797622,
     "ram": {
@@ -470,7 +396,7 @@
       "arena": 13416
     }
   },
-  "snmp-agent-tedge-ota-esp32c6-devkitc": {
+  "snmp-agent-zephyr-ota-esp32c6-devkitc": {
     "image": 887323,
     "content": 806795,
     "ram": {
@@ -491,7 +417,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "snmp-agent-tedge-ota-esp32s3-devkitc": {
+  "snmp-agent-zephyr-ota-esp32s3-devkitc": {
     "image": 736587,
     "content": 736587,
     "ram": {
@@ -509,7 +435,7 @@
       "arena": 148244
     }
   },
-  "snmp-agent-tedge-ota-qtpy-esp32s3": {
+  "snmp-agent-zephyr-ota-qtpy-esp32s3": {
     "image": 736731,
     "content": 736731,
     "ram": {
@@ -527,7 +453,81 @@
       "arena": 150860
     }
   },
-  "tedge-agent-tedge-full-esp32c6-devkitc": {
+  "snmp-agent-zephyr-standalone-esp32-devkitc": {
+    "image": 578823,
+    "content": 578823,
+    "ram": {
+      "iram0_0_seg": 59648,
+      "dram0_0_seg": 105752,
+      "dram1_0_seg": 45144
+    },
+    "arena": 90840,
+    "provisioner": {
+      "image": 740424,
+      "content": 740424,
+      "ram": {
+        "iram0_0_seg": 92928,
+        "dram0_0_seg": 125688,
+        "dram1_0_seg": 55280
+      },
+      "arena": 14744
+    }
+  },
+  "snmp-agent-zephyr-standalone-esp32c6-devkitc": {
+    "image": 732011,
+    "content": 616763,
+    "ram": {
+      "sram0_0_seg": 212504,
+      "lp_ram_seg": 36
+    },
+    "arena": 296928,
+    "provisioner": {
+      "image": 943756,
+      "content": 863692,
+      "ram": {
+        "sram0_0_seg": 282496,
+        "lp_ram_seg": 36
+      },
+      "arena": 226944
+    }
+  },
+  "snmp-agent-zephyr-standalone-esp32s3-devkitc": {
+    "image": 582428,
+    "content": 582428,
+    "ram": {
+      "iram0_0_seg": 56560,
+      "dram0_0_seg": 202832
+    },
+    "arena": 196260,
+    "provisioner": {
+      "image": 662058,
+      "content": 662058,
+      "ram": {
+        "iram0_0_seg": 57688,
+        "dram0_0_seg": 230784
+      },
+      "arena": 168316
+    }
+  },
+  "snmp-agent-zephyr-standalone-qtpy-esp32s3": {
+    "image": 582571,
+    "content": 582571,
+    "ram": {
+      "iram0_0_seg": 56088,
+      "dram0_0_seg": 200236
+    },
+    "arena": 198852,
+    "provisioner": {
+      "image": 662218,
+      "content": 662218,
+      "ram": {
+        "iram0_0_seg": 57216,
+        "dram0_0_seg": 228168
+      },
+      "arena": 170932
+    }
+  },
+  "tedge-agent-zephyr-full-esp32c6-devkitc": {
     "image": 890667,
     "content": 817303,
     "ram": {
@@ -548,7 +548,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "tedge-agent-tedge-full-esp32s3-devkitc": {
+  "tedge-agent-zephyr-full-esp32s3-devkitc": {
     "image": 929019,
     "content": 929019,
     "ram": {
@@ -566,7 +566,7 @@
       "arena": 148244
     }
   },
-  "tedge-agent-tedge-full-qtpy-esp32s3": {
+  "tedge-agent-zephyr-full-qtpy-esp32s3": {
     "image": 929210,
     "content": 929210,
     "ram": {
@@ -584,7 +584,7 @@
       "arena": 150860
     }
   },
-  "tedge-agent-tedge-ota-esp32-cam": {
+  "tedge-agent-zephyr-ota-esp32-cam": {
     "image": 787654,
     "content": 787654,
     "ram": {
@@ -604,7 +604,7 @@
       "arena": 13416
     }
   },
-  "tedge-agent-tedge-ota-esp32-devkitc": {
+  "tedge-agent-zephyr-ota-esp32-devkitc": {
     "image": 783336,
     "content": 783336,
     "ram": {
@@ -624,7 +624,7 @@
       "arena": 13416
     }
   },
-  "tedge-agent-tedge-ota-esp32c6-devkitc": {
+  "tedge-agent-zephyr-ota-esp32c6-devkitc": {
     "image": 885739,
     "content": 793291,
     "ram": {
@@ -645,7 +645,7 @@
       "provisioner": "96.7 % of prov on 2026-09-23: the provisioner's snprintf needs picolibc's integer printf (PICOLIBC_IO_INTEGER, the ZTP timestamp fix), which crossed a 64 KB image boundary again; must not grow, reduce-memory-footprint task 9.1 brings it under 92 %"
     }
   },
-  "tedge-agent-tedge-ota-esp32s3-devkitc": {
+  "tedge-agent-zephyr-ota-esp32s3-devkitc": {
     "image": 735114,
     "content": 735114,
     "ram": {
@@ -663,7 +663,7 @@
       "arena": 148244
     }
   },
-  "tedge-agent-tedge-ota-qtpy-esp32s3": {
+  "tedge-agent-zephyr-ota-qtpy-esp32s3": {
     "image": 735258,
     "content": 735258,
     "ram": {

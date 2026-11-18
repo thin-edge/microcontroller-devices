@@ -15,8 +15,18 @@ when `CONFIG_TEDGE=y`; `apps/tedge-agent` is the client with no protocol.
 Whether a given *board* can is a separate question, answered below.
 
 **What is released** for each board is [`release/devices.yml`](release/devices.yml);
-every `tedge-*` build listed there points at the entry below that records
-its run on the board.
+every `full` and `ota` build listed there points at the entry below that
+records its run on the board.
+
+> **Image names before 0.17.0.** The entries below keep the names images had
+> when they were measured: `<app>-<variant>-<device>`, with the variants
+> `standalone`, `tedge-full`, `tedge-ota`, `tedge-onboard` (ESP-IDF) and
+> `nuttx`. From 0.17.0 every image is named `<app>-<os>-<set>-<device>`:
+> `standalone`, `tedge-full` and `tedge-ota` are now `zephyr-standalone`,
+> `zephyr-full` and `zephyr-ota`, `tedge-agent-idf-tedge-onboard-…` is
+> `tedge-agent-idf-full-…`, and `tedge-agent-nuttx-…` is
+> `tedge-agent-nuttx-full-…`. The README's "Moving a device to the new
+> names" has the full table.
 
 ## Where they are
 
