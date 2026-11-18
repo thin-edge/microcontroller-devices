@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.14.0...v0.15.0) (2026-11-18)
+
+
+### Features
+
+* release tiny-edge's NuttX agent for the ESP32-C6, and take tiny-edge 0.7.0 ([#30](https://github.com/thin-edge/microcontroller-devices/issues/30)) ([86338d4](https://github.com/thin-edge/microcontroller-devices/commit/86338d4b4383ba2cdcf2bfcf83a8f160c795a8e7))
+
 ## [0.14.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.13.0...v0.14.0) (2026-11-16)
 
 
