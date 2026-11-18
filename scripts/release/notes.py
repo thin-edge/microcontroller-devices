@@ -81,7 +81,9 @@ def notes(manifest, metas, tag, repo):
             "The ESP-IDF (`tedge-onboard`) and NuttX (`nuttx`) agent images are "
             "set up over USB instead: run "
             "[tedge-onboard](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard) "
-            "on the computer the board is plugged into. It gives the device the "
+            "(or `c8y tinyedge onboard`, after `c8y extensions install "
+            "thin-edge/tiny-edge`) on the computer the board is plugged into. "
+            "It gives the device the "
             "computer's Wi-Fi network, registers it in your tenant, and passes it "
             "the tenant and a one-time password.",
             ""]

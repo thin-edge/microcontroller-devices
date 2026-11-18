@@ -76,11 +76,17 @@ Replace only the application (keeps the Wi-Fi network and the certificate):
 
   esptool --chip {chip} --before {before} write-flash {app_off} app.signed.bin
 
-Then set it up over USB: run tedge-onboard on the computer the board is
-plugged into (https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard),
-connected to the board's USB port (on a DevKitC, the connector labelled USB).
-It gives the device the computer's Wi-Fi network, registers it in your
-Cumulocity tenant, and passes it the tenant and a one-time password.
+Then set it up over USB, with the board's USB port (on a DevKitC, the
+connector labelled USB) plugged into a computer. On that computer, install
+tedge-onboard as a go-c8y-cli extension and run it:
+
+  c8y extensions install thin-edge/tiny-edge
+  c8y tinyedge onboard
+
+or download it from https://github.com/thin-edge/tiny-edge/releases and run
+./tedge-onboard. It gives the device the computer's Wi-Fi network, registers
+it in your Cumulocity tenant, and passes it the tenant and a one-time
+password.
 
 Updates from Cumulocity install {stem}.app.bin, which MCUboot boots once on
 trial: the agent confirms it once it has connected, or MCUboot goes back to
