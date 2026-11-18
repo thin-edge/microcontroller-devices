@@ -58,6 +58,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       idf_matrix: ${{ steps.matrix.outputs.idf_matrix }}
+      nuttx_matrix: ${{ steps.matrix.outputs.nuttx_matrix }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -202,14 +203,67 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  # tiny-edge's NuttX agent (`framework: nuttx` in release/devices.yml): the
+  # tiny-edge release west.yml pins, built in tiny-edge's own NuttX container
+  # with its ports/nuttx/scripts/build.sh, the same assets and metadata.
+  build-nuttx:
+    name: ${{ matrix.group }}
+    needs: matrix
+    if: ${{ fromJSON(needs.matrix.outputs.nuttx_matrix).include[0] != null }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.nuttx_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: The tiny-edge release west.yml pins
+        id: tiny-edge
+        run: |
+          rev=$(grep -A3 -- '- name: tiny-edge' app/west.yml | sed -n 's/^ *revision: *//p')
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: thin-edge/tiny-edge
+          ref: ${{ steps.tiny-edge.outputs.revision }}
+          path: tiny-edge
+      - uses: docker/setup-buildx-action@v3
+      - name: tiny-edge's NuttX container
+        uses: docker/build-push-action@v6
+        with:
+          context: tiny-edge/ports/nuttx/docker
+          tags: tiny-edge-nuttx
+          load: true
+          cache-from: type=gha,scope=nuttx
+          cache-to: type=gha,scope=nuttx,mode=max
+      - name: Build and package
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/ws -w /ws/app \
+            -e TINY_EDGE_DIR=/ws/tiny-edge tiny-edge-nuttx bash -c '
+              set -e
+              scripts/release/check-version.sh --apply "${{ github.ref_name }}"
+              for name in ${{ matrix.builds }}; do
+                echo "::group::$name"
+                scripts/release/build.sh "$name" --build-dir "/ws/build/$name" --out /ws/dist
+                echo "::endgroup::"
+              done'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.group }}
+          path: dist/
+          if-no-files-found: error
+
   release:
     name: Publish the release
-    # build-idf is skipped when release/devices.yml lists no ESP-IDF build.
+    # build-idf and build-nuttx are skipped when release/devices.yml lists no
+    # build of theirs.
     if: >-
       startsWith(github.ref, 'refs/tags/v') && !cancelled() &&
       needs.build.result == 'success' &&
-      (needs.build-idf.result == 'success' || needs.build-idf.result == 'skipped')
-    needs: [matrix, build, build-idf]
+      (needs.build-idf.result == 'success' || needs.build-idf.result == 'skipped') &&
+      (needs.build-nuttx.result == 'success' || needs.build-nuttx.result == 'skipped')
+    needs: [matrix, build, build-idf, build-nuttx]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

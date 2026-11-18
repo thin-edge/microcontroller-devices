@@ -75,6 +75,6 @@ tiny-edge Smart Functions and DTM definitions:
   slots and the rollback, and set-up is `tedge-onboard` over USB instead of
   Improv BLE or lab-ztp-provisioner.
 - No status LED or identify pattern yet.
-- tiny-edge 0.6.0, so the client's parameter sets are `tiny_edge` and
+- tiny-edge 0.6.0 and later, so the client's parameter sets are `tiny_edge` and
   `tiny_edge_remote_access`, not `zephyr_tedge`, and `tedge-onboard`
   registers the device with the image's type, `thin-edge.io-esp-idf-agent`.

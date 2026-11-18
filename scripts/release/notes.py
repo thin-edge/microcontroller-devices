@@ -78,7 +78,8 @@ def notes(manifest, metas, tag, repo):
             f"Wi-Fi over BLE]({readme}#provisioning-wi-fi-over-ble), including its "
             f"security notes.",
             "",
-            "`tedge-onboard` images (ESP-IDF) are set up over USB instead: run "
+            "The ESP-IDF (`tedge-onboard`) and NuttX (`nuttx`) agent images are "
+            "set up over USB instead: run "
             "[tedge-onboard](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard) "
             "on the computer the board is plugged into. It gives the device the "
             "computer's Wi-Fi network, registers it in your tenant, and passes it "

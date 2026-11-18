@@ -342,6 +342,30 @@ parameters, and the cloud shell were tested with the same FreeRTOS port in
 tiny-edge's own ESP-IDF sample on this board (tiny-edge 0.4.0, 2026-11-11),
 not yet with this application.
 
+### NuttX agent on the ESP32-C6 (2026-11-17)
+
+The `nuttx` variant of `tedge-agent` is tiny-edge's NuttX agent (NuttX 13.1,
+tiny-edge's `ports/nuttx`), built with tiny-edge's `build.sh` and booting
+through MCUboot. Its update image is 1,415,232 B, 92 % of its 1.5 MB slot
+(the 4 MB layout's largest; tiny-edge's NuttX README). dram0 holds
+271,904 of 452,112 B.
+
+On an ESP32-C6-DevKitC (eu-latest, `tedge-e8f60afb8198`), with no program
+reading the USB port, from tiny-edge's NuttX change (`ports/nuttx/REPORT.md`):
+
+- **Set-up:** from an erased data partition with `tedge-onboard` over USB,
+  the board's Wi-Fi scan, and a wrong password that brought it back to its
+  stored network; certificate enrollment and renewal.
+- **Cumulocity:** `c8y_Agent`, `tedge_OS` (`nuttx` 13.1.0), `c8y_Hardware`,
+  the `device` and health measurements, and type `thin-edge.io-nuttx`.
+- **Operations:** a restart, log upload, the cloud shell, parameters that
+  kept their values across a restart, a remote access tunnel to the LAN, a
+  firmware update from Cumulocity that confirmed, the rollback of an image
+  that could not connect, and an operation interrupted by a reset, which was
+  failed after the reboot.
+- **30 minutes** with telemetry and 52 tunnels: no gap in the measurements,
+  free heap steady at about 96 KB, at most 63 % of any thread's stack.
+
 ### Identify measured (2026-10-06)
 
 `device-identify` adds `tedge identify [seconds]` (cloud shell) and the sw0

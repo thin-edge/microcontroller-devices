@@ -29,6 +29,12 @@
 # `framework: esp-idf` marks an ESP-IDF application (apps/<app> built with
 # idf.py, the device's `chip` as the target): no Zephyr profile, board files
 # or tiny-edge board configuration; it brings its own sdkconfig.defaults.
+#
+# `framework: nuttx` marks tiny-edge's NuttX agent, built with tiny-edge's
+# ports/nuttx/scripts/build.sh for the device's `nuttx_board` (a board
+# tiny-edge's NuttX port has a configuration for). The build's `extra_conf`
+# are NuttX configuration fragments, such as
+# "{tiny-edge}/ports/nuttx/configs/esp32s3-psram-octal.conf".
 variants:
   standalone:
     description: the protocol server alone; Wi-Fi over Improv BLE
@@ -45,6 +51,10 @@ variants:
     description: the device agent on ESP-IDF (FreeRTOS) with every thin-edge.io feature; Wi-Fi and Cumulocity over USB with tedge-onboard
     framework: esp-idf
     provisioner: tedge-onboard
+  nuttx:
+    description: the device agent on NuttX with every thin-edge.io feature; Wi-Fi and Cumulocity over USB with tedge-onboard
+    framework: nuttx
+    provisioner: tedge-onboard
 
 provisioners:
   improv: null
@@ -60,6 +70,7 @@ devices:
     flash_size: 4MB
     esptool_before: usb-reset
     tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32c6-devkitc.conf"
+    nuttx_board: esp32c6-devkitc
     builds:
       - { app: modbus-server, variant: standalone, pr: true }
       - { app: opcua-server, variant: standalone }
@@ -92,6 +103,10 @@ devices:
         variant: tedge-onboard
         pr: true
         measured: DEVICES.md#esp-idf-agent-on-the-esp32-c6-2026-11-12
+      - app: tedge-agent
+        variant: nuttx
+        pr: true
+        measured: DEVICES.md#nuttx-agent-on-the-esp32-c6-2026-11-17
 
   - id: esp32s3-devkitc
     name: ESP32-S3-DevKitC-1 (N16R8)
