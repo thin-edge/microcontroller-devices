@@ -41,7 +41,7 @@ carries ready-to-flash images for these devices — no toolchain, no build:
   tenant. The images are not signed (ESP-IDF's bootloader, no MCUboot).
 - **nuttx** — `tedge-agent` on [NuttX](https://nuttx.apache.org/): tiny-edge's
   NuttX agent with every thin-edge.io feature, set up over USB with
-  `tedge-onboard` like `tedge-onboard` (on a DevKitC, the connector labelled
+  `tedge-onboard` like the `tedge-onboard` images (on a DevKitC, the connector labelled
   USB). It boots through MCUboot, so a firmware update that cannot connect is
   rolled back. The images are not signed with a key: MCUboot checks their
   hash.
@@ -433,8 +433,17 @@ into a computer with a USB data cable and run
 [`tedge-onboard`](https://github.com/thin-edge/tiny-edge/tree/main/tools/onboard)
 there. It finds the device, gives it the computer's Wi-Fi network (the one
 the device can see), registers it in Cumulocity through your go-c8y-cli
-session, and waits until it is connected. Download it from the
-[tiny-edge releases](https://github.com/thin-edge/tiny-edge/releases).
+session, and waits until it is connected. Install it as a go-c8y-cli
+extension and run it as `c8y tinyedge onboard`:
+
+```sh
+c8y extensions install thin-edge/tiny-edge
+c8y tinyedge onboard
+```
+
+or download it from the
+[tiny-edge releases](https://github.com/thin-edge/tiny-edge/releases) and run
+`./tedge-onboard`.
 
 A `tedge-*` device with no Wi-Fi network waits for the tool: its status LED
 shows the provisioning pattern (two short blinks, then a pause), and the log
