@@ -366,6 +366,29 @@ reading the USB port, from tiny-edge's NuttX change (`ports/nuttx/REPORT.md`):
 - **30 minutes** with telemetry and 52 tunnels: no gap in the measurements,
   free heap steady at about 96 KB, at most 63 % of any thread's stack.
 
+### NuttX agent on the ESP32-S3 (2026-11-17)
+
+The same agent for the ESP32-S3-DevKitC-1 (N16R8): tiny-edge's
+`esp32s3-devkit` NuttX configuration, with the module's 8 MB of octal PSRAM
+as a second heap region (tiny-edge's
+`ports/nuttx/configs/esp32s3-psram-octal.conf`). Its update image is
+1,159,720 B, 75 % of its 1.5 MB slot, in the same 4 MB layout as the C6
+(the rest of the 16 MB flash is not used). dram0 holds 230,280 of
+270,336 B. The image does not start on a module without PSRAM.
+
+On an ESP32-S3-DevKitC-1 N16R8 (eu-latest, device 5160686774), from
+tiny-edge's NuttX change (`ports/nuttx/REPORT.md`, findings 32 and 33):
+
+- **Set-up:** with `tedge-onboard` over the board's USB port (the connector
+  labelled USB), a wrong password included.
+- **Without PSRAM** the heap is 192 KB: its high-water mark reached 191 KB,
+  and log upload failed, with no room for a second TLS session. This is why
+  the release build always uses the PSRAM settings.
+- **With PSRAM**, internal RAM keeps 135 KB free. Log upload works, and
+  parameters keep their values across a restart. A firmware update from
+  Cumulocity downloaded 1.16 MB in about 2.5 minutes, restarted, and
+  confirmed the image.
+
 ### Identify measured (2026-10-06)
 
 `device-identify` adds `tedge identify [seconds]` (cloud shell) and the sw0

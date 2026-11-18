@@ -115,6 +115,7 @@ devices:
     flash_size: 16MB
     esptool_before: default-reset
     tedge_board_conf: "{tiny-edge}/ports/zephyr/profiles/boards/esp32s3-devkitc.conf"
+    nuttx_board: esp32s3-devkit
     builds:
       - { app: modbus-server, variant: standalone }
       - { app: opcua-server, variant: standalone, pr: true }
@@ -141,6 +142,13 @@ devices:
       - app: tedge-agent
         variant: tedge-ota
         measured: DEVICES.md#release-builds-measured-on-the-boards-2026-09-21
+      # Every feature needs the module's 8 MB of octal PSRAM for the mbedTLS
+      # heap; the image does not start on a module without PSRAM.
+      - app: tedge-agent
+        variant: nuttx
+        pr: true
+        extra_conf: ["{tiny-edge}/ports/nuttx/configs/esp32s3-psram-octal.conf"]
+        measured: DEVICES.md#nuttx-agent-on-the-esp32-s3-2026-11-17
 
   - id: qtpy-esp32s3
     name: Adafruit QT Py ESP32-S3 (N4R2)
