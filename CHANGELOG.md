@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.1...v0.17.2) (2026-11-19)
+
+
+### Bug Fixes
+
+* **release:** record the ESP32-CAM tedge-agent size with tiny-edge 0.8.1 ([#40](https://github.com/thin-edge/microcontroller-devices/issues/40)) ([30944ad](https://github.com/thin-edge/microcontroller-devices/commit/30944ad0a601106c6c3c106b7a5309a4f8212f0e))
+
 ## [0.17.1](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.0...v0.17.1) (2026-11-19)
 
 
