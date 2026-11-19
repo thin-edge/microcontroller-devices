@@ -15,8 +15,8 @@
 
 - [x] 3.1 README: the naming scheme, the regenerated table, examples
 - [x] 3.2 DEVICES.md: a note mapping old names to new ones
-- [ ] 3.3 Sync the `firmware-release` spec (when archiving)
+- [x] 3.3 Sync the `firmware-release` spec (when archiving)
 
 ## 4. Check
 
-- [ ] 4.1 Release tests pass; a pull request builds every framework under the new names
+- [x] 4.1 Release tests pass; a pull request builds every framework under the new names (2026-11-19: #35's CI built the Zephyr, ESP-IDF and NuttX images under the new names; 0.17.0 released 27 firmware names, all in the new scheme; the eu-latest C6 moved from `tedge-agent-nuttx-esp32c6-devkitc` 0.16.0 to `tedge-agent-nuttx-full-esp32c6-devkitc` 0.17.0 with one update from the new entry, after a restart: thin-edge/tiny-edge#32)
