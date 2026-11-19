@@ -585,17 +585,17 @@
     }
   },
   "tedge-agent-zephyr-ota-esp32-cam": {
-    "image": 787654,
-    "content": 787654,
+    "image": 787911,
+    "content": 787911,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 141644,
+      "dram0_0_seg": 141652,
       "dram1_0_seg": 80488
     },
-    "arena": 54952,
+    "arena": 54944,
     "provisioner": {
-      "image": 776487,
-      "content": 776487,
+      "image": 776488,
+      "content": 776488,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 127020,
