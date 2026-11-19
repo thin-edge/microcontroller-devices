@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.16.0...v0.17.0) (2026-11-19)
+
+
+### Features
+
+* name every image &lt;app&gt;-&lt;os&gt;-&lt;set&gt;-&lt;device&gt; ([#35](https://github.com/thin-edge/microcontroller-devices/issues/35)) ([5962e0b](https://github.com/thin-edge/microcontroller-devices/commit/5962e0be3d59f669079edda443569581c8346568))
+* release tiny-edge's NuttX agent for the ESP32-S3-DevKitC ([#34](https://github.com/thin-edge/microcontroller-devices/issues/34)) ([f4a9e29](https://github.com/thin-edge/microcontroller-devices/commit/f4a9e297842f19c98fd1578f31d3e6fc784d8de6))
+
 ## [0.16.0](https://github.com/thin-edge/microcontroller-devices/compare/v0.15.0...v0.16.0) (2026-11-18)
 
 
