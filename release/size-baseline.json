@@ -377,14 +377,14 @@
     }
   },
   "snmp-agent-zephyr-ota-esp32-cam": {
-    "image": 797622,
-    "content": 797622,
+    "image": 797880,
+    "content": 797880,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 151176,
+      "dram0_0_seg": 151184,
       "dram1_0_seg": 87656
     },
-    "arena": 45424,
+    "arena": 45416,
     "provisioner": {
       "image": 776487,
       "content": 776487,
