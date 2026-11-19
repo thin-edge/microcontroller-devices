@@ -20,8 +20,8 @@ BOARD = "esp32c6_devkitc/esp32c6/hpcore"
 
 VALID = """
 variants:
-  standalone: {provisioner: improv}
-  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
+  zephyr-standalone: {set: standalone, provisioner: improv}
+  zephyr-ota: {set: ota, profile: profiles/ota.conf, provisioner: ztp}
 provisioners:
   improv: null
   ztp: prov/ztp.conf
@@ -33,9 +33,9 @@ devices:
     flash_size: 4MB
     tedge_board_conf: boards/c6.conf
     builds:
-      - {app: modbus-server, variant: standalone, pr: true}
+      - {app: modbus-server, variant: zephyr-standalone, pr: true}
       - app: modbus-server
-        variant: tedge-ota
+        variant: zephyr-ota
         measured: DEVICES.md#measured-on-the-c6
 """
 
@@ -76,7 +76,7 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(std["provisioner_conf"], "")
         self.assertEqual(ota["conf_files"], "profiles/ota.conf;boards/c6.conf")
         self.assertEqual(ota["provisioner_conf"], "prov/ztp.conf")
-        self.assertEqual(ota["firmware_name"], "modbus-server-tedge-ota-c6")
+        self.assertEqual(ota["firmware_name"], "modbus-server-zephyr-ota-c6")
         json.dumps({"include": entries})  # serialisable
 
     def test_west_project_paths(self):
@@ -106,7 +106,7 @@ class MatrixTest(unittest.TestCase):
 
     def test_unknown_app(self):
         p = self.problems(VALID.replace("app: modbus-server\n", "app: nope\n"))
-        self.assertIn("device c6, nope tedge-ota: there is no apps/nope", p)
+        self.assertIn("device c6, nope zephyr-ota: there is no apps/nope", p)
 
     def test_missing_overlay(self):
         p = self.problems(VALID.replace("boards/c6.conf", "boards/gone.conf"))
@@ -123,12 +123,12 @@ class MatrixTest(unittest.TestCase):
         self.assertIn("device c6: duplicate device id", p)
 
     def test_unknown_variant(self):
-        p = self.problems(VALID.replace("variant: standalone", "variant: tedge-max"))
-        self.assertIn("device c6, modbus-server tedge-max: unknown variant", p)
+        p = self.problems(VALID.replace("variant: zephyr-standalone", "variant: zephyr-max"))
+        self.assertIn("device c6, modbus-server zephyr-max: unknown variant", p)
 
     def test_tedge_build_must_be_measured(self):
         p = self.problems(VALID.replace("        measured: DEVICES.md#measured-on-the-c6\n", ""))
-        self.assertIn("device c6, modbus-server tedge-ota: a tedge build needs `measured`", p)
+        self.assertIn("device c6, modbus-server zephyr-ota: a tedge build needs `measured`", p)
 
     def test_measured_anchor_must_exist(self):
         p = self.problems(VALID.replace("#measured-on-the-c6", "#never-measured"))
@@ -141,14 +141,14 @@ class MatrixTest(unittest.TestCase):
 
     def test_every_problem_is_reported(self):
         text = VALID.replace("boards/c6.conf", "boards/gone.conf").replace(
-            "variant: standalone", "variant: tedge-max")
+            "variant: zephyr-standalone", "variant: zephyr-max")
         p = self.problems(text)
         self.assertIn("boards/gone.conf does not exist", p)
         self.assertIn("unknown variant", p)
 
     def test_main_prints_nothing_on_error(self):
         path = self.root / "devices.yml"
-        path.write_text(VALID.replace("variant: standalone", "variant: tedge-max"))
+        path.write_text(VALID.replace("variant: zephyr-standalone", "variant: zephyr-max"))
         from io import StringIO
         from contextlib import redirect_stdout, redirect_stderr
         out, err = StringIO(), StringIO()
@@ -162,10 +162,11 @@ class MatrixTest(unittest.TestCase):
         manifest, builds = self.load(VALID)
         groups = matrix.groups(builds)
         self.assertEqual(len(groups), 1)
-        self.assertEqual(groups[0]["group"], "modbus-server-c6")
+        self.assertEqual(groups[0]["group"], "modbus-server-zephyr-c6")
         self.assertEqual(groups[0]["chip"], "esp32c6")
         self.assertEqual(groups[0]["builds"],
-                         "modbus-server-standalone-c6 modbus-server-tedge-ota-c6")
+                         "modbus-server-zephyr-standalone-c6 "
+                         "modbus-server-zephyr-ota-c6")
 
     def test_pr_subset(self):
         path = self.root / "devices.yml"
@@ -178,7 +179,7 @@ class MatrixTest(unittest.TestCase):
                               "--subset", "pr"])
         self.assertEqual(rc, 0)
         jobs = json.loads(out.getvalue())["include"]
-        self.assertEqual([j["builds"] for j in jobs], ["modbus-server-standalone-c6"])
+        self.assertEqual([j["builds"] for j in jobs], ["modbus-server-zephyr-standalone-c6"])
 
     def test_every_device_needs_a_pr_build(self):
         p = self.problems(VALID.replace(", pr: true", ""))
@@ -188,14 +189,14 @@ class MatrixTest(unittest.TestCase):
         p = self.problems(VALID.replace("pr: true", "pr: yes please"))
         self.assertIn("pr must be true or false", p)
 
-    IDF = VALID.replace("""  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
-""", """  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
-  tedge-onboard: {framework: esp-idf, provisioner: onboard}
+    IDF = VALID.replace("""  zephyr-ota: {set: ota, profile: profiles/ota.conf, provisioner: ztp}
+""", """  zephyr-ota: {set: ota, profile: profiles/ota.conf, provisioner: ztp}
+  idf-full: {framework: esp-idf, set: full, provisioner: onboard}
 """).replace("""  ztp: prov/ztp.conf
 """, """  ztp: prov/ztp.conf
   onboard: null
 """) + """      - app: agent-idf
-        variant: tedge-onboard
+        variant: idf-full
         measured: DEVICES.md#measured-on-the-c6
 """
 
@@ -215,7 +216,7 @@ class MatrixTest(unittest.TestCase):
         entry = idf.matrix_entry(manifest)
         self.assertEqual(entry["framework"], "esp-idf")
         self.assertEqual(entry["conf_files"], "")
-        self.assertEqual(entry["firmware_name"], "agent-idf-tedge-onboard-c6")
+        self.assertEqual(entry["firmware_name"], "agent-idf-idf-full-c6")
 
         from contextlib import redirect_stdout
         import io
@@ -230,7 +231,51 @@ class MatrixTest(unittest.TestCase):
         idf_jobs = json.loads(lines["idf_matrix"])["include"]
         self.assertEqual([j["app"] for j in zephyr], ["modbus-server"])
         self.assertEqual([j["builds"] for j in idf_jobs],
-                         ["agent-idf-tedge-onboard-c6"])
+                         ["agent-idf-idf-full-c6"])
+
+    def test_app_name(self):
+        """The `apps` section names an app whose directory says more; the
+        image name and the job use it, the build its directory."""
+        self.idf_app()
+        text = self.IDF.replace("provisioners:", "apps:\n  agent-idf: {name: agent}\nprovisioners:")
+        manifest, builds = self.load(text)
+        idf = [b for b in builds if b.app == "agent-idf"][0]
+        entry = idf.matrix_entry(manifest)
+        self.assertEqual(entry["firmware_name"], "agent-idf-full-c6")
+        self.assertEqual(entry["app"], "agent-idf")
+        self.assertEqual(matrix.groups([idf])[0]["group"], "agent-idf-c6")
+
+    def test_app_name_needs_the_app(self):
+        p = self.problems(VALID.replace("provisioners:", "apps:\n  gone: {name: x}\nprovisioners:"))
+        self.assertIn("apps: there is no apps/gone", p)
+
+    def test_variant_name_follows_framework_and_set(self):
+        self.idf_app()
+        p = self.problems(self.IDF.replace("idf-full: {framework: esp-idf",
+                                           "zephyr-full: {framework: esp-idf")
+                                  .replace("variant: idf-full", "variant: zephyr-full"))
+        self.assertIn("variant zephyr-full: a esp-idf variant with set full is "
+                      "named idf-full", p)
+        p = self.problems(VALID.replace("set: ota", "set: max"))
+        self.assertIn("variant zephyr-ota: set must be one of standalone, full, ota", p)
+
+    def test_firmware_names_are_unique(self):
+        """Two app directories with the same name would share images."""
+        self.idf_app()
+        # The same app name is fine while the variants differ...
+        text = self.IDF.replace("provisioners:", "apps:\n  agent-idf: {name: modbus-server}\nprovisioners:")
+        manifest, builds = self.load(text)
+        names = [b.firmware_name for b in builds]
+        self.assertEqual(len(names), len(set(names)))
+        # ...but not when an image would carry another's name.
+        dup = text + """      - app: agent-idf
+        variant: zephyr-ota
+        measured: DEVICES.md#measured-on-the-c6
+"""
+        (self.root / "apps/agent-idf/boards").mkdir()
+        (self.root / f"apps/agent-idf/boards/{matrix.board_dir_name(BOARD)}.conf").write_text("")
+        p = self.problems(dup)
+        self.assertIn("firmware name modbus-server-zephyr-ota-c6 is also", p)
 
     def test_esp_idf_app_must_be_an_idf_project(self):
         self.idf_app(defaults=False)
@@ -240,11 +285,11 @@ class MatrixTest(unittest.TestCase):
     def test_unknown_framework(self):
         self.idf_app()
         p = self.problems(self.IDF.replace("framework: esp-idf", "framework: threadx"))
-        self.assertIn("variant tedge-onboard: framework must be one of", p)
+        self.assertIn("variant idf-full: framework must be one of", p)
 
-    NUTTX = VALID.replace("""  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
-""", """  tedge-ota: {profile: profiles/ota.conf, provisioner: ztp}
-  nuttx: {framework: nuttx, provisioner: onboard}
+    NUTTX = VALID.replace("""  zephyr-ota: {set: ota, profile: profiles/ota.conf, provisioner: ztp}
+""", """  zephyr-ota: {set: ota, profile: profiles/ota.conf, provisioner: ztp}
+  nuttx-full: {framework: nuttx, set: full, provisioner: onboard}
 """).replace("""  ztp: prov/ztp.conf
 """, """  ztp: prov/ztp.conf
   onboard: null
@@ -252,7 +297,7 @@ class MatrixTest(unittest.TestCase):
 """, """    tedge_board_conf: boards/c6.conf
     nuttx_board: esp32c6-devkitc
 """) + """      - app: modbus-server
-        variant: nuttx
+        variant: nuttx-full
         extra_conf: [nuttx/psram.conf]
         measured: DEVICES.md#measured-on-the-c6
 """
@@ -264,12 +309,12 @@ class MatrixTest(unittest.TestCase):
         (self.root / "nuttx").mkdir()
         (self.root / "nuttx/psram.conf").write_text("")
         manifest, builds = self.load(self.NUTTX)
-        nx = [b for b in builds if b.variant == "nuttx"][0]
+        nx = [b for b in builds if b.variant == "nuttx-full"][0]
         entry = nx.matrix_entry(manifest)
         self.assertEqual(entry["framework"], "nuttx")
         self.assertEqual(entry["nuttx_board"], "esp32c6-devkitc")
         self.assertEqual(entry["conf_files"], "nuttx/psram.conf")
-        self.assertEqual(entry["firmware_name"], "modbus-server-nuttx-c6")
+        self.assertEqual(entry["firmware_name"], "modbus-server-nuttx-full-c6")
 
         from contextlib import redirect_stdout
         import io
@@ -281,9 +326,9 @@ class MatrixTest(unittest.TestCase):
         lines = dict(l.split("=", 1) for l in out.getvalue().splitlines())
         zephyr = json.loads(lines["matrix"])["include"]
         nuttx = json.loads(lines["nuttx_matrix"])["include"]
-        self.assertEqual([j["group"] for j in zephyr], ["modbus-server-c6"])
+        self.assertEqual([j["group"] for j in zephyr], ["modbus-server-zephyr-c6"])
         self.assertEqual([j["group"] for j in nuttx], ["modbus-server-nuttx-c6"])
-        self.assertEqual([j["builds"] for j in nuttx], ["modbus-server-nuttx-c6"])
+        self.assertEqual([j["builds"] for j in nuttx], ["modbus-server-nuttx-full-c6"])
 
     def test_nuttx_build_needs_a_board(self):
         (self.root / "nuttx").mkdir()

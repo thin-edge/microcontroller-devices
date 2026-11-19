@@ -5,7 +5,7 @@
     scripts/release/package.py <build-dir> --device <id> --app <app> \\
         --variant <variant> --out <dir>
 
-Writes, with <stem> = <app>-<variant>-<device>-<version>:
+Writes, with <stem> = <app>-<os>-<set>-<device>-<version>:
 
   <stem>.factory.bin  MCUboot + application + provisioner merged into one
                       image that is written at 0x0 (esptool, or a browser
@@ -215,7 +215,7 @@ def main(argv=None):
         "device": dev["id"],
         "device_name": dev["name"],
         "board": dev["board"],
-        "app": args.app,
+        "app": build.name,
         "variant": args.variant,
         "version": version,
         "firmware_name": build.firmware_name,
@@ -234,7 +234,7 @@ def main(argv=None):
                     "tenant.")
     readme = README.format(
         name=stem, rule="=" * len(stem), stem=stem, device_name=dev["name"],
-        app=args.app, variant=args.variant, version=version, chip=info["chip"],
+        app=build.name, variant=args.variant, version=version, chip=info["chip"],
         before=before, app_off=imgs["app"]["offset"],
         writes=" ".join(f"{i['offset']:#x} {names[n]}" for n, i in order),
         provisioning=provisioning, signing=sign["statement"])

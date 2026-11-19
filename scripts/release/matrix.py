@@ -16,6 +16,12 @@ reuse the first one's compiler cache. Pull requests build the `pr` subset
 (every device, app, variant and extra, with each board's tightest builds);
 a release builds everything.
 
+Every image is named <app>-<os>-<set>-<device>, and a variant <os>-<set>:
+<os> follows from the variant's framework (OS_NAMES), <set> is its `set`
+(standalone, full or ota), and <app> is the app's directory or its `name`
+in the manifest's `apps` section. The name is the release files' stem, the
+firmware name the image reports, and its firmware entry in Cumulocity.
+
 A variant with `framework: esp-idf` is an ESP-IDF project (apps/<app> with
 idf.py) instead of a Zephyr sysbuild: it has no Zephyr profile, board files
 or tiny-edge board configuration, and its builds form a matrix of their own
@@ -62,6 +68,10 @@ ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FLASH_RE = re.compile(r"^(1|2|4|8|16|32)MB$")
 ESPTOOL_BEFORE = {"default-reset", "usb-reset", "no-reset"}
 FRAMEWORKS = {"zephyr", "esp-idf", "nuttx"}
+# The operating system in an image's name, by framework; ESP-IDF includes
+# FreeRTOS.
+OS_NAMES = {"zephyr": "zephyr", "esp-idf": "idf", "nuttx": "nuttx"}
+SETS = ("standalone", "full", "ota")
 
 
 class ManifestError(Exception):
@@ -79,10 +89,18 @@ class Build:
     extra_conf: list = field(default_factory=list)
     measured: str = ""
     pr: bool = False
+    name: str = ""
+
+    def __post_init__(self):
+        self.name = self.name or self.app
 
     @property
     def tedge(self):
-        return self.variant != "standalone"
+        return self.variant_def.get("set") != "standalone"
+
+    @property
+    def os(self):
+        return OS_NAMES.get(self.framework, self.framework)
 
     @property
     def framework(self):
@@ -90,7 +108,8 @@ class Build:
 
     @property
     def firmware_name(self):
-        return f"{self.app}-{self.variant}-{self.device['id']}"
+        """<app>-<os>-<set>-<device>: the variant is named <os>-<set>."""
+        return f"{self.name}-{self.variant}-{self.device['id']}"
 
     def conf_files(self):
         """EXTRA_CONF_FILE for the application, repository-relative; for
@@ -117,6 +136,7 @@ class Build:
             "flash_size": self.device["flash_size"],
             "esptool_before": self.device.get("esptool_before", "default-reset"),
             "app": self.app,
+            "name": self.name,
             "variant": self.variant,
             "framework": self.framework,
             "nuttx_board": self.device.get("nuttx_board", ""),
@@ -199,17 +219,33 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
         if framework not in FRAMEWORKS:
             problems.append(f"variant {name}: framework must be one of "
                             f"{', '.join(sorted(FRAMEWORKS))}")
-        elif framework == "zephyr" and name != "standalone" and not v.get("profile"):
+            continue
+        if v.get("set") not in SETS:
+            problems.append(f"variant {name}: set must be one of {', '.join(SETS)}")
+        elif name != f"{OS_NAMES[framework]}-{v['set']}":
+            problems.append(f"variant {name}: a {framework} variant with set "
+                            f"{v['set']} is named {OS_NAMES[framework]}-{v['set']}")
+        elif framework == "zephyr" and v["set"] != "standalone" and not v.get("profile"):
             problems.append(f"variant {name}: a tedge variant needs a profile")
     for name, conf in provisioners.items():
         if conf:
             need_file(f"provisioner {name}", conf)
 
+    app_names = {}
+    for app, a in (manifest.get("apps") or {}).items():
+        if not (root / "apps" / app).is_dir():
+            problems.append(f"apps: there is no apps/{app}")
+        elif not ID_RE.match(str((a or {}).get("name", ""))):
+            problems.append(f"apps: {app} needs a name of lowercase letters, "
+                            "digits and dashes")
+        else:
+            app_names[app] = a["name"]
+
     layout_boards = set(
         re.findall(r'_board STREQUAL "([^"]+)"',
                    (root / "sysbuild" / "provisioning.cmake").read_text()))
 
-    builds, seen_ids, seen_builds = [], set(), set()
+    builds, seen_ids, seen_builds, seen_names = [], set(), set(), {}
     doc_anchors = {}
     for dev in manifest.get("devices") or []:
         did = dev.get("id", "?")
@@ -264,7 +300,7 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
                 problems.append(f"{bwhere}: pr must be true or false")
             build = Build(dev, app, variant, variants[variant],
                           list(b.get("extra_conf", [])), b.get("measured", ""),
-                          b.get("pr", False) is True)
+                          b.get("pr", False) is True, app_names.get(app, ""))
             if build.tedge:
                 if build.framework == "zephyr" and not dev.get("tedge_board_conf"):
                     problems.append(f"{bwhere}: the device has no tedge_board_conf")
@@ -281,6 +317,10 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
                         if anchor not in doc_anchors[doc]:
                             problems.append(f"{bwhere}: measured: {doc} has no "
                                             f"heading #{anchor}")
+            if build.firmware_name in seen_names:
+                problems.append(f"{bwhere}: firmware name {build.firmware_name} "
+                                f"is also {seen_names[build.firmware_name]}'s")
+            seen_names.setdefault(build.firmware_name, bwhere)
             if len(build.firmware_name) > FIRMWARE_NAME_MAX:
                 problems.append(f"{bwhere}: firmware name {build.firmware_name} is "
                                 f"{len(build.firmware_name)} characters "
@@ -301,14 +341,11 @@ def load(path=DEFAULT_MANIFEST, root=ROOT):
 def groups(builds):
     """One matrix job per (device, app, framework), in manifest order.
 
-    The group names the job's artifact. The NuttX agent shares its app name
-    with the Zephyr tedge-agent builds, so its group names the framework.
+    The group, <app>-<os>-<device>, names the job's artifact.
     """
     out = {}
     for b in builds:
-        name = f"{b.app}-{b.device['id']}"
-        if b.framework == "nuttx":
-            name = f"{b.app}-nuttx-{b.device['id']}"
+        name = f"{b.name}-{b.os}-{b.device['id']}"
         g = out.setdefault((b.device["id"], b.app, b.framework), {
             "group": name,
             "device": b.device["id"],
@@ -329,7 +366,7 @@ def markdown(manifest, builds):
     for dev in manifest["devices"]:
         cells = []
         for variant in variants:
-            apps = [b.app for b in builds
+            apps = [b.name for b in builds
                     if b.device is dev and b.variant == variant]
             cells.append(", ".join(f"`{a}`" for a in apps) or "—")
         rows.append(f"| {dev['name']} | `{dev['board']}` | " + " | ".join(cells) + " |")

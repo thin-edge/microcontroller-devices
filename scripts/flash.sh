@@ -24,7 +24,7 @@
 #
 # A bundle built for more flash than the connected chip has is refused.
 #
-# An ESP-IDF bundle (a `tedge-onboard` image: flash.json says
+# An ESP-IDF bundle (an `idf` image: flash.json says
 # "framework": "esp-idf") is flashed the same way: everything, or with
 # --app-only the application into ota_0; --erase-storage erases its NVS
 # partition (the Wi-Fi network and the Cumulocity certificate). A NuttX

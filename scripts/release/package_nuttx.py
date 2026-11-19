@@ -11,7 +11,7 @@ The NuttX counterpart of package.py and package_idf.py, with the same
 outputs, so the release notes, c8y-firmware.json and SHA256SUMS treat every
 framework alike. <build-out> is what tiny-edge's build.sh wrote: MCUboot,
 nuttx.bin (padded and confirmed, for flashing) and nuttx-update.bin (for a
-firmware update). With <stem> = <app>-<variant>-<device>-<version>:
+firmware update). With <stem> = <app>-<os>-<set>-<device>-<version>:
 
   <stem>.factory.bin  MCUboot and the confirmed image, merged into one image
                       that is written at 0x0
@@ -227,7 +227,7 @@ def main(argv=None):
         "device": dev["id"],
         "device_name": dev["name"],
         "board": dev["nuttx_board"],
-        "app": args.app,
+        "app": build.name,
         "variant": args.variant,
         "version": args.version,
         "firmware_name": build.firmware_name,
@@ -243,7 +243,7 @@ def main(argv=None):
     }
     readme = README.format(
         name=stem, rule="=" * len(stem), stem=stem, device_name=dev["name"],
-        app=args.app, variant=args.variant, version=args.version, chip=chip,
+        app=build.name, variant=args.variant, version=args.version, chip=chip,
         before=before, app_off=f"{slot0:#x}",
         writes=" ".join(f"{off:#x} {f}" for _, f, _, off in images),
         signing=SIGNING["statement"])

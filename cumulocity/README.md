@@ -108,7 +108,7 @@ reason, and nothing is applied.
 
 ## Shell diagnostics
 
-The `tedge-full` Modbus and agent images of the ESP32-S3-DevKitC and the QT Py
+The `zephyr-full` Modbus and agent images of the ESP32-S3-DevKitC and the QT Py
 ESP32-S3 carry the shell command (`tiny-edge/ports/zephyr/profiles/extras/shell-diagnostics.conf`)
 for general checks from the device's **Shell** tab. Send `help` to see what
 the device runs:
@@ -124,7 +124,7 @@ the device runs:
 `net ping` is not offered: Zephyr prints the replies after the command
 returns, so the cloud would only ever see the `PING <host>` line.
 
-The ESP32-C6 Modbus `tedge-full` image carries a leaner set
+The ESP32-C6 Modbus `zephyr-full` image carries a leaner set
 (`release/extras/shell-lean.conf`), because the full one costs too much RAM
 and flash there (DEVICES.md, "Lean cloud shell on the ESP32-C6"). In place
 of `net iface`, `net conn` and `wifi status` it has:
