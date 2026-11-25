@@ -152,16 +152,24 @@ jobs:
         # one's compiler cache. Its size step fails a build over its flash
         # budget or grown past release/size-baseline.json; a change that moves
         # a build's size updates the baseline (build.sh --write-baseline, or
-        # scripts/release/baseline.sh for every build) in the same PR.
+        # scripts/release/baseline.sh for every build) in the same PR. Every
+        # build runs even after one fails, so a run reports every build over
+        # its baseline, and the artifact keeps the size report of each.
         run: |
-          set -e
+          failed=()
           for name in ${{ matrix.builds }}; do
             echo "::group::$name"
-            scripts/release/build.sh "$name" --build-dir "../build/$name" --out ../dist
+            scripts/release/build.sh "$name" --build-dir "../build/$name" --out ../dist \
+              || failed+=("$name")
             echo "::endgroup::"
           done
           ccache -s
+          if [[ ${#failed[@]} -gt 0 ]]; then
+            echo "::error::failed: ${failed[*]}"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: firmware-${{ matrix.group }}
           path: dist/
