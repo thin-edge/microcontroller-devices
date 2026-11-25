@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.5](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.4...v0.17.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* take tiny-edge 0.10.2 ([#46](https://github.com/thin-edge/microcontroller-devices/issues/46)) ([d3e2aab](https://github.com/thin-edge/microcontroller-devices/commit/d3e2aab5397e6fef5d0b0b7fb56659de71381617))
+
 ## [0.17.4](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.3...v0.17.4) (2026-11-25)
 
 
