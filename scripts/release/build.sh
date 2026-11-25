@@ -130,9 +130,14 @@ prov=$(abs "$PROVISIONER_CONF")
 	--pristine -- "${args[@]}")
 
 tmp=$(mktemp)
-python3 "$root/scripts/release/size.py" "$build" --json "$tmp" \
-	--baseline "$baseline" ${size_args[@]+"${size_args[@]}"}
 mkdir -p "$out"
+if ! python3 "$root/scripts/release/size.py" "$build" --json "$tmp" \
+	--baseline "$baseline" ${size_args[@]+"${size_args[@]}"}; then
+	# Keep the report of a build that failed the size gate, so the figures a
+	# baseline update needs come out of the CI run (its firmware artifact).
+	[[ -s $tmp ]] && mv "$tmp" "$out/$FIRMWARE_NAME.size.json"
+	exit 1
+fi
 python3 "$root/scripts/release/package.py" "$build" --device "$DEVICE" \
 	--app "$APP" --variant "$VARIANT" --out "$out"
 version=$(sed -n 's/.*"version": "\(.*\)",/\1/p' "$out/$FIRMWARE_NAME-"*.meta.json | head -1)
