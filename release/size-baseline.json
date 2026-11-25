@@ -39,16 +39,16 @@
     }
   },
   "modbus-server-zephyr-full-qtpy-esp32s3": {
-    "image": 932827,
-    "content": 932827,
+    "image": 938939,
+    "content": 938939,
     "ram": {
       "iram0_0_seg": 60468,
-      "dram0_0_seg": 342256
+      "dram0_0_seg": 357940
     },
-    "arena": 56836,
+    "arena": 41156,
     "provisioner": {
-      "image": 732283,
-      "content": 732283,
+      "image": 732282,
+      "content": 732282,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248228
@@ -57,17 +57,17 @@
     }
   },
   "modbus-server-zephyr-ota-esp32-cam": {
-    "image": 803255,
-    "content": 803255,
+    "image": 803911,
+    "content": 803911,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 143140,
+      "dram0_0_seg": 143168,
       "dram1_0_seg": 83560
     },
-    "arena": 53464,
+    "arena": 53424,
     "provisioner": {
-      "image": 776488,
-      "content": 776488,
+      "image": 776486,
+      "content": 776486,
       "ram": {
         "iram0_0_seg": 92928,
         "dram0_0_seg": 127020,
@@ -97,16 +97,16 @@
     }
   },
   "modbus-server-zephyr-ota-esp32c6-devkitc": {
-    "image": 888684,
-    "content": 814564,
+    "image": 892522,
+    "content": 819066,
     "ram": {
-      "sram0_0_seg": 401568,
+      "sram0_0_seg": 401604,
       "lp_ram_seg": 36
     },
-    "arena": 107872,
+    "arena": 107824,
     "provisioner": {
-      "image": 1013963,
-      "content": 909507,
+      "image": 1013962,
+      "content": 909506,
       "ram": {
         "sram0_0_seg": 302676,
         "lp_ram_seg": 36
@@ -118,13 +118,13 @@
     }
   },
   "modbus-server-zephyr-ota-esp32s3-devkitc": {
-    "image": 737532,
-    "content": 737532,
+    "image": 741371,
+    "content": 741371,
     "ram": {
       "iram0_0_seg": 59368,
-      "dram0_0_seg": 296464
+      "dram0_0_seg": 296500
     },
-    "arena": 102620,
+    "arena": 102588,
     "provisioner": {
       "image": 732124,
       "content": 732124,
@@ -136,13 +136,13 @@
     }
   },
   "modbus-server-zephyr-ota-qtpy-esp32s3": {
-    "image": 737675,
-    "content": 737675,
+    "image": 741499,
+    "content": 741499,
     "ram": {
       "iram0_0_seg": 58416,
-      "dram0_0_seg": 292836
+      "dram0_0_seg": 292872
     },
-    "arena": 106244,
+    "arena": 106212,
     "provisioner": {
       "image": 732282,
       "content": 732282,
@@ -359,13 +359,13 @@
     }
   },
   "snmp-agent-zephyr-full-qtpy-esp32s3": {
-    "image": 807083,
-    "content": 807083,
+    "image": 813163,
+    "content": 813163,
     "ram": {
       "iram0_0_seg": 59168,
-      "dram0_0_seg": 339144
+      "dram0_0_seg": 354788
     },
-    "arena": 59940,
+    "arena": 44300,
     "provisioner": {
       "image": 732282,
       "content": 732282,
@@ -397,16 +397,16 @@
     }
   },
   "snmp-agent-zephyr-ota-esp32c6-devkitc": {
-    "image": 887323,
-    "content": 806795,
+    "image": 891162,
+    "content": 811298,
     "ram": {
-      "sram0_0_seg": 413888,
+      "sram0_0_seg": 413908,
       "lp_ram_seg": 36
     },
-    "arena": 95552,
+    "arena": 95520,
     "provisioner": {
-      "image": 1013964,
-      "content": 909508,
+      "image": 1013963,
+      "content": 909507,
       "ram": {
         "sram0_0_seg": 302676,
         "lp_ram_seg": 36
@@ -418,16 +418,16 @@
     }
   },
   "snmp-agent-zephyr-ota-esp32s3-devkitc": {
-    "image": 736587,
-    "content": 736587,
+    "image": 740410,
+    "content": 740410,
     "ram": {
       "iram0_0_seg": 59368,
-      "dram0_0_seg": 308632
+      "dram0_0_seg": 308668
     },
-    "arena": 90452,
+    "arena": 90420,
     "provisioner": {
-      "image": 732123,
-      "content": 732123,
+      "image": 732122,
+      "content": 732122,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250844
@@ -436,16 +436,16 @@
     }
   },
   "snmp-agent-zephyr-ota-qtpy-esp32s3": {
-    "image": 736731,
-    "content": 736731,
+    "image": 740555,
+    "content": 740555,
     "ram": {
       "iram0_0_seg": 58416,
-      "dram0_0_seg": 305012
+      "dram0_0_seg": 305040
     },
-    "arena": 94068,
+    "arena": 94044,
     "provisioner": {
-      "image": 732283,
-      "content": 732283,
+      "image": 732284,
+      "content": 732284,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248228
@@ -528,16 +528,16 @@
     }
   },
   "tedge-agent-zephyr-full-esp32c6-devkitc": {
-    "image": 890667,
-    "content": 817303,
+    "image": 896844,
+    "content": 831464,
     "ram": {
-      "sram0_0_seg": 430856,
+      "sram0_0_seg": 446572,
       "lp_ram_seg": 36
     },
-    "arena": 78576,
+    "arena": 62864,
     "provisioner": {
-      "image": 1013962,
-      "content": 909506,
+      "image": 1013964,
+      "content": 909508,
       "ram": {
         "sram0_0_seg": 302676,
         "lp_ram_seg": 36
@@ -549,16 +549,16 @@
     }
   },
   "tedge-agent-zephyr-full-esp32s3-devkitc": {
-    "image": 929019,
-    "content": 929019,
+    "image": 935131,
+    "content": 935131,
     "ram": {
       "iram0_0_seg": 61420,
-      "dram0_0_seg": 340672
+      "dram0_0_seg": 356348
     },
-    "arena": 58428,
+    "arena": 42740,
     "provisioner": {
-      "image": 732123,
-      "content": 732123,
+      "image": 732124,
+      "content": 732124,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250844
@@ -585,14 +585,14 @@
     }
   },
   "tedge-agent-zephyr-ota-esp32-cam": {
-    "image": 787911,
-    "content": 787911,
+    "image": 788343,
+    "content": 788343,
     "ram": {
       "iram0_0_seg": 65792,
-      "dram0_0_seg": 141652,
+      "dram0_0_seg": 141672,
       "dram1_0_seg": 80488
     },
-    "arena": 54944,
+    "arena": 54928,
     "provisioner": {
       "image": 776488,
       "content": 776488,
@@ -646,16 +646,16 @@
     }
   },
   "tedge-agent-zephyr-ota-esp32s3-devkitc": {
-    "image": 735114,
-    "content": 735114,
+    "image": 738940,
+    "content": 738940,
     "ram": {
       "iram0_0_seg": 59368,
-      "dram0_0_seg": 291932
+      "dram0_0_seg": 291960
     },
-    "arena": 107148,
+    "arena": 107124,
     "provisioner": {
-      "image": 732122,
-      "content": 732122,
+      "image": 732124,
+      "content": 732124,
       "ram": {
         "iram0_0_seg": 57688,
         "dram0_0_seg": 250844
@@ -664,16 +664,16 @@
     }
   },
   "tedge-agent-zephyr-ota-qtpy-esp32s3": {
-    "image": 735258,
-    "content": 735258,
+    "image": 739082,
+    "content": 739082,
     "ram": {
       "iram0_0_seg": 58416,
-      "dram0_0_seg": 288304
+      "dram0_0_seg": 288340
     },
-    "arena": 110788,
+    "arena": 110740,
     "provisioner": {
-      "image": 732284,
-      "content": 732284,
+      "image": 732283,
+      "content": 732283,
       "ram": {
         "iram0_0_seg": 57216,
         "dram0_0_seg": 248228
