@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.4](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.3...v0.17.4) (2026-11-25)
+
+
+### Bug Fixes
+
+* **release:** record the release-only image sizes with tiny-edge 0.10.1 ([#44](https://github.com/thin-edge/microcontroller-devices/issues/44)) ([59f322f](https://github.com/thin-edge/microcontroller-devices/commit/59f322f84a26973b0c37dc3342707227cbe93acd))
+
 ## [0.17.3](https://github.com/thin-edge/microcontroller-devices/compare/v0.17.2...v0.17.3) (2026-11-25)
 
 
